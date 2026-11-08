@@ -1,0 +1,12 @@
+{
+  "name": "mercadowow-funciones",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas de la Edge Function y del SQL con Postgres simulado (PGlite).",
+  "scripts": {
+    "test": "node --test \"supabase/pruebas/*.test.ts\""
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.15"
+  }
+}

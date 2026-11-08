@@ -1,0 +1,5 @@
+# Configuración mínima para desplegar la Edge Function con la CLI de Supabase.
+# La función no exige clave (verify_jwt = false): solo descarga cuando la base de
+# datos dice que toca, así que una llamada de más no hace nada.
+[functions.actualizar-mercado]
+verify_jwt = false
