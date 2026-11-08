@@ -139,13 +139,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             with db.connect(settings.database_url) as conn:
                 version = db.market_version(conn, clave)
-                objetos = db.price_table(conn, clave) if version else None
+                if version is None:
+                    return JSONResponse(status_code=404, content={"error": f"Mercado {clave} no registrado"})
+                motor = db.recompute(conn, clave)
+                objetos = db.price_table(conn, clave)
+                resumen = db.recommendations_summary(conn, clave)
         except Exception as exc:
             log.warning("Fallo al leer precios: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
-        if version is None:
-            return JSONResponse(status_code=404, content={"error": f"Mercado {clave} no registrado"})
-        return JSONResponse({"mercado": clave, "version": version, "objetos": objetos}, headers=SIN_CACHE)
+        return JSONResponse({"mercado": clave, "version": version, "motor": motor, "resumen": resumen,
+                             "objetos": objetos}, headers=SIN_CACHE)
+
+    @app.get("/api/explicacion")
+    def explicacion(id: int = Query(gt=0), mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                db.recompute(conn, clave)
+                r = db.explain(conn, clave, id)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al explicar: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        if r is None:
+            return JSONResponse(status_code=404, content={"error": "Objeto sin recomendación en este mercado"})
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.get("/api/ajustes")
+    def ajustes_leer():
+        try:
+            with db.connect(settings.database_url) as conn:
+                return JSONResponse(db.read_settings(conn), headers=SIN_CACHE)
+        except Exception as exc:
+            log.warning("Fallo al leer ajustes: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    @app.post("/api/ajustes")
+    def ajustes_guardar(cuerpo: dict = Body(...)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = db.save_settings(conn, cuerpo)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al guardar ajustes: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        log.info("Ajustes del motor cambiados: %s", cuerpo)
+        return r
 
     @app.get("/api/version")
     def version(mercado: str | None = Query(default=None, max_length=100)):

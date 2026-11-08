@@ -79,8 +79,8 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:5] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
-                           "0005_tabla.sql"]
+    assert nombres[:6] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+                           "0005_tabla.sql", "0006_motor.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -230,9 +230,12 @@ def test_precios_y_version(cliente, monkeypatch):
     monkeypatch.setattr(db, "market_version",
                         lambda conn, key: {"version": 3} if key == "csv:forever:us:pvp-horde" else None)
     monkeypatch.setattr(db, "price_table", lambda conn, key: [{"id": 1, "precio": 5}])
+    monkeypatch.setattr(db, "recompute", lambda conn, key: {"estado": "al_dia"})
+    monkeypatch.setattr(db, "recommendations_summary", lambda conn, key: {"vender": 0})
     r = cliente.get("/api/precios", params={"mercado": "csv:forever:us:pvp-horde"})
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     assert r.json() == {"mercado": "csv:forever:us:pvp-horde", "version": {"version": 3},
+                        "motor": {"estado": "al_dia"}, "resumen": {"vender": 0},
                         "objetos": [{"id": 1, "precio": 5}]}
     assert cliente.get("/api/precios", params={"mercado": "nada"}).status_code == 404
     assert cliente.get("/api/version", params={"mercado": "csv:forever:us:pvp-horde"}).json() == {"version": 3}
@@ -253,6 +256,32 @@ def test_favorito_ok(cliente, monkeypatch):
     monkeypatch.setattr(db, "set_favorite", lambda conn, mk, i, f: {"id": i, "favorito": f})
     assert cliente.post("/api/favorito", json={"mercado": "x", "id": 7, "favorito": True}).json() == \
         {"id": 7, "favorito": True}
+
+
+def test_explicacion(cliente, monkeypatch):
+    monkeypatch.setattr(db, "recompute", lambda conn, key: {"estado": "al_dia"})
+    monkeypatch.setattr(db, "explain", lambda conn, key, i: {"id": i} if i == 7 else None)
+    assert cliente.get("/api/explicacion", params={"id": 7}).json() == {"id": 7}
+    assert cliente.get("/api/explicacion", params={"id": 8}).status_code == 404
+    assert cliente.get("/api/explicacion", params={"id": 0}).status_code == 422   # validación de FastAPI
+    assert cliente.get("/api/explicacion").status_code == 422
+
+
+def test_ajustes(cliente, monkeypatch):
+    monkeypatch.setattr(db, "read_settings", lambda conn: {"motor.comision_pct": 5})
+    assert cliente.get("/api/ajustes").json() == {"motor.comision_pct": 5}
+
+    class Diag:
+        message_primary = "El ajuste motor.comision_pct debe estar entre 0 y 50"
+
+    class ErrorSql(psycopg.errors.RaiseException):
+        diag = Diag()
+
+    def falla(conn, a):
+        raise ErrorSql()
+    monkeypatch.setattr(db, "save_settings", falla)
+    r = cliente.post("/api/ajustes", json={"motor.comision_pct": 99})
+    assert r.status_code == 422 and "entre 0 y 50" in r.json()["error"]
 
 
 def test_build_status_sin_datos():

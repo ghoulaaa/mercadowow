@@ -75,7 +75,7 @@ describe("tabla_precios (SQL)", () => {
     await pg.exec("create role anon; create role authenticated;");
     await pg.exec(leer("0001_esquema.sql"));
     await pg.exec("create function disparar_si_corresponde() returns void language sql as $$ select $$;");
-    for (const n of ["0003_web.sql", "0004_demo_csv.sql", "0005_tabla.sql"]) await pg.exec(leer(n));
+    for (const n of ["0003_web.sql", "0004_demo_csv.sql", "0005_tabla.sql", "0006_motor.sql"]) await pg.exec(leer(n));
     db = { consulta: async (s, p) => (await pg.query<Record<string, unknown>>(s, p)).rows };
   });
 

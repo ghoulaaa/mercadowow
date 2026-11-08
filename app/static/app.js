@@ -1,6 +1,6 @@
 import { leerCsvPrecios } from "./csv.js";
 import { formatearMoneda } from "./moneda.js";
-import { categorias, filtrar, formatearPct, ordenar, prepararFilas } from "./tabla.js";
+import { NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas } from "./tabla.js";
 
 const $ = (id) => document.getElementById(id);
 const fecha = (iso) => iso ? new Date(iso).toLocaleString("es", { dateStyle: "short", timeStyle: "short" }) : "—";
@@ -184,7 +184,7 @@ let visibles = POR_PAGINA;
 const leerFiltros = () => {
   const [clave, dir] = $("f-orden").value.split(":");
   return {
-    texto: $("f-texto").value, categoria: $("f-categoria").value,
+    texto: $("f-texto").value, categoria: $("f-categoria").value, recomendacion: $("f-recomendacion").value,
     soloFavoritos: $("f-favoritos").checked, ocultarAusentes: $("f-ausentes").checked, clave, dir,
   };
 };
@@ -208,6 +208,14 @@ async function cargarPrecios() {
     const op = document.createElement("option"); op.value = op.textContent = c; sel.append(op);
   }
   sel.value = [...sel.options].some((o) => o.value === previa) ? previa : "";
+
+  const res = d.resumen || {};
+  $("tile-vender-v").textContent = res.vender ?? "—";
+  $("tile-guardar-v").textContent = res.guardar ?? "—";
+  const top = (rec) => filasTabla.filter((f) => f.rec === rec).sort((a, b) => (b.puntos ?? 0) - (a.puntos ?? 0))
+    .slice(0, 3).map((f) => f.nombre).join(", ");
+  $("tile-vender-n").textContent = res.vender ? top("VENDER") : "Ninguna con las reglas actuales";
+  $("tile-guardar-n").textContent = res.guardar ? top("GUARDAR") : "Ninguno con las reglas actuales";
   pintarTabla();
   pintarAlertas();
 }
@@ -258,7 +266,9 @@ function pintarTabla() {
     ic.textContent = x.nombre.replace(/^\[FICTICIO\]\s*/, "").charAt(0).toUpperCase();
     ic.style.background = colorCategoria(x.categoria);
     const txt = document.createElement("div");
-    const nom = document.createElement("div"); nom.className = "objeto-nombre"; nom.textContent = x.nombre;
+    const nom = document.createElement("button");
+    nom.type = "button"; nom.className = "objeto-nombre enlace"; nom.dataset.detalle = x.id; nom.textContent = x.nombre;
+    nom.title = "Ver por qué se recomienda";
     const sub = document.createElement("div"); sub.className = "objeto-id";
     sub.textContent = `#${x.id} · ${x.categoria}` + (x.ausente ? ` · ausente desde ${fecha(x.hora)}` : "");
     txt.append(nom, sub); div.append(ic, txt); tdObj.append(div);
@@ -275,9 +285,16 @@ function pintarTabla() {
     const tdOferta = document.createElement("td"); tdOferta.className = "num"; tdOferta.dataset.k = "Oferta:";
     tdOferta.textContent = "sin dato"; tdOferta.title = "TSM no publica cantidades en venta";
     const tdRec = document.createElement("td"); tdRec.dataset.k = "Recomendación:";
-    tdRec.innerHTML = '<span class="etiqueta">Pendiente</span>';
-    tdRec.title = "El motor de recomendaciones llega en el Hito 5";
-    const tdConf = document.createElement("td"); tdConf.dataset.k = "Confianza:"; tdConf.textContent = "—";
+    const et = document.createElement("span");
+    et.className = "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[x.rec] || "");
+    et.textContent = NOMBRE_REC[x.rec] || "—";
+    tdRec.append(et);
+    if (x.resumen) {
+      const rs = document.createElement("div"); rs.className = "objeto-id"; rs.textContent = x.resumen; tdRec.append(rs);
+    }
+    const tdConf = document.createElement("td"); tdConf.dataset.k = "Confianza:";
+    tdConf.textContent = x.nivel ? `${x.nivel} · ${x.puntos}` : "—";
+    tdConf.title = "Índice de calidad de los datos (0–100), no una probabilidad";
 
     tr.append(tdFav, tdObj, tdPrecio, tdHist, td24, td7, tdOferta, tdRec, tdConf);
     frag.append(tr);
@@ -298,7 +315,7 @@ function colorCategoria(c) {
 }
 
 let temporizadorFiltro = null;
-for (const id of ["f-texto", "f-categoria", "f-orden", "f-favoritos", "f-ausentes"]) {
+for (const id of ["f-texto", "f-categoria", "f-recomendacion", "f-orden", "f-favoritos", "f-ausentes"]) {
   $(id).addEventListener(id === "f-texto" ? "input" : "change", () => {
     clearTimeout(temporizadorFiltro);
     temporizadorFiltro = setTimeout(() => { visibles = POR_PAGINA; pintarTabla(); }, id === "f-texto" ? 150 : 0);
@@ -328,6 +345,153 @@ $("tbody").addEventListener("click", async (ev) => {
   }
 });
 
+// ---------- tarjetas de resumen → filtro ----------
+for (const id of ["tile-vender", "tile-guardar"]) {
+  $(id).addEventListener("click", () => {
+    $("f-recomendacion").value = $(id).dataset.rec;
+    $("f-ausentes").checked = true;
+    visibles = POR_PAGINA;
+    pintarTabla();
+    $("card-tabla").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+// ---------- detalle: por qué se recomienda ----------
+const el = (tag, cls, texto) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (texto !== undefined) e.textContent = texto;
+  return e;
+};
+
+function lista(titulo, items, cls) {
+  const sec = el("section", "det-sec");
+  sec.append(el("h3", "", titulo));
+  const ul = el("ul", "det-lista " + (cls || ""));
+  for (const t of items) ul.append(el("li", "", t));
+  sec.append(ul);
+  return sec;
+}
+
+async function abrirDetalle(id) {
+  const dlg = $("detalle"), cuerpo = $("det-cuerpo");
+  const fila = filasTabla.find((f) => f.id === id);
+  $("det-titulo").textContent = fila ? fila.nombre : `#${id}`;
+  cuerpo.replaceChildren(el("p", "muted", "Cargando explicación…"));
+  if (!dlg.open) dlg.showModal();
+  let d;
+  try {
+    const r = await fetch(`/api/explicacion?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}`, { cache: "no-store" });
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+  } catch (e) {
+    cuerpo.replaceChildren(el("p", "bad", "No se pudo cargar: " + e.message));
+    return;
+  }
+  const l = d.lectura, c = d.cifras;
+  const nodos = [];
+  if (d.ficticio) nodos.push(el("p", "banda-mini", "DATOS FICTICIOS"));
+
+  const cab = el("div", "det-rec");
+  const et = el("span", "etiqueta grande " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[l.rec] || ""), NOMBRE_REC[l.rec]);
+  cab.append(et, el("span", "", " " + l.resumen));
+  nodos.push(cab);
+  if (l.antiguo && d.recomendacion_motor !== "OBSERVACION") {
+    nodos.push(el("p", "bad small", `Con datos recientes el motor diría «${NOMBRE_REC[d.recomendacion_motor]}», pero el último escaneo tiene ${l.horas_dato} h.`));
+  }
+  nodos.push(lista("Por qué", d.motivos));
+  if (d.horizonte) nodos.push(lista("Horizonte orientativo", [d.horizonte]));
+  nodos.push(lista("Riesgos", d.riesgos, "riesgos"));
+
+  const dinero = el("section", "det-sec");
+  dinero.append(el("h3", "", "Dinero (por unidad)"));
+  const dl = el("dl", "kv");
+  const fila2 = (k, v) => dl.append(el("dt", "", k), el("dd", "", v));
+  fila2("Precio actual", formatearMoneda(c.precio));
+  fila2(`Comisión (${String(d.comision_pct).replace(".", ",")} %, asumida)`, "−" + formatearMoneda(Math.round(c.precio * d.comision_pct / 100)));
+  fila2("Ingreso neto estimado", formatearMoneda(d.ingreso_neto_unidad));
+  fila2("Depósito por publicación", `mín. ${formatearMoneda(d.deposito_minimo)} · se recupera si se vende, se pierde si expira · no incluido arriba`);
+  fila2("Beneficio y margen", "necesitan el coste de compra: llegan con el inventario (Hito 6)");
+  dinero.append(dl);
+  nodos.push(dinero);
+
+  const conf = el("section", "det-sec");
+  conf.append(el("h3", "", `Confianza: ${l.nivel} · ${l.puntos}/100`));
+  conf.append(el("p", "muted small", "Índice de calidad de los datos, no una probabilidad de acierto. Sin datos de liquidez el nivel no pasa de «Media»."));
+  const tb = el("table", "tabla mini");
+  for (const p of [...d.desglose, { k: "Antigüedad del dato", puntos: l.p_edad, max: 20, detalle: l.horas_dato != null ? `${String(l.horas_dato).replace(".", ",")} h` : "—" }]) {
+    const tr = el("tr");
+    tr.append(el("td", "", p.k), el("td", "num", `${p.puntos}/${p.max}`), el("td", "muted", p.detalle));
+    tb.append(tr);
+  }
+  conf.append(tb);
+  nodos.push(conf);
+  nodos.push(el("p", "muted small", `Calculado ${fecha(d.calculado_en)} con el escaneo de ${fecha(d.hora_dato)}. No es una garantía de subida ni de venta.`));
+  cuerpo.replaceChildren(...nodos);
+}
+
+$("tbody").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-detalle]");
+  if (b) abrirDetalle(Number(b.dataset.detalle));
+});
+$("det-cerrar").addEventListener("click", () => $("detalle").close());
+$("detalle").addEventListener("click", (ev) => { if (ev.target === $("detalle")) $("detalle").close(); });
+
+// ---------- reglas editables ----------
+const AJUSTES = [
+  ["motor.vender_sobre_med7_pct", "Vender: % sobre la mediana de 7 días", "%"],
+  ["motor.vender_sobre_med30_pct", "Vender: % sobre la mediana de 30 días", "%"],
+  ["motor.vender_persistencia_obs", "Vender: observaciones (de las 3 últimas) que deben superar el umbral", ""],
+  ["motor.guardar_bajo_med30_pct", "Guardar: % bajo la mediana de 30 días", "%"],
+  ["motor.guardar_min_recuperaciones", "Guardar: días de caídas anteriores que se recuperaron (mínimo)", "días"],
+  ["motor.caida_fuerte_pct_dia", "Caída previa que se considera estructural", "%/día"],
+  ["motor.subida_fuerte_pct_dia", "Subida que avisa «podría seguir subiendo»", "%/día"],
+  ["motor.min_dias_historial", "Historial propio mínimo", "días"],
+  ["motor.min_observaciones", "Observaciones mínimas en 30 días", ""],
+  ["motor.dato_antiguo_horas", "Dato antiguo a partir de", "horas"],
+  ["motor.extremo_factor", "Precio extremo: veces por encima o por debajo de la mediana", "×"],
+  ["motor.comision_pct", "Comisión de la casa de subastas (asumida, compruébala en el juego)", "%"],
+  ["motor.deposito_minimo_cobre", "Depósito mínimo por publicación (en cobre)", "c"],
+];
+
+async function cargarAjustes() {
+  let v;
+  try {
+    const r = await fetch("/api/ajustes", { cache: "no-store" });
+    if (!r.ok) return;
+    v = await r.json();
+  } catch { return; }
+  const form = $("form-ajustes");
+  form.replaceChildren();
+  for (const [k, texto, unidad] of AJUSTES) {
+    const lab = el("label", "", texto);
+    lab.htmlFor = "aj-" + k;
+    const wrap = el("span", "aj-valor");
+    const inp = el("input");
+    inp.type = "number"; inp.step = "any"; inp.id = "aj-" + k; inp.name = k; inp.value = v[k] ?? "";
+    wrap.append(inp, el("span", "muted small", unidad));
+    form.append(lab, wrap);
+  }
+}
+
+$("btn-ajustes").addEventListener("click", async () => {
+  const out = $("resultado-ajustes"), cuerpo = {};
+  for (const inp of $("form-ajustes").querySelectorAll("input")) cuerpo[inp.name] = Number(inp.value);
+  out.hidden = false; out.className = "small muted"; out.textContent = "Guardando…";
+  try {
+    const r = await fetch("/api/ajustes", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    out.className = "small ok"; out.textContent = "Reglas guardadas. Recalculando…";
+    await cargarPrecios();
+    out.textContent = "Reglas guardadas y recomendaciones recalculadas.";
+  } catch (e) {
+    out.className = "small bad"; out.textContent = e.message;
+  }
+});
+
 // ---------- actualización en vivo ----------
 // Cada 30 s (o cada 5 s justo después de pulsar «Actualizar») se consulta una huella mínima
 // del mercado; si cambió, se recargan el estado y la tabla sin recargar la página.
@@ -354,6 +518,7 @@ async function vigilar() {
 async function refrescar() {
   await cargar();
   await cargarPrecios();
+  cargarAjustes();
 }
 
 // ---------- selector de mercado ----------
@@ -502,7 +667,6 @@ $("btn-demo").addEventListener("click", async () => {
 });
 
 (async () => {
-  await cargar();
-  await cargarPrecios();
+  await refrescar();
   setTimeout(vigilar, 30000);
 })();

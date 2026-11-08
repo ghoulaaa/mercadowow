@@ -44,16 +44,16 @@
       </section>
 
       <section class="resumen" aria-label="Resumen">
-        <div class="tile">
+        <button type="button" class="tile tile-btn" id="tile-vender" data-rec="VENDER">
           <span class="tile-k">Oportunidades de venta</span>
-          <span class="tile-v muted">—</span>
-          <span class="tile-n">Llegan con el motor de recomendaciones (Hito 5)</span>
-        </div>
-        <div class="tile">
+          <span id="tile-vender-v" class="tile-v rec-vender">—</span>
+          <span id="tile-vender-n" class="tile-n">Pulsa para verlas en la tabla</span>
+        </button>
+        <button type="button" class="tile tile-btn" id="tile-guardar" data-rec="GUARDAR">
           <span class="tile-k">Para guardar</span>
-          <span class="tile-v muted">—</span>
-          <span class="tile-n">Llegan con el motor de recomendaciones (Hito 5)</span>
-        </div>
+          <span id="tile-guardar-v" class="tile-v rec-guardar">—</span>
+          <span id="tile-guardar-n" class="tile-n">Pulsa para verlas en la tabla</span>
+        </button>
         <div class="tile">
           <span class="tile-k">Alertas</span>
           <span id="tile-alertas" class="tile-v">—</span>
@@ -74,11 +74,18 @@
         <div class="filtros">
           <input id="f-texto" type="search" placeholder="Buscar objeto o ID…" aria-label="Buscar">
           <select id="f-categoria" aria-label="Categoría"><option value="">Todas las categorías</option></select>
-          <select id="f-recomendacion" aria-label="Recomendación" disabled title="Disponible con el motor de recomendaciones (Hito 5)">
-            <option>Recomendación: Hito 5</option>
+          <select id="f-recomendacion" aria-label="Recomendación">
+            <option value="">Todas las recomendaciones</option>
+            <option value="VENDER">Vender</option>
+            <option value="GUARDAR">Guardar</option>
+            <option value="OBSERVACION">En observación</option>
           </select>
           <select id="f-orden" aria-label="Ordenar por">
             <option value="nombre:asc">Nombre (A–Z)</option>
+            <option value="neto:desc">Ingreso neto estimado (mayor)</option>
+            <option value="dif30:desc">Sobre la mediana de 30 días (más)</option>
+            <option value="dif30:asc">Bajo la mediana de 30 días (más)</option>
+            <option value="puntos:desc">Confianza (mayor)</option>
             <option value="precio:desc">Precio (mayor)</option>
             <option value="precio:asc">Precio (menor)</option>
             <option value="vs_hist:desc">Precio vs histórico (más caro)</option>
@@ -114,8 +121,27 @@
         <p class="muted small nota">
           Precio unitario = compra inmediata mínima del último escaneo. Las variaciones de 24 h y 7 días usan solo
           observaciones guardadas por esta app («—» = todavía no hay historial suficiente). La oferta disponible no
-          se muestra porque TSM no publica cantidades.
+          se muestra porque TSM no publica cantidades. Pulsa el nombre de un objeto para ver por qué se recomienda.
+          La confianza es un <strong>índice de calidad de los datos</strong> (0–100), no una probabilidad de acierto.
         </p>
+      </section>
+
+      <section class="card" id="card-reglas">
+        <details>
+          <summary><h3 class="inline">Reglas del motor (editables)</h3></summary>
+          <p class="muted small">
+            Las recomendaciones salen de estas reglas, sin IA. Cambiarlas recalcula todo al momento.
+            <strong>Vender</strong>: precio sobre las medianas de 7 y 30 días, mantenido en varias observaciones.
+            <strong>Guardar</strong>: precio bajo la mediana de 30 días <em>y</em> caídas anteriores que se recuperaron,
+            sin una tendencia bajista previa. Un precio bajo por sí solo no basta.
+            <strong>En observación</strong>: historial corto, datos antiguos, precios extremos o señales contradictorias.
+          </p>
+          <form id="form-ajustes" class="ajustes"></form>
+          <div class="fila-acciones">
+            <button id="btn-ajustes" type="button" class="btn">Guardar reglas</button>
+            <span id="resultado-ajustes" class="small" hidden></span>
+          </div>
+        </details>
       </section>
 
       <section class="card">
@@ -172,6 +198,14 @@
       </p>
     </div>
   </main>
+
+  <dialog id="detalle" aria-labelledby="det-titulo">
+    <div class="det-cab">
+      <h2 id="det-titulo">…</h2>
+      <button id="det-cerrar" type="button" class="btn btn-small" aria-label="Cerrar">Cerrar</button>
+    </div>
+    <div id="det-cuerpo"></div>
+  </dialog>
 
   <script type="module" src="app.js"></script>
 </body>

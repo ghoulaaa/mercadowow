@@ -19,6 +19,7 @@ export function prepararFilas(objetos) {
       var24: variacion(precio, o.precio_24h),
       var7: variacion(precio, o.precio_7d),
       vs_hist: variacion(precio, o.historico),
+      dif30: variacion(precio, o.med30),
       texto: (o.nombre + " " + o.id).toLowerCase(),
     };
   });
@@ -41,8 +42,11 @@ export function filtrar(filas, f = {}) {
     (!palabras.length || palabras.every((p) => x.texto.includes(p))) &&
     (!f.categoria || x.categoria === f.categoria) &&
     (!f.soloFavoritos || x.favorito) &&
+    (!f.recomendacion || x.rec === f.recomendacion) &&
     (!f.ocultarAusentes || !x.ausente));
 }
+
+export const NOMBRE_REC = { VENDER: "Vender", GUARDAR: "Guardar", OBSERVACION: "En observación" };
 
 const CLAVES = {
   nombre: (x) => x.nombre,
@@ -51,6 +55,9 @@ const CLAVES = {
   var24: (x) => x.var24,
   var7: (x) => x.var7,
   vs_hist: (x) => x.vs_hist,
+  dif30: (x) => x.dif30,
+  neto: (x) => x.neto,
+  puntos: (x) => x.puntos,
 };
 
 /** Ordena sin mutar. Los valores vacíos (null) van SIEMPRE al final, en cualquier dirección. */

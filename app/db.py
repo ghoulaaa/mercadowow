@@ -87,6 +87,28 @@ def price_table(conn: psycopg.Connection, market_key: str) -> list[dict]:
     return conn.execute("select tabla_precios(%s) as r", (market_key,)).fetchone()["r"]
 
 
+def recompute(conn: psycopg.Connection, market_key: str) -> dict:
+    """Recalcula las recomendaciones solo si cambiaron los datos o los ajustes."""
+    with conn.transaction():
+        return conn.execute("select recalcular_recomendaciones(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def recommendations_summary(conn: psycopg.Connection, market_key: str) -> dict:
+    return conn.execute("select resumen_recomendaciones(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def explain(conn: psycopg.Connection, market_key: str, item_id: int) -> dict | None:
+    return conn.execute("select explicar_objeto(%s, %s) as r", (market_key, item_id)).fetchone()["r"]
+
+
+def read_settings(conn: psycopg.Connection) -> dict:
+    return conn.execute("select leer_ajustes() as r").fetchone()["r"]
+
+
+def save_settings(conn: psycopg.Connection, ajustes: dict) -> dict:
+    return conn.execute("select guardar_ajustes(%s::jsonb) as r", (Jsonb(ajustes),)).fetchone()["r"]
+
+
 def market_version(conn: psycopg.Connection, market_key: str) -> dict | None:
     return conn.execute("select version_mercado(%s) as r", (market_key,)).fetchone()["r"]
 

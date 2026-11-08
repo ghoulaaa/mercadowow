@@ -279,6 +279,54 @@ code {
   .tabla td[data-k]::before { content: attr(data-k) " "; color: var(--muted); font-size: 12px; }
 }
 
+/* ---------- recomendaciones ---------- */
+.rec-vender { color: var(--sell); border-color: var(--sell); }
+.rec-guardar { color: var(--hold); border-color: var(--hold); }
+.rec-obs { color: var(--watch); border-color: var(--watch); }
+.etiqueta.grande { font-size: 14px; padding: 3px 12px; font-weight: 600; }
+.tile-btn { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.tile-btn:hover { border-color: var(--gold); }
+.tile-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.enlace {
+  background: none; border: none; padding: 0; font: inherit; color: var(--text);
+  text-align: left; cursor: pointer; text-decoration: underline dotted var(--muted); text-underline-offset: 3px;
+}
+.enlace:hover { color: var(--gold); }
+
+dialog#detalle {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+dialog#detalle::backdrop { background: rgba(0, 0, 0, .6); }
+.det-cab { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.det-cab h2 { margin: 0 0 8px; font-size: 18px; }
+.det-rec { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 12px; }
+.det-sec { margin: 12px 0; }
+.det-sec h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 6px; }
+.det-lista { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.det-lista.riesgos li::marker { color: var(--watch); }
+.tabla.mini td { padding: 4px 6px; font-size: 13px; }
+.banda-mini { background: #5a1d1d; color: #ffd6d6; font-weight: 700; padding: 4px 8px; border-radius: 6px; display: inline-block; }
+
+details summary { cursor: pointer; list-style: none; }
+details summary::-webkit-details-marker { display: none; }
+details summary::before { content: "▸ "; color: var(--muted); }
+details[open] summary::before { content: "▾ "; }
+h3.inline { display: inline; }
+.ajustes { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; margin: 12px 0; }
+.ajustes label { font-size: 14px; }
+.aj-valor { display: inline-flex; gap: 6px; align-items: center; }
+.ajustes input {
+  font: inherit; font-size: 14px; width: 100px; padding: 5px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+@media (max-width: 560px) { .ajustes { grid-template-columns: 1fr; } }
+
 .notice {
   margin: 0;
   padding: 10px 14px;

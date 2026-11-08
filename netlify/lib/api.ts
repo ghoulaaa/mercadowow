@@ -186,8 +186,11 @@ export function crearApi(db: Db, o: OpcionesApi) {
       try {
         const v = await llamar(db, "select version_mercado($1) as r", [mercado]);
         if (!v) return json(404, { error: `Mercado ${mercado} no registrado` });
+        // Recalcula solo si hay datos o ajustes nuevos (si no, responde «al_dia» al instante).
+        const motor = await llamar(db, "select recalcular_recomendaciones($1) as r", [mercado]);
         const objetos = await llamar(db, "select tabla_precios($1) as r", [mercado]);
-        return json(200, { mercado, version: v, objetos });
+        const resumen = await llamar(db, "select resumen_recomendaciones($1) as r", [mercado]);
+        return json(200, { mercado, version: v, motor, resumen, objetos });
       } catch (e) {
         return fallaBd(e);
       }
@@ -200,6 +203,37 @@ export function crearApi(db: Db, o: OpcionesApi) {
       try {
         const v = await llamar(db, "select version_mercado($1) as r", [mercado]);
         return v ? json(200, v) : json(404, { error: `Mercado ${mercado} no registrado` });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async explicacion(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const id = Number(u.get("id"));
+      if (!Number.isInteger(id) || id <= 0) return json(400, { error: "Falta id" });
+      try {
+        await llamar(db, "select recalcular_recomendaciones($1) as r", [mercado]);
+        const r = await llamar(db, "select explicar_objeto($1, $2::integer) as r", [mercado, id]);
+        return r ? json(200, r) : json(404, { error: "Objeto sin recomendación en este mercado" });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async ajustes(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") return json(200, await llamar(db, "select leer_ajustes() as r", []));
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 5000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!c || typeof c !== "object" || Array.isArray(c)) return json(400, { error: "Se esperaba un objeto" });
+        return json(200, await llamar(db, "select guardar_ajustes($1::text::jsonb) as r", [JSON.stringify(c)]));
       } catch (e) {
         return fallaBd(e);
       }
