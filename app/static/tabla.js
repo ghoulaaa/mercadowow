@@ -58,6 +58,10 @@ export function filtrar(filas, f = {}) {
     (!f.calidad || x.calidad === f.calidad) &&
     (!f.soloFavoritos || x.favorito) &&
     (!f.recomendacion || x.rec === f.recomendacion) &&
+    (f.nivelMin == null || (x.nivel_objeto != null && x.nivel_objeto >= f.nivelMin)) &&
+    (f.nivelMax == null || (x.nivel_objeto != null && x.nivel_objeto <= f.nivelMax)) &&
+    (f.precioMin == null || (x.precio_ref != null && x.precio_ref >= f.precioMin)) &&
+    (f.precioMax == null || (x.precio_ref != null && x.precio_ref <= f.precioMax)) &&
     (!f.ocultarAusentes || !x.ausente));
 }
 
@@ -72,6 +76,7 @@ const CLAVES = {
   vs_hist: (x) => x.vs_hist,
   dif30: (x) => x.dif30,
   neto: (x) => x.neto,
+  nivel: (x) => x.nivel_objeto,
   puntos: (x) => x.puntos,
 };
 

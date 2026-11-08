@@ -134,7 +134,7 @@ Cumple el punto 17 de la especificación: buscar un objeto real → abrir su fic
    - Búsqueda por nombre (prefijo antes que «contiene», sin tildes ni mayúsculas) o por ID. Un ID que falta se pide a AHledger y se añade: 7082 Essence of Air.
    - Mientras el catálogo se completa, la búsqueda incluye también los objetos del mercado que aún no tienen ficha.
    - Ficha con enlaces a Wowhead y AHledger, filtros de categoría › subcategoría reales y filtro de calidad.
-3. **R3 · Interfaz nueva de 3 columnas**:
+3. **R3 · Interfaz nueva de 3 columnas** ✅ (2026-11-08): verificada en el navegador con teclas reales (Tab y Shift+Tab, Enter, Esc y salida sin atrapar el foco), con las 3 columnas en escritorio y en móvil la ficha como vista propia. El historial de 24 h, 7, 30 y 90 días sale de AHledger, con la cantidad publicada en un gráfico aparte y los huecos sin escaneos marcados:
    - buscador con autocompletado accesible: Tab y Shift+Tab, ↑↓, Enter, Esc, sin atrapar el foco, sin distinguir tildes ni mayúsculas, descartando respuestas antiguas;
    - ficha del objeto con estadísticas y gráfico de 24 h, 7, 30 y 90 días.
 4. **R4 · Calculadora de rentabilidad**:

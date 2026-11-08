@@ -19,6 +19,56 @@ export interface OpcionesApi {
 }
 
 export const CLAVE_MINIMA = 12;
+export const RANGOS = ["24h", "7d", "30d", "90d"];
+
+export class ErrorFuente extends Error {}
+
+/**
+ * Historial de un objeto en AHledger (/v1/prices/{mercado}/{id}?range=…). Documentado:
+ * 24 h y 7 días por horas, 30 y 90 días por días. Se pasa tal cual (mínimo, mediana,
+ * unidades), sin rellenar huecos. Exige citar la fuente.
+ */
+export async function historialAhledger(f: typeof fetch, urlTabla: string, id: number, rango: string) {
+  const mercado = urlTabla.match(/\/pricetable\/([a-z0-9.]+)$/)?.[1];
+  if (!mercado) throw new ErrorFuente("Mercado de AHledger mal configurado");
+  let r: Response;
+  try {
+    r = await f(`https://api.ahledger.com/v1/prices/${mercado}/${id}?range=${rango}`, {
+      headers: { "User-Agent": "mercadowow/0.1 (uso personal)", Accept: "application/json" },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (e) {
+    throw new ErrorFuente(`No se pudo consultar AHledger: ${(e as Error).message ?? e}`);
+  }
+  if (r.status === 404) return vacio();
+  if (!r.ok) throw new ErrorFuente(`AHledger respondió HTTP ${r.status}`);
+  const j = await r.json() as any;
+  if (j?.market !== mercado) throw new ErrorFuente("AHledger devolvió otro mercado");
+  const serie = Array.isArray(j.series) ? j.series : [];
+  const t = (s: any) => Date.parse(s.t);
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const l = j.latest;
+  return {
+    fuente: "ahledger", rango, paso_ms: rango === "24h" || rango === "7d" ? 3600e3 : 86400e3,
+    nombres: ["Compra mínima", "Mediana"],
+    puntos: serie.filter((s: any) => !Number.isNaN(t(s))).map((s: any) => [t(s), n(s.min), n(s.median)]),
+    cantidad: serie.filter((s: any) => !Number.isNaN(t(s))).map((s: any) => [t(s), n(s.quantity)]),
+    med7: null, med30: null,
+    ultimo: l ? {
+      hora: l.observedAt ?? null, precio: n(l.minBuyout), mediana: n(l.median), cantidad: n(l.quantity),
+      subastas: n(l.auctions), mediana7d: n(l.median7d), mediana30d: n(l.median30d), mediana90d: n(l.median90d),
+      origen: typeof l.source === "string" ? l.source : null,
+    } : null,
+    ventas: j.sales && typeof j.sales.estimatedPerDay === "number"
+      ? { por_dia: j.sales.estimatedPerDay, dias: j.sales.windowDays ?? null } : null,
+    atribucion: { texto: "Prices from AHledger", url: "https://ahledger.com" },
+    nota: null,
+  };
+  function vacio() {
+    return { fuente: "ahledger", rango, paso_ms: null, nombres: ["Compra mínima", "Mediana"], puntos: [], cantidad: [],
+      med7: null, med30: null, ultimo: null, ventas: null, atribucion: { texto: "Prices from AHledger", url: "https://ahledger.com" }, nota: null };
+  }
+}
 const COOKIE = "mw_sesion";
 const DURACION_S = 30 * 24 * 3600;
 
@@ -95,6 +145,16 @@ export function crearApi(db: Db, o: OpcionesApi) {
     }
     console.error("Error de base de datos:", msg);
     return json(503, { error: "No se pudo conectar con Supabase" });
+  };
+
+  const historialPropio = async (mercado: string, id: number, rango: string) => {
+    const dias = { "24h": 1, "7d": 7, "30d": 30, "90d": 60 }[rango]!;
+    const h = await llamar(db, "select historial_objeto($1, $2::integer, $3::integer) as r", [mercado, id, dias]);
+    return {
+      fuente: "propio", rango, paso_ms: null, nombres: ["Compra mínima", "Valor de mercado"],
+      puntos: h?.puntos ?? [], cantidad: null, med7: h?.med7 ?? null, med30: h?.med30 ?? null, ultimo: null,
+      nota: rango === "90d" ? "El historial propio se guarda como máximo 60 días." : null,
+    };
   };
 
   /** Pide a AHledger un objeto que falta en el catálogo y lo guarda. Solo para mercados reales. */
@@ -349,6 +409,28 @@ export function crearApi(db: Db, o: OpcionesApi) {
         }
         return json(400, { error: "Acción desconocida" });
       } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    /** Historial para el gráfico: de AHledger (24 h, 7, 30 y 90 días) o, en otros mercados, el propio. */
+    async historialFuente(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const id = Number(u.get("id"));
+      const rango = u.get("rango") ?? "7d";
+      if (!Number.isInteger(id) || id <= 0) return json(400, { error: "Falta id" });
+      if (!RANGOS.includes(rango)) return json(400, { error: `rango debe ser ${RANGOS.join(", ")}` });
+      try {
+        const m = (await db.consulta("select provider, source_url from markets where key = $1", [mercado]))[0];
+        if (!m) return json(404, { error: `Mercado ${mercado} no registrado` });
+        return json(200, m.provider === "ahledger"
+          ? await historialAhledger(o.fetch ?? fetch, String(m.source_url), id, rango)
+          : await historialPropio(mercado, id, rango));
+      } catch (e) {
+        if (e instanceof ErrorFuente) return json(502, { error: e.message });
         return fallaBd(e);
       }
     },

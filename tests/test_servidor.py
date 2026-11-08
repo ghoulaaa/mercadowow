@@ -79,10 +79,10 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:12] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:13] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
-                           "0012_busqueda_mercado.sql"]
+                           "0012_busqueda_mercado.sql", "0013_textos_fuente.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -400,6 +400,48 @@ def test_add_to_catalog_valida_la_respuesta_de_ahledger():
     assert db.add_to_catalog(Conn(real), "ahl", 7082, lambda url: Resp(200, {"id": 1, "name": "Otro"})) is False
     assert db.add_to_catalog(Conn(real), "ahl", 7082, lambda url: Resp(404, None)) is False
     assert db.add_to_catalog(Conn({"game_type": "forever", "is_demo": True}), "demo", 7082, lambda url: 1 / 0) is False
+
+
+class _Resp:
+    def __init__(self, status, cuerpo):
+        self.status_code, self._c = status, cuerpo
+
+    def json(self):
+        return self._c
+
+
+def test_historial_ahledger_en_python():
+    from app import fuentes
+    pedidas = []
+    cuerpo = {"market": "forever.pvp.horde.us", "latest": {"minBuyout": 13, "median": 28, "median90d": None},
+              "series": [{"t": "2026-11-08T05:00:00.000Z", "min": 13, "median": 28, "quantity": 19400}],
+              "sales": {"estimatedPerDay": 13893.1, "windowDays": 7}}
+    h = fuentes.historial_ahledger(lambda url: pedidas.append(url) or _Resp(200, cuerpo),
+                                   "https://api.ahledger.com/v1/pricetable/forever.pvp.horde.us", 2589, "30d")
+    assert pedidas == ["https://api.ahledger.com/v1/prices/forever.pvp.horde.us/2589?range=30d"]
+    assert h["puntos"] == [[1794114000000, 13, 28]] and h["cantidad"] == [[1794114000000, 19400]]
+    assert h["paso_ms"] == 86_400_000 and h["ultimo"]["mediana90d"] is None
+    assert h["atribucion"]["texto"] == "Prices from AHledger"
+    with pytest.raises(fuentes.ErrorFuente):
+        fuentes.historial_ahledger(lambda url: _Resp(200, {**cuerpo, "market": "otro"}),
+                                   "https://api.ahledger.com/v1/pricetable/forever.pvp.horde.us", 1, "7d")
+    vacio = fuentes.historial_ahledger(lambda url: _Resp(404, None),
+                                       "https://api.ahledger.com/v1/pricetable/forever.pvp.horde.us", 1, "7d")
+    assert vacio["puntos"] == [] and vacio["ultimo"] is None
+
+
+def test_historial_fuente_endpoint(cliente):
+    assert cliente.get("/api/historial-fuente", params={"id": 1, "rango": "1y"}).status_code == 400
+    assert cliente.get("/api/historial-fuente", params={"id": 0}).status_code == 422
+
+
+def test_paginas_nuevas_se_sirven(cliente):
+    for archivo in ("/autocompletar.js", "/ruta.js", "/grafico.js"):
+        r = cliente.get(archivo)
+        assert r.status_code == 200 and "javascript" in r.headers["content-type"]
+    html = cliente.get("/").text
+    for id_ in ('id="buscador"', 'role="combobox"', 'data-vista="mercado"', 'id="panel-ficha"', 'class="accesos"'):
+        assert id_ in html
 
 
 def test_build_status_sin_datos():

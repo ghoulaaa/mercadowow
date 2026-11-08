@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
-from app import db
+from app import db, fuentes
 from app.config import Settings, load_settings
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -261,6 +261,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def _http_get(url: str):
         return httpx.get(url, timeout=20, headers={"User-Agent": "mercadowow/0.1 (uso personal)"})
 
+    @app.get("/api/historial-fuente")
+    def historial_fuente(id: int = Query(gt=0), rango: str = Query(default="7d"),
+                         mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        if rango not in fuentes.RANGOS:
+            return JSONResponse(status_code=400, content={"error": f"rango debe ser {', '.join(fuentes.RANGOS)}"})
+        try:
+            with db.connect(settings.database_url) as conn:
+                m = conn.execute("select provider, source_url from markets where key = %s", (clave,)).fetchone()
+                if m is None:
+                    return JSONResponse(status_code=404, content={"error": f"Mercado {clave} no registrado"})
+                if m["provider"] == "ahledger":
+                    datos = fuentes.historial_ahledger(_http_get, m["source_url"], id, rango)
+                else:
+                    dias = {"24h": 1, "7d": 7, "30d": 30, "90d": 60}[rango]
+                    datos = fuentes.historial_propio(db.price_history(conn, clave, id, dias), rango)
+        except fuentes.ErrorFuente as exc:
+            return JSONResponse(status_code=502, content={"error": str(exc)})
+        except Exception as exc:
+            log.warning("Fallo al leer historial de la fuente: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(datos, headers={"Cache-Control": "private, max-age=300"})
+
     @app.get("/api/catalogo")
     def catalogo(q: str = Query(default="", max_length=200), mercado: str | None = Query(default=None, max_length=100)):
         clave, texto = mercado or settings.market, q.strip()[:80]
@@ -366,5 +389,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
 
     # La misma carpeta que publica Netlify: index.html, app.js, styles.css…
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    # «no-cache» = el navegador revalida cada archivo: tras una actualización nunca mezcla
+    # una página nueva con un JavaScript viejo (Netlify ya lo hace así por defecto).
+    class EstaticosSinCache(StaticFiles):
+        async def get_response(self, path, scope):
+            resp = await super().get_response(path, scope)
+            resp.headers["Cache-Control"] = "no-cache"
+            return resp
+
+    app.mount("/", EstaticosSinCache(directory=STATIC_DIR, html=True), name="static")
     return app

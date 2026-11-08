@@ -1,6 +1,8 @@
 import { leerCsvInventario, leerCsvPrecios } from "./csv.js";
 import { dibujarGrafico } from "./grafico.js";
 import { formatearMoneda, parsearMoneda } from "./moneda.js";
+import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
+import { leerRuta } from "./ruta.js";
 import {
   NOMBRE_CALIDAD, NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas, subcategorias,
 } from "./tabla.js";
@@ -31,6 +33,8 @@ let ultimo = null;   // último estado recibido
 function mostrar(vista) {
   $("vista-login").hidden = vista !== "login";
   $("vista-panel").hidden = vista !== "panel";
+  // La cabecera completa y la navegación solo con sesión iniciada.
+  for (const id of ["zona-busqueda", "cab-estado", "nav-secciones", "accesos"]) $(id).hidden = vista !== "panel";
 }
 
 function filas(dl, rows) {
@@ -85,6 +89,8 @@ async function cargar() {
 
   if (!r || !r.ok) {
     $("market").textContent = "sin conexión";
+    $("hdr-conexion").textContent = "sin conexión";
+    $("hdr-conexion").className = "bad";
     $("titulo").textContent = "Sin conexión con la base de datos";
     $("subtitulo").textContent = (s && s.error) || "Error desconocido";
     filas($("status"), [["Servidor", "sin acceso a Supabase", "bad"]]);
@@ -114,6 +120,13 @@ async function cargar() {
   $("card-demo").hidden = !demo;
 
   const viejo = a.hora_dato_original && (Date.now() - new Date(a.hora_dato_original)) > 8 * 3600e3;
+  // Cabecera: conexión, hora del dato original, última consulta y próxima actualización.
+  $("hdr-conexion").textContent = auto ? (a.fallos_seguidos ? `con fallos (${a.fallos_seguidos})` : "conectado") : (demo ? "demo" : "manual");
+  $("hdr-conexion").className = a.fallos_seguidos ? "bad" : "ok";
+  $("hdr-dato").textContent = a.hora_dato_original ? fecha(a.hora_dato_original) + hace(a.hora_dato_original) : "—";
+  $("hdr-dato").className = viejo && !demo ? "bad" : "";
+  $("hdr-consulta").textContent = auto ? (a.ultima_consulta_ok ? fecha(a.ultima_consulta_ok) : "—") : "no automática";
+  $("hdr-proxima").textContent = auto ? (a.proxima ? fecha(a.proxima) : "en cuanto se pueda") : "—";
   if (demo) {
     $("titulo").textContent = a.versiones_guardadas ? "Datos FICTICIOS de demostración" : "Mercado de demostración vacío";
     $("subtitulo").textContent = "Todo lo que ves aquí es inventado y está separado de los datos reales.";
@@ -195,8 +208,26 @@ const leerFiltros = () => {
     texto: $("f-texto").value, categoria: $("f-categoria").value, recomendacion: $("f-recomendacion").value,
     subcategoria: $("f-subcategoria").value, calidad: $("f-calidad").value,
     soloFavoritos: $("f-favoritos").checked, ocultarAusentes: $("f-ausentes").checked, clave, dir,
+    nivelMin: numeroONull($("f-nivel-min").value), nivelMax: numeroONull($("f-nivel-max").value),
+    ...preciosFiltro(),
   };
 };
+
+function numeroONull(v) {
+  const n = Number(v);
+  return v === "" || !Number.isFinite(n) ? null : n;
+}
+
+/** Precio mínimo/máximo escritos en cobre o como «1o 50p». Un valor no válido se avisa y se ignora. */
+function preciosFiltro() {
+  const errores = [], res = { precioMin: null, precioMax: null };
+  for (const [id, k] of [["f-precio-min", "precioMin"], ["f-precio-max", "precioMax"]]) {
+    try { res[k] = parsearMoneda($(id).value); } catch (e) { errores.push(e.message); }
+  }
+  $("f-precio-error").hidden = errores.length === 0;
+  $("f-precio-error").textContent = errores.join(" · ");
+  return res;
+}
 
 async function cargarPrecios() {
   const clave = ultimo?.mercado?.clave;
@@ -229,6 +260,9 @@ async function cargarPrecios() {
   $("tile-guardar-n").textContent = res.guardar ? top("GUARDAR") : "Ninguno con las reglas actuales";
   pintarTabla();
   pintarAlertas();
+  pintarArbol();
+  marcarFilaActiva(objetoActual);
+  if (leerRuta(location.hash).vista === "oportunidades") pintarOportunidades();
 }
 
 function celdaMoneda(td, cobre) {
@@ -353,10 +387,12 @@ function rellenarSubcategorias() {
 $("f-categoria").addEventListener("change", rellenarSubcategorias);
 
 let temporizadorFiltro = null;
-for (const id of ["f-texto", "f-categoria", "f-subcategoria", "f-calidad", "f-recomendacion", "f-orden", "f-favoritos", "f-ausentes"]) {
-  $(id).addEventListener(id === "f-texto" ? "input" : "change", () => {
+const FILTROS_TEXTO = ["f-texto", "f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"];
+for (const id of [...FILTROS_TEXTO, "f-categoria", "f-subcategoria", "f-calidad", "f-recomendacion", "f-orden", "f-favoritos", "f-ausentes"]) {
+  const texto = FILTROS_TEXTO.includes(id);
+  $(id).addEventListener(texto ? "input" : "change", () => {
     clearTimeout(temporizadorFiltro);
-    temporizadorFiltro = setTimeout(() => { visibles = POR_PAGINA; pintarTabla(); }, id === "f-texto" ? 150 : 0);
+    temporizadorFiltro = setTimeout(() => { visibles = POR_PAGINA; pintarTabla(); pintarArbol(); }, texto ? 200 : 0);
   });
 }
 $("btn-mas").addEventListener("click", () => { visibles += POR_PAGINA; pintarTabla(); });
@@ -438,7 +474,7 @@ function fichaNodo(f, conBotonDetalle = true) {
   if (f.en_mercado && conBotonDetalle) {
     const b = el("button", "btn btn-small", "Ver precio, historial y recomendación");
     b.type = "button";
-    b.addEventListener("click", () => abrirDetalle(f.id));
+    b.addEventListener("click", () => { location.hash = `#/objeto/${f.id}`; });
     enl.append(b);
   }
   cont.append(enl);
@@ -522,7 +558,7 @@ for (const id of ["tile-vender", "tile-guardar"]) {
     $("f-ausentes").checked = true;
     visibles = POR_PAGINA;
     pintarTabla();
-    $("card-tabla").scrollIntoView({ behavior: "smooth", block: "start" });
+    location.hash = "#/mercado";
   });
 }
 
@@ -544,11 +580,14 @@ function lista(titulo, items, cls) {
 }
 
 async function abrirDetalle(id) {
-  const dlg = $("detalle"), cuerpo = $("det-cuerpo");
+  const cuerpo = $("det-cuerpo");
   const fila = filasTabla.find((f) => f.id === id);
+  objetoActual = id;
   $("det-titulo").textContent = fila ? fila.nombre : `#${id}`;
+  $("det-titulo").className = fila?.calidad ? `q-${fila.calidad}` : "";
   cuerpo.replaceChildren(el("p", "muted", "Cargando explicación…"));
-  if (!dlg.open) dlg.showModal();
+  mostrarFicha(id);
+  marcarFilaActiva(id);
   let d;
   try {
     const r = await fetch(`/api/explicacion?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}`, { cache: "no-store" });
@@ -581,6 +620,7 @@ async function abrirDetalle(id) {
     nodos.push(sec);
   }
   if (d.en_inventario) nodos.push(el("p", "small", `Tienes ${d.en_inventario} unidades en tu inventario.`));
+  nodos.push(accionesObjeto(id, fila));
   const fichaCont = el("div");
   if (!d.ficticio) {
     const secFicha = el("section", "det-sec");
@@ -589,11 +629,9 @@ async function abrirDetalle(id) {
     nodos.push(secFicha);
   }
   const secGraf = el("section", "det-sec");
-  secGraf.append(el("h3", "", "Historial de 30 días"));
   const graf = el("div", "");
   graf.id = "det-grafico";
-  graf.append(el("p", "muted small", "Cargando gráfico…"));
-  secGraf.append(graf);
+  secGraf.append(cabeceraHistorial(graf, id), graf);
   nodos.push(secGraf);
   if (l.antiguo && d.recomendacion_motor !== "OBSERVACION") {
     nodos.push(el("p", "bad small", `Con datos recientes el motor diría «${NOMBRE_REC[d.recomendacion_motor]}», pero el último escaneo tiene ${l.horas_dato} h.`));
@@ -640,10 +678,7 @@ async function abrirDetalle(id) {
       .catch((e) => fichaCont.replaceChildren(el("p", "bad small", "No se pudo cargar la ficha: " + e.message)));
   }
   try {
-    const r = await fetch(`/api/historial?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}&dias=30`, { cache: "no-store" });
-    const h = await r.json();
-    if (!r.ok) throw new Error(h.error || "HTTP " + r.status);
-    if ($("detalle").open && graf.isConnected) dibujarGrafico(graf, h);
+    await cargarHistorialEn(graf, id, "7d");
   } catch (e) {
     graf.replaceChildren(el("p", "bad small", "No se pudo cargar el historial: " + e.message));
   }
@@ -1043,8 +1078,7 @@ $("tbody").addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-detalle]");
   if (b) abrirDetalle(Number(b.dataset.detalle));
 });
-$("det-cerrar").addEventListener("click", () => $("detalle").close());
-$("detalle").addEventListener("click", (ev) => { if (ev.target === $("detalle")) $("detalle").close(); });
+$("det-cerrar").addEventListener("click", () => { location.hash = "#/mercado"; });
 
 // ---------- reglas editables ----------
 const AJUSTES = [
@@ -1104,6 +1138,411 @@ $("btn-ajustes").addEventListener("click", async () => {
   }
 });
 
+// =====================================================================
+// R3 · Navegación por secciones, panel de ficha, historial, oportunidades,
+//      árbol de categorías y buscador con autocompletado accesible.
+// =====================================================================
+
+let objetoActual = null;          // objeto abierto en la ficha (se mantiene al cambiar de sección)
+let rangoHistorial = "7d";
+const estrecho = () => window.matchMedia("(max-width: 1100px)").matches;
+
+let favoritosPorRuta = false;
+function aplicarRuta() {
+  if ($("vista-panel").hidden) return;
+  const r = leerRuta(location.hash);
+  const real = r.vista === "objeto" || r.vista === "favoritos" ? "mercado" : r.vista;
+  for (const s of document.querySelectorAll(".vista")) s.hidden = s.dataset.vista !== real;
+  const activa = r.vista === "objeto" ? "mercado" : r.vista;
+  for (const a of document.querySelectorAll("[data-ruta]")) {
+    if (a.dataset.ruta === activa) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  }
+  // Favoritos = la vista de mercado filtrada; al salir se quita el filtro que puso la ruta.
+  if (r.vista === "favoritos" && !$("f-favoritos").checked) { $("f-favoritos").checked = true; favoritosPorRuta = true; pintarTabla(); }
+  if (r.vista !== "favoritos" && favoritosPorRuta) { $("f-favoritos").checked = false; favoritosPorRuta = false; pintarTabla(); }
+  $("titulo-resultados").textContent = r.vista === "favoritos" ? "Favoritos" : "Mercado";
+  // En pantallas estrechas la ficha es una vista propia.
+  const vm = document.querySelector('[data-vista="mercado"]');
+  vm.classList.toggle("solo-ficha", r.vista === "objeto" && estrecho());
+  $("det-cerrar").hidden = !(r.vista === "objeto" && estrecho());
+  if (r.vista === "objeto" && r.id !== objetoActual) abrirObjeto(r.id);
+  if (r.vista === "historial") { if (r.id) objetoActual = r.id; pintarHistorial(); }
+  if (r.vista === "oportunidades") pintarOportunidades();
+}
+window.addEventListener("hashchange", aplicarRuta);
+
+function mostrarFicha(id) {
+  const destino = `#/objeto/${id}`;
+  if (location.hash !== destino) history.replaceState(null, "", destino);
+  aplicarRuta();
+  if (estrecho()) $("panel-ficha").scrollIntoView({ block: "start" });
+}
+
+function marcarFilaActiva(id) {
+  for (const tr of $("tbody").querySelectorAll("tr")) {
+    tr.classList.toggle("activa", tr.querySelector(`[data-detalle="${id}"]`) != null);
+  }
+}
+
+/** Objeto con precio en este mercado → ficha completa; sin precio → ficha de catálogo. */
+async function abrirObjeto(id) {
+  if (filasTabla.some((f) => f.id === id)) return abrirDetalle(id);
+  objetoActual = id;
+  $("det-titulo").textContent = `#${id}`;
+  $("det-titulo").className = "";
+  $("det-cuerpo").replaceChildren(el("p", "muted", "Cargando ficha…"));
+  mostrarFicha(id);
+  try {
+    const r = await fetch(`/api/objeto?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}`, { cache: "no-store" });
+    const f = await r.json();
+    if (!r.ok) throw new Error(f.error || "HTTP " + r.status);
+    if (objetoActual !== id) return;
+    $("det-titulo").textContent = f.nombre;
+    $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
+    const graf = el("div");
+    const sec = el("section", "det-sec");
+    sec.append(cabeceraHistorial(graf, id), graf);
+    $("det-cuerpo").replaceChildren(
+      el("p", "small", "Sin precio en este mercado en el último escaneo guardado: no hay recomendación."),
+      accionesObjeto(id, null), fichaNodo(f, false), sec);
+    const cita = atribucion();
+    if (cita) $("det-cuerpo").append(cita);
+    cargarHistorialEn(graf, id, rangoHistorial).catch((e) => graf.replaceChildren(el("p", "bad small", e.message)));
+  } catch (e) {
+    $("det-cuerpo").replaceChildren(el("p", "bad", "No se pudo cargar la ficha: " + e.message));
+  }
+}
+
+function accionesObjeto(id, fila) {
+  const cont = el("div", "acciones-objeto");
+  const inv = el("button", "btn btn-small btn-rojo", "Añadir al inventario");
+  inv.type = "button";
+  inv.addEventListener("click", () => {
+    location.hash = "#/inventario";
+    $("inv-agregar").open = true;
+    const nombre = fila?.nombre ?? $("det-titulo").textContent;
+    $("inv-objeto").value = `${nombre} #${id}`;
+    $("inv-cantidad").focus();
+  });
+  const hist = el("button", "btn btn-small btn-piedra", "Historial completo");
+  hist.type = "button";
+  hist.addEventListener("click", () => { location.hash = `#/historial/${id}`; });
+  cont.append(inv, hist);
+  if (fila) {
+    const fav = el("button", "btn btn-small btn-piedra", fila.favorito ? "★ Quitar de favoritos" : "☆ Añadir a favoritos");
+    fav.type = "button";
+    fav.addEventListener("click", async () => {
+      await cambiarFavorito(id);
+      const f = filasTabla.find((x) => x.id === id);
+      fav.textContent = f?.favorito ? "★ Quitar de favoritos" : "☆ Añadir a favoritos";
+    });
+    cont.append(fav);
+  }
+  return cont;
+}
+
+async function cambiarFavorito(id) {
+  const fila = filasTabla.find((f) => f.id === id);
+  if (!fila || !ultimo) return;
+  const nuevo = !fila.favorito;
+  fila.favorito = nuevo;
+  pintarTabla();
+  try {
+    const r = await fetch("/api/favorito", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mercado: ultimo.mercado.clave, id, favorito: nuevo }),
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+  } catch {
+    fila.favorito = !nuevo;
+    pintarTabla();
+  }
+}
+
+// ---------- historial (panel y sección) ----------
+function cabeceraHistorial(graf, id) {
+  const cab = el("div", "card-head");
+  cab.append(el("h3", "", "Historial"));
+  const grupo = el("div", "periodos");
+  grupo.setAttribute("role", "group");
+  grupo.setAttribute("aria-label", "Periodo del historial");
+  for (const [rango, txt] of [["24h", "24 h"], ["7d", "7 días"], ["30d", "30 días"], ["90d", "90 días"]]) {
+    const b = el("button", "btn btn-small btn-piedra", txt);
+    b.type = "button";
+    b.dataset.rango = rango;
+    b.setAttribute("aria-pressed", String(rango === rangoHistorial));
+    b.addEventListener("click", () => {
+      rangoHistorial = rango;
+      for (const x of grupo.children) x.setAttribute("aria-pressed", String(x.dataset.rango === rango));
+      cargarHistorialEn(graf, id, rango).catch((e) => graf.replaceChildren(el("p", "bad small", e.message)));
+    });
+    grupo.append(b);
+  }
+  cab.append(grupo);
+  return cab;
+}
+
+async function cargarHistorialEn(cont, id, rango, resumen = null) {
+  // Cada contenedor recuerda su última petición: una respuesta antigua no pisa a una nueva.
+  const token = String(Math.random());
+  cont.dataset.token = token;
+  cont.replaceChildren(el("p", "muted small", "Cargando historial…"));
+  const r = await fetch(`/api/historial-fuente?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}&rango=${rango}`);
+  const h = await r.json();
+  if (!r.ok) throw new Error(h.error || "HTTP " + r.status);
+  if (cont.dataset.token !== token || !cont.isConnected) return h;
+  dibujarGrafico(cont, { puntos: h.puntos, nombres: h.nombres, cantidad: h.cantidad, med7: h.med7, med30: h.med30, pasoMs: h.paso_ms });
+  if (h.nota) cont.append(el("p", "muted small", h.nota));
+  const variacion = variacionPeriodo(h.puntos);
+  if (variacion) cont.append(el("p", "small " + (variacion.cambio > 0 ? "sube" : variacion.cambio < 0 ? "baja" : ""), variacion.texto));
+  if (h.atribucion) {
+    const p = el("p", "atribucion small");
+    const a = el("a", "", h.atribucion.texto);
+    a.href = h.atribucion.url; a.target = "_blank"; a.rel = "noopener";
+    p.append(a);
+    cont.append(p);
+  }
+  if (resumen) pintarResumenHistorial(resumen, h);
+  return h;
+}
+
+/** Variación del periodo con la primera y la última observación de la compra mínima (o la otra serie). */
+function variacionPeriodo(puntos) {
+  const validos = (puntos || []).filter((p) => p[1] != null);
+  const serie = validos.length >= 2 ? 1 : 2;
+  const v = (puntos || []).filter((p) => p[serie] != null);
+  if (v.length < 2 || !v[0][serie]) return null;
+  const cambio = v[v.length - 1][serie] / v[0][serie] - 1;
+  const nombre = serie === 1 ? "compra mínima" : "segunda serie";
+  return {
+    cambio,
+    texto: `En el periodo, la ${nombre} pasó de ${formatearMoneda(v[0][serie])} a ${formatearMoneda(v[v.length - 1][serie])} (${formatearPct(100 * cambio)}), ` +
+      `entre ${fecha(new Date(v[0][0]).toISOString())} y ${fecha(new Date(v[v.length - 1][0]).toISOString())}.`,
+  };
+}
+
+function pintarResumenHistorial(dl, h) {
+  dl.replaceChildren();
+  const u = h.ultimo;
+  const f = (k, v) => { if (v != null && v !== "—") dl.append(el("dt", "", k), el("dd", "", v)); };
+  if (u) {
+    f("Compra mínima (actual)", formatearMoneda(u.precio));
+    f("Mediana (actual)", formatearMoneda(u.mediana));
+    f("Unidades publicadas", u.cantidad?.toLocaleString("es"));
+    f("Subastas", u.subastas?.toLocaleString("es"));
+    f("Mediana 7 días", u.mediana7d != null ? formatearMoneda(u.mediana7d) : null);
+    f("Mediana 30 días", u.mediana30d != null ? formatearMoneda(u.mediana30d) : null);
+    f("Mediana 90 días", u.mediana90d != null ? formatearMoneda(u.mediana90d) : "sin historial suficiente");
+    f("Escaneo", u.hora ? fecha(u.hora) + hace(u.hora) : null);
+  }
+  const pts = h.puntos.filter((p) => p[1] != null);
+  if (pts.length) {
+    const minimo = pts.reduce((a, p) => (p[1] < a[1] ? p : a));
+    const maximo = pts.reduce((a, p) => (p[1] > a[1] ? p : a));
+    // Son extremos de la serie de COMPRA MÍNIMA (la fuente no publica el máximo de los anuncios).
+    f(`Compra mínima más baja (${h.rango})`, `${formatearMoneda(minimo[1])} · ${fecha(new Date(minimo[0]).toISOString())}`);
+    f(`Compra mínima más alta (${h.rango})`, `${formatearMoneda(maximo[1])} · ${fecha(new Date(maximo[0]).toISOString())}`);
+  }
+  if (h.ventas) f("Ventas estimadas por día", `${h.ventas.por_dia.toLocaleString("es")} (estimación de AHledger, no ventas confirmadas)`);
+  if (!dl.children.length) f("Sin datos", "Esta fuente no tiene observaciones de este objeto en el periodo.");
+  f("Promedio", "no publicado por la fuente (no se calcula a partir de la mediana)");
+}
+
+async function pintarHistorial() {
+  const id = objetoActual;
+  $("hist-ayuda").hidden = id != null;
+  for (const b of $("periodos").children) b.setAttribute("aria-pressed", String(b.dataset.rango === rangoHistorial));
+  if (id == null) { $("hist-grafico").replaceChildren(); $("hist-resumen").replaceChildren(); return; }
+  const fila = filasTabla.find((f) => f.id === id);
+  $("hist-titulo").textContent = `Historial de precios · ${fila?.nombre ?? "#" + id}`;
+  try {
+    await cargarHistorialEn($("hist-grafico"), id, rangoHistorial, $("hist-resumen"));
+  } catch (e) {
+    $("hist-grafico").replaceChildren(el("p", "bad small", "No se pudo cargar el historial: " + e.message));
+  }
+}
+for (const b of $("periodos").children) {
+  b.addEventListener("click", () => { rangoHistorial = b.dataset.rango; pintarHistorial(); });
+}
+
+// ---------- oportunidades ----------
+function pintarOportunidades() {
+  const enInv = new Set((inventario?.filas ?? []).map((f) => f.item_id));
+  for (const [rec, id] of [["VENDER", "op-vender"], ["GUARDAR", "op-guardar"]]) {
+    const ol = $(id);
+    ol.replaceChildren();
+    const lista = filasTabla.filter((f) => f.rec === rec)
+      .sort((a, b) => (enInv.has(b.id) - enInv.has(a.id)) || ((b.puntos ?? 0) - (a.puntos ?? 0)) || ((b.neto ?? 0) - (a.neto ?? 0)));
+    if (!lista.length) ol.append(el("li", "muted", "Ninguno con las reglas actuales."));
+    for (const f of lista.slice(0, 50)) {
+      const li = el("li");
+      const b = el("button", "objeto-nombre enlace" + (f.calidad ? ` q-${f.calidad}` : ""), f.nombre);
+      b.type = "button";
+      b.addEventListener("click", () => { location.hash = `#/objeto/${f.id}`; });
+      li.append(b, el("div", "objeto-id",
+        `${enInv.has(f.id) ? "En tu inventario · " : ""}${f.resumen ?? ""} · ${formatearMoneda(f.precio_ref)} · confianza ${f.nivel ?? "—"} ${f.puntos ?? ""}`));
+      ol.append(li);
+    }
+  }
+}
+
+// ---------- árbol de categorías (columna izquierda) ----------
+function pintarArbol() {
+  const ul = $("arbol-cat");
+  ul.replaceChildren();
+  const cuenta = new Map();
+  for (const f of filasTabla) {
+    const c = cuenta.get(f.categoria) ?? { n: 0, subs: new Map() };
+    c.n++;
+    if (f.subcategoria) c.subs.set(f.subcategoria, (c.subs.get(f.subcategoria) ?? 0) + 1);
+    cuenta.set(f.categoria, c);
+  }
+  const catSel = $("f-categoria").value, subSel = $("f-subcategoria").value;
+  const boton = (texto, n, activo, alPulsar) => {
+    const b = el("button", "arbol-btn", "");
+    b.type = "button";
+    b.append(el("span", "", texto), el("span", "arbol-n", String(n)));
+    if (activo) b.setAttribute("aria-current", "true");
+    b.addEventListener("click", alPulsar);
+    return b;
+  };
+  const todas = el("li");
+  todas.append(boton("Todas", filasTabla.length, !catSel, () => elegirCategoria("", "")));
+  ul.append(todas);
+  for (const c of categorias(filasTabla)) {
+    const info = cuenta.get(c);
+    const li = el("li");
+    li.append(boton(c, info.n, catSel === c && !subSel, () => elegirCategoria(c, "")));
+    if (catSel === c && info.subs.size) {
+      const sub = el("ul");
+      for (const [s, n] of [...info.subs].sort((a, b) => a[0].localeCompare(b[0], "es"))) {
+        const li2 = el("li");
+        li2.append(boton(s, n, subSel === s, () => elegirCategoria(c, s)));
+        sub.append(li2);
+      }
+      li.append(sub);
+    }
+    ul.append(li);
+  }
+}
+
+function elegirCategoria(cat, sub) {
+  $("f-categoria").value = cat;
+  rellenarSubcategorias();
+  $("f-subcategoria").value = sub;
+  visibles = POR_PAGINA;
+  pintarTabla();
+  pintarArbol();
+}
+
+// ---------- buscador principal con autocompletado (patrón combobox) ----------
+let ac = { ...ESTADO_INICIAL };
+let sugerencias = [];
+let sugerenciasN = 0;
+let temporizadorAc = null;
+
+function pintarSugerencias() {
+  const lista = $("sugerencias"), input = $("buscador");
+  lista.replaceChildren();
+  sugerencias.forEach((s, k) => {
+    const li = el("li", "sug" + (k === ac.activo ? " activa" : ""));
+    li.id = `sug-${k}`;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", String(k === ac.activo));
+    li.dataset.k = k;
+    const txt = el("span");
+    txt.append(el("span", s.calidad ? `q-${s.calidad}` : "", s.nombre), " ",
+      el("span", "cat-sub", `#${s.id} · ${NOMBRE_CALIDAD[s.calidad] ?? "calidad desconocida"}` +
+        (s.clase ? ` · ${[s.clase, s.subclase].filter(Boolean).join(" › ")}` : "") + (s.en_mercado ? "" : " · sin precio aquí")));
+    li.append(iconoNodo(s.icono, s.nombre), txt);
+    lista.append(li);
+  });
+  lista.hidden = !ac.abierto || sugerencias.length === 0;
+  input.setAttribute("aria-expanded", String(!lista.hidden));
+  if (ac.activo >= 0) {
+    input.setAttribute("aria-activedescendant", `sug-${ac.activo}`);
+    $(`sug-${ac.activo}`)?.scrollIntoView({ block: "nearest" });
+  } else input.removeAttribute("aria-activedescendant");
+}
+
+async function pedirSugerencias() {
+  const q = $("buscador").value.trim();
+  const n = ++sugerenciasN;   // descarta respuestas de búsquedas anteriores
+  if (!q || !ultimo) { sugerencias = []; ac = conSugerencias(ac, 0); pintarSugerencias(); $("anuncio").textContent = ""; return; }
+  try {
+    const r = await fetch(`/api/catalogo?mercado=${encodeURIComponent(ultimo.mercado.clave)}&q=${encodeURIComponent(q)}`, { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok || n !== sugerenciasN) return;
+    sugerencias = d.resultados.slice(0, 10);
+  } catch { return; }
+  ac = conSugerencias(ac, sugerencias.length);
+  pintarSugerencias();
+  $("anuncio").textContent = sugerencias.length ? `${sugerencias.length} sugerencias. Tab o flechas para recorrerlas.` : "Sin coincidencias.";
+}
+
+function confirmarSugerencia(k) {
+  const s = sugerencias[k];
+  if (!s) return;
+  $("buscador").value = s.nombre;     // el texto solo cambia al confirmar
+  ac = { ...ac, abierto: false, activo: -1 };
+  pintarSugerencias();
+  location.hash = `#/objeto/${s.id}`;
+  if (leerRuta(location.hash).id === objetoActual) abrirObjeto(s.id);
+}
+
+function buscarEnMercado() {
+  const q = $("buscador").value.trim();
+  $("f-texto").value = q;
+  visibles = POR_PAGINA;
+  pintarTabla();
+  location.hash = "#/mercado";
+}
+
+$("buscador").addEventListener("input", () => {
+  ac = alEscribir(ac);
+  clearTimeout(temporizadorAc);
+  temporizadorAc = setTimeout(pedirSugerencias, 150);
+});
+$("buscador").addEventListener("keydown", (ev) => {
+  const r = teclado(ac, { tecla: ev.key, shift: ev.shiftKey, hayTexto: $("buscador").value.trim() !== "" });
+  const activoAntes = ac.activo;
+  ac = r.estado;
+  if (r.prevenir) ev.preventDefault();
+  if (r.accion === "confirmar") return confirmarSugerencia(activoAntes);
+  if (r.accion === "buscar") return buscarEnMercado();
+  pintarSugerencias();
+});
+$("buscador").addEventListener("blur", () => {
+  // Al salir del buscador (Tab al final de la lista, clic fuera) se cierra sin tocar el texto.
+  setTimeout(() => { if (document.activeElement !== $("buscador")) { ac = { ...ac, abierto: false, activo: -1 }; pintarSugerencias(); } }, 150);
+});
+// Ratón o toque: pointerdown para que el clic llegue antes de que el campo pierda el foco.
+$("sugerencias").addEventListener("pointerdown", (ev) => {
+  const li = ev.target.closest("[data-k]");
+  if (!li) return;
+  ev.preventDefault();
+  confirmarSugerencia(Number(li.dataset.k));
+});
+
+$("btn-buscar").addEventListener("click", () => {
+  if (ac.abierto && ac.activo >= 0) confirmarSugerencia(ac.activo);
+  else buscarEnMercado();
+});
+
+$("btn-restablecer").addEventListener("click", () => {
+  $("buscador").value = "";
+  sugerencias = []; ac = { ...ESTADO_INICIAL }; pintarSugerencias();
+  for (const id of ["f-texto", "f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
+  for (const id of ["f-categoria", "f-calidad", "f-recomendacion"]) $(id).value = "";
+  rellenarSubcategorias();
+  $("f-orden").value = "nombre:asc";
+  $("f-favoritos").checked = false;
+  $("f-ausentes").checked = true;
+  visibles = POR_PAGINA;
+  pintarTabla();
+  pintarArbol();
+});
+
 // ---------- actualización en vivo ----------
 // Cada 30 s (o cada 5 s justo después de pulsar «Actualizar») se consulta una huella mínima
 // del mercado; si cambió, se recargan el estado y la tabla sin recargar la página.
@@ -1133,9 +1572,11 @@ async function refrescar() {
   await cargar();
   await cargarPrecios();
   rellenarListaObjetos();
+  pintarArbol();
   cargarInventario();
   cargarVentas();
   cargarAjustes();
+  aplicarRuta();
 }
 
 // ---------- selector de mercado ----------
@@ -1143,6 +1584,12 @@ $("sel-mercado").addEventListener("change", async (ev) => {
   mercadoActual = ev.target.value;
   guardado.escribir(mercadoActual);
   filasTabla = []; firmaVersion = null; inventario = null; ventas = null; pintarTabla();
+  // Al cambiar de mercado la ficha abierta deja de valer (otro mercado = otros datos).
+  objetoActual = null;
+  $("det-titulo").textContent = "Ficha del objeto";
+  $("det-titulo").className = "";
+  $("det-cuerpo").replaceChildren(el("p", "muted", "Elige un objeto de la lista o búscalo arriba."));
+  if (leerRuta(location.hash).vista === "objeto") history.replaceState(null, "", "#/mercado");
   await refrescar();
 });
 

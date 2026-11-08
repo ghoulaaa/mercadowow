@@ -1,12 +1,13 @@
-// Gráfico de líneas en SVG, sin librerías (la página solo ejecuta su propio código).
-// Una sola escala Y (cobre), líneas de 2 px, medianas como referencia discontinua,
-// leyenda + etiqueta al final de cada línea, y cruceta con tooltip al pasar el ratón.
+// Gráficos de líneas en SVG, sin librerías (la página solo ejecuta su propio código).
+// Reglas: una sola escala Y por gráfico (la cantidad va en un gráfico aparte), líneas
+// de 2 px, medianas propias como referencia discontinua, leyenda + etiqueta al final de
+// cada línea, cruceta con tooltip, y los periodos SIN escaneos se marcan y no se unen.
 
 import { formatearMoneda } from "./moneda.js";
 
 const NS = "http://www.w3.org/2000/svg";
 
-/** Marcas «redondas» para el eje Y (1, 2, 5 × 10^n). */
+/** Marcas «redondas» para el eje Y (1, 2, 2,5 y 5 × 10^n), cerca de `objetivo` marcas. */
 export function marcasEje(min, max, objetivo = 4) {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
   if (min === max) { min = min * 0.9; max = max * 1.1 || 1; }
@@ -35,97 +36,135 @@ export function monedaCorta(cobre) {
   return formatearMoneda(cobre);
 }
 
+/** Paso típico entre observaciones (mediana de las diferencias), en ms. */
+export function pasoTipico(tiempos) {
+  const d = [];
+  for (let k = 1; k < tiempos.length; k++) d.push(tiempos[k] - tiempos[k - 1]);
+  if (!d.length) return null;
+  d.sort((a, b) => a - b);
+  return d[Math.floor(d.length / 2)];
+}
+
+/**
+ * Parte una serie en tramos continuos: se corta donde falta un valor o donde entre dos
+ * observaciones pasa más de 2,5 veces el paso esperado (periodo sin escaneos).
+ * @returns {{tramos: [number, number][][], huecos: [number, number][]}}
+ */
+export function tramos(puntos, i, pasoMs) {
+  const res = [], huecos = [];
+  let actual = [], previo = null;
+  for (const p of puntos) {
+    const v = p[i];
+    if (previo != null && pasoMs && p[0] - previo > 2.5 * pasoMs) {
+      huecos.push([previo, p[0]]);
+      if (actual.length) res.push(actual);
+      actual = [];
+    }
+    previo = p[0];
+    if (v == null) { if (actual.length) res.push(actual); actual = []; continue; }
+    actual.push([p[0], v]);
+  }
+  if (actual.length) res.push(actual);
+  return { tramos: res, huecos };
+}
+
 const el = (tag, attrs = {}, texto) => {
   const e = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   if (texto !== undefined) e.textContent = texto;
   return e;
 };
+const html = (tag, cls, texto) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (texto !== undefined) e.textContent = texto;
+  return e;
+};
 
-/**
- * @param {HTMLElement} cont
- * @param {{puntos: [number, number|null, number|null][], med7?: number, med30?: number}} datos
- */
-export function dibujarGrafico(cont, datos) {
-  cont.replaceChildren();
-  const pts = (datos.puntos || []).filter((p) => p[1] != null || p[2] != null);
-  if (pts.length < 2) {
-    cont.append(Object.assign(document.createElement("p"), {
-      className: "muted small", textContent: "Todavía no hay historial suficiente para dibujar un gráfico.",
-    }));
-    return;
-  }
-  const series = [
-    { i: 1, nombre: "Compra mínima", clase: "serie-1" },
-    { i: 2, nombre: "Valor de mercado", clase: "serie-2" },
-  ].filter((s) => pts.some((p) => p[s.i] != null));
-
-  const W = Math.max(280, cont.clientWidth || 600), H = 220;
-  const m = { izq: 54, der: 96, arr: 12, aba: 26 };
+function lienzo({ W, H, pts, valores, m, formatoEje, aria }) {
   const x0 = pts[0][0], x1 = pts[pts.length - 1][0];
-  const valores = pts.flatMap((p) => series.map((s) => p[s.i])).filter((v) => v != null);
-  for (const r of [datos.med7, datos.med30]) if (r != null) valores.push(r);
   const marcas = marcasEje(Math.min(...valores), Math.max(...valores));
   const yMin = Math.min(marcas[0], ...valores), yMax = Math.max(marcas[marcas.length - 1], ...valores);
   const X = (t) => m.izq + ((t - x0) / (x1 - x0 || 1)) * (W - m.izq - m.der);
   const Y = (v) => m.arr + (1 - (v - yMin) / (yMax - yMin || 1)) * (H - m.arr - m.aba);
-
-  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
-    "aria-label": `Historial de precios: ${pts.length} observaciones` });
-
-  // Rejilla y eje Y (recesivos).
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", "aria-label": aria });
   for (const v of marcas) {
     svg.append(el("line", { x1: m.izq, x2: W - m.der, y1: Y(v), y2: Y(v), class: "g-rejilla" }));
-    svg.append(el("text", { x: m.izq - 6, y: Y(v) + 4, class: "g-eje", "text-anchor": "end" }, monedaCorta(v)));
+    svg.append(el("text", { x: m.izq - 6, y: Y(v) + 4, class: "g-eje", "text-anchor": "end" }, formatoEje(v)));
   }
-  // Eje X: 4–5 fechas.
+  return { svg, X, Y, x0, x1 };
+}
+
+/**
+ * @param {HTMLElement} cont
+ * @param {{puntos: [number, number|null, number|null][], nombres?: string[], cantidad?: [number, number|null][],
+ *          med7?: number, med30?: number, pasoMs?: number}} datos
+ */
+export function dibujarGrafico(cont, datos) {
+  cont.replaceChildren();
+  const nombres = datos.nombres ?? ["Compra mínima", "Valor de mercado"];
+  const pts = (datos.puntos || []).filter((p) => p[1] != null || p[2] != null);
+  if (pts.length < 2) {
+    cont.append(html("p", "muted small", "Todavía no hay historial suficiente para dibujar un gráfico en este periodo."));
+    return;
+  }
+  const series = [
+    { i: 1, nombre: nombres[0], clase: "serie-1" },
+    { i: 2, nombre: nombres[1], clase: "serie-2" },
+  ].filter((s) => s.nombre && pts.some((p) => p[s.i] != null));
+  const paso = datos.pasoMs ?? pasoTipico(pts.map((p) => p[0]));
+
+  const W = Math.max(280, cont.clientWidth || 600), H = 220;
+  const m = { izq: 54, der: 104, arr: 12, aba: 26 };
+  const valores = pts.flatMap((p) => series.map((s) => p[s.i])).filter((v) => v != null);
+  for (const r of [datos.med7, datos.med30]) if (r != null) valores.push(r);
+  const { svg, X, Y, x0, x1 } = lienzo({ W, H, pts, valores, m, formatoEje: monedaCorta,
+    aria: `Historial de precios: ${pts.length} observaciones` });
+
+  // Periodos sin escaneos: franja tenue (no se inventan precios en medio).
+  const huecos = tramos(pts, series[0].i, paso).huecos;
+  for (const [a, b] of huecos) {
+    svg.append(el("rect", { x: X(a), y: m.arr, width: Math.max(1, X(b) - X(a)), height: H - m.arr - m.aba, class: "g-hueco" }));
+  }
+
   const nX = Math.min(5, pts.length);
+  const conHora = x1 - x0 < 2 * 86400e3;
   for (let k = 0; k < nX; k++) {
     const t = x0 + ((x1 - x0) * k) / (nX - 1);
     svg.append(el("text", { x: X(t), y: H - 6, class: "g-eje", "text-anchor": k === 0 ? "start" : k === nX - 1 ? "end" : "middle" },
-      new Date(t).toLocaleDateString("es", { day: "numeric", month: "short" })));
+      new Date(t).toLocaleString("es", conHora ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short" })));
   }
 
-  // Medianas de referencia (discontinuas, en gris).
   for (const [v, etiqueta] of [[datos.med30, "mediana 30 d"], [datos.med7, "mediana 7 d"]]) {
     if (v == null) continue;
     svg.append(el("line", { x1: m.izq, x2: W - m.der, y1: Y(v), y2: Y(v), class: "g-ref" }));
     svg.append(el("text", { x: m.izq + 4, y: Y(v) - 4, class: "g-eje" }, etiqueta));
   }
 
-  // Líneas: se cortan donde falta un dato (no se inventan tramos).
   const finales = [];
   for (const s of series) {
-    let d = "", abierta = false;
-    for (const p of pts) {
-      if (p[s.i] == null) { abierta = false; continue; }
-      d += `${abierta ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[s.i]).toFixed(1)}`;
-      abierta = true;
+    let d = "";
+    for (const tr of tramos(pts, s.i, paso).tramos) {
+      tr.forEach(([t, v], k) => { d += `${k ? "L" : "M"}${X(t).toFixed(1)},${Y(v).toFixed(1)}`; });
+      if (tr.length === 1) d += `h0.1`;   // punto aislado: visible
     }
     svg.append(el("path", { d, class: `g-linea ${s.clase}` }));
     const ult = [...pts].reverse().find((p) => p[s.i] != null);
     finales.push({ s, y: Y(ult[s.i]) });
   }
-  // Etiquetas directas al final de cada línea, separadas si chocan.
   finales.sort((a, b) => a.y - b.y);
-  for (let k = 1; k < finales.length; k++) {
-    if (finales[k].y - finales[k - 1].y < 14) finales[k].y = finales[k - 1].y + 14;
-  }
-  for (const f of finales) {
-    svg.append(el("text", { x: W - m.der + 6, y: f.y + 4, class: "g-etiqueta" }, f.s.nombre));
-  }
+  for (let k = 1; k < finales.length; k++) if (finales[k].y - finales[k - 1].y < 14) finales[k].y = finales[k - 1].y + 14;
+  for (const f of finales) svg.append(el("text", { x: W - m.der + 6, y: f.y + 4, class: "g-etiqueta" }, f.s.nombre));
 
-  // Cruceta + tooltip.
   const cruz = el("line", { y1: m.arr, y2: H - m.aba, class: "g-cruz", visibility: "hidden" });
   const puntosHover = series.map((s) => el("circle", { r: 4, class: `g-punto ${s.clase}`, visibility: "hidden" }));
   svg.append(cruz, ...puntosHover);
   const zona = el("rect", { x: m.izq, y: m.arr, width: W - m.izq - m.der, height: H - m.arr - m.aba, class: "g-zona" });
   svg.append(zona);
 
-  const tip = document.createElement("div");
-  tip.className = "g-tip";
+  const tip = html("div", "g-tip");
   tip.hidden = true;
-
+  const cantidadEn = new Map((datos.cantidad || []).map(([t, q]) => [t, q]));
   const mostrar = (ev) => {
     const caja = svg.getBoundingClientRect();
     const xSvg = ((ev.clientX - caja.left) / caja.width) * W;
@@ -139,20 +178,15 @@ export function dibujarGrafico(cont, datos) {
       puntosHover[k].setAttribute("visibility", v == null ? "hidden" : "visible");
       if (v != null) { puntosHover[k].setAttribute("cx", xx); puntosHover[k].setAttribute("cy", Y(v)); }
     });
-    tip.replaceChildren();
-    const f = document.createElement("div");
-    f.className = "g-tip-fecha";
-    f.textContent = new Date(mejor[0]).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" });
-    tip.append(f);
+    tip.replaceChildren(html("div", "g-tip-fecha", new Date(mejor[0]).toLocaleString("es", { dateStyle: "medium", timeStyle: "short" })));
     for (const s of series) {
-      const fila = document.createElement("div");
-      const marca = document.createElement("span"); marca.className = `g-tip-marca ${s.clase}`;
-      fila.append(marca, `${s.nombre}: ${formatearMoneda(mejor[s.i])}`);
+      const fila = html("div");
+      fila.append(html("span", `g-tip-marca ${s.clase}`), `${s.nombre}: ${formatearMoneda(mejor[s.i])}`);
       tip.append(fila);
     }
+    if (cantidadEn.has(mejor[0])) tip.append(html("div", "", `Unidades publicadas: ${cantidadEn.get(mejor[0])?.toLocaleString("es") ?? "—"}`));
     tip.hidden = false;
-    const izquierda = (xx / W) * caja.width;
-    tip.style.left = `${Math.min(Math.max(izquierda + 12, 0), caja.width - 190)}px`;
+    tip.style.left = `${Math.min(Math.max((xx / W) * caja.width + 12, 0), caja.width - 200)}px`;
   };
   const ocultar = () => {
     tip.hidden = true;
@@ -162,39 +196,54 @@ export function dibujarGrafico(cont, datos) {
   zona.addEventListener("pointermove", mostrar);
   zona.addEventListener("pointerleave", ocultar);
 
-  // Leyenda (identidad nunca solo por color: nombre + muestra de línea).
-  const leyenda = document.createElement("div");
-  leyenda.className = "g-leyenda";
+  const leyenda = html("div", "g-leyenda");
   for (const s of series) {
-    const it = document.createElement("span");
-    const mk = document.createElement("span"); mk.className = `g-tip-marca ${s.clase}`;
-    it.append(mk, s.nombre);
+    const it = html("span");
+    it.append(html("span", `g-tip-marca ${s.clase}`), s.nombre);
     leyenda.append(it);
   }
-  const ref = document.createElement("span");
-  const mr = document.createElement("span"); mr.className = "g-tip-marca g-ref-marca";
-  ref.append(mr, "Medianas propias (referencia)");
-  leyenda.append(ref);
-
-  const marco = document.createElement("div");
-  marco.className = "g-marco";
+  if (datos.med7 != null || datos.med30 != null) {
+    const ref = html("span");
+    ref.append(html("span", "g-tip-marca g-ref-marca"), "Medianas propias (referencia)");
+    leyenda.append(ref);
+  }
+  if (huecos.length) {
+    const h = html("span");
+    h.append(html("span", "g-tip-marca g-hueco-marca"), `Sin escaneos (${huecos.length})`);
+    leyenda.append(h);
+  }
+  const marco = html("div", "g-marco");
   marco.append(svg, tip);
   cont.append(leyenda, marco);
 
+  // Cantidad publicada: gráfico aparte (otra unidad → otra escala, nunca doble eje).
+  const cant = (datos.cantidad || []).filter(([, q]) => q != null);
+  if (cant.length >= 2) {
+    const Hq = 90, mq = { izq: 54, der: 104, arr: 8, aba: 8 };
+    const c = lienzo({ W, H: Hq, pts: cant, valores: cant.map(([, q]) => q), m: mq,
+      formatoEje: (v) => v.toLocaleString("es", { notation: "compact" }), aria: "Unidades publicadas" });
+    let d = "";
+    for (const tr of tramos(cant, 1, paso).tramos) tr.forEach(([t, q], k) => { d += `${k ? "L" : "M"}${c.X(t).toFixed(1)},${c.Y(q).toFixed(1)}`; });
+    c.svg.append(el("path", { d, class: "g-linea g-cantidad" }));
+    c.svg.append(el("text", { x: W - mq.der + 6, y: mq.arr + 10, class: "g-etiqueta" }, "Unidades"));
+    const t = html("div", "g-subtitulo muted small", "Unidades publicadas en cada escaneo");
+    cont.append(t, c.svg);
+  }
+
   // Vista de tabla (accesibilidad): las últimas 48 observaciones.
-  const det = document.createElement("details");
-  const sum = document.createElement("summary"); sum.textContent = "Ver los datos como tabla";
-  const tb = document.createElement("table"); tb.className = "tabla mini";
-  const cab = document.createElement("tr");
-  for (const t of ["Hora", ...series.map((s) => s.nombre)]) { const th = document.createElement("th"); th.textContent = t; cab.append(th); }
+  const det = html("details");
+  det.append(html("summary", "", "Ver los datos como tabla"));
+  const tb = html("table", "tabla mini");
+  const cab = html("tr");
+  for (const t of ["Hora", ...series.map((s) => s.nombre), ...(cant.length ? ["Unidades"] : [])]) cab.append(html("th", "", t));
   tb.append(cab);
   for (const p of pts.slice(-48).reverse()) {
-    const tr = document.createElement("tr");
-    const c0 = document.createElement("td"); c0.textContent = new Date(p[0]).toLocaleString("es", { dateStyle: "short", timeStyle: "short" });
-    tr.append(c0);
-    for (const s of series) { const td = document.createElement("td"); td.className = "num"; td.textContent = formatearMoneda(p[s.i]); tr.append(td); }
+    const tr = html("tr");
+    tr.append(html("td", "", new Date(p[0]).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })));
+    for (const s of series) tr.append(html("td", "num", formatearMoneda(p[s.i])));
+    if (cant.length) tr.append(html("td", "num", cantidadEn.get(p[0])?.toLocaleString("es") ?? "—"));
     tb.append(tr);
   }
-  det.append(sum, tb);
+  det.append(tb);
   cont.append(det);
 }
