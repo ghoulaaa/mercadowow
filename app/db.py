@@ -65,40 +65,14 @@ def pending_migrations(conn: psycopg.Connection) -> list[str]:
 
 
 def market_status(conn: psycopg.Connection, market_key: str) -> dict | None:
-    row = conn.execute(
-        """
-        select m.key, m.label, m.provider, m.is_demo, m.source_url,
-               s.last_source_updated_at, s.last_success_at, s.last_attempt_at,
-               s.last_new_data_at, s.last_error, s.last_error_at,
-               s.consecutive_failures,
-               -- '-infinity' (= toca ya) no existe en Python: se devuelve como null.
-               case when isfinite(s.next_attempt_at) then s.next_attempt_at end as next_attempt_at,
-               (s.lease_expires_at > now()) as en_curso,
-               (select count(*) from snapshots x where x.market_id = m.id) as versiones,
-               (select count(*) from items i where i.market_id = m.id) as objetos,
-               (select value from settings where key = 'url_funcion') is not null as programada,
-               now() as hora_bd
-          from markets m
-          left join fetch_state s on s.market_id = m.id
-         where m.key = %s
-        """,
-        (market_key,),
-    ).fetchone()
-    if row is None:
-        return None
-    row["registro"] = conn.execute(
-        """
-        select l.finished_at, l.status, l.http_status, l.rows_received, l.message
-          from fetch_log l join markets m on m.id = l.market_id
-         where m.key = %s
-         order by l.finished_at desc
-         limit 8
-        """,
-        (market_key,),
-    ).fetchall()
-    return row
+    """Estado del panel. Lo calcula la función SQL estado_mercado (la misma que usa Netlify)."""
+    return conn.execute("select estado_mercado(%s) as r", (market_key,)).fetchone()["r"]
 
 
 def request_update(conn: psycopg.Connection, market_key: str) -> dict:
+    """Botón manual: adelanta la consulta y, si procede, dispara la Edge Function vía pg_net."""
     with conn.transaction():
-        return conn.execute("select solicitar_actualizacion(%s) as r", (market_key,)).fetchone()["r"]
+        r = conn.execute("select solicitar_actualizacion(%s) as r", (market_key,)).fetchone()["r"]
+        if r.get("ok"):
+            conn.execute("select disparar_si_corresponde()")
+    return r

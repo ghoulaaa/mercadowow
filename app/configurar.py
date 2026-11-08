@@ -91,11 +91,12 @@ def main() -> int:
         print(f"  Respuesta: HTTP {r.status_code} · {r.text[:400]}")
         estado = db.market_status(conn, s.market)
 
+    a = estado["actualizacion"]
     print("\n=== Resumen ===")
-    print(f"  Mercado:               {estado['label']}")
-    print(f"  Hora del dato original: {estado['last_source_updated_at']}")
-    print(f"  Objetos guardados:     {estado['objetos']}")
-    print(f"  Próxima consulta:      {estado['next_attempt_at']}")
+    print(f"  Mercado:                {estado['mercado']['nombre']}")
+    print(f"  Hora del dato original: {a['hora_dato_original']}")
+    print(f"  Objetos guardados:      {a['objetos']}")
+    print(f"  Próxima consulta:       {a['proxima']}")
     print("\nListo. Supabase consultará TSM solo, aunque tu PC esté apagado.")
     return 0
 

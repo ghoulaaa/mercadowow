@@ -1,4 +1,4 @@
-"""Pruebas del servidor Python: configuración, estado y botón manual.
+﻿"""Pruebas del servidor Python: configuración, estado y botón manual.
 
 La lógica SQL y la actualización horaria se prueban en supabase/pruebas (Node + PGlite).
 Aquí la base de datos se sustituye por respuestas preparadas.
@@ -78,47 +78,62 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:2] == ["0001_esquema.sql", "0002_supabase.sql"]
+    assert nombres[:3] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
 
-T = datetime(2026, 11, 7, 22, 16, 24, tzinfo=timezone.utc)
-FILA = {
-    "key": "tsm:forever:us:pvp-horde", "label": "WoW Forever · US · PvP · Horda",
-    "provider": "tsm", "is_demo": False, "source_url": "https://x/items.csv",
-    "last_source_updated_at": T, "last_success_at": T, "last_attempt_at": T,
-    "last_new_data_at": T, "last_error": None, "last_error_at": None,
-    "consecutive_failures": 0, "next_attempt_at": None, "en_curso": False,
-    "versiones": 1, "objetos": 3728, "programada": True, "hora_bd": T,
-    "registro": [{"finished_at": T, "status": "nuevo_dato", "http_status": 200,
-                  "rows_received": 3728, "message": None}],
+# Forma que devuelve la función SQL estado_mercado (probada en netlify/pruebas con PGlite).
+ESTADO = {
+    "hora_servidor": "2026-11-08T03:00:00+00:00",
+    "mercado": {"clave": "tsm:forever:us:pvp-horde", "nombre": "WoW Forever · US · PvP · Horda",
+                "proveedor": "TSM", "ficticio": False, "fuente": "https://x/items.csv"},
+    "actualizacion": {"configurada": True, "en_curso": False,
+                      "hora_dato_original": "2026-11-07T22:16:24+00:00", "proxima": None,
+                      "fallos_seguidos": 0, "versiones_guardadas": 1, "objetos": 3728},
+    "registro": [{"hora": "2026-11-08T02:09:24+00:00", "estado": "nuevo_dato", "http": 200,
+                  "filas": 3728, "mensaje": None}],
 }
 
 
 class ConexionFalsa:
+    """Imita psycopg: devuelve respuestas preparadas y anota cada SQL ejecutado."""
+
+    def __init__(self, respuestas=None):
+        self.sql, self.respuestas = [], list(respuestas or [])
+
     def __enter__(self): return self
     def __exit__(self, *a): return False
+
+    def transaction(self): return self
+
+    def execute(self, sql, params=None):
+        self.sql.append(sql)
+        r = self.respuestas.pop(0) if self.respuestas else None
+        return type("Cursor", (), {"fetchone": lambda _s: r})()
 
 
 @pytest.fixture
 def cliente(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "connect", lambda url: ConexionFalsa())
     monkeypatch.setattr(db, "pending_migrations", lambda conn: [])
-    monkeypatch.setattr(db, "market_status", lambda conn, key: dict(FILA))
+    monkeypatch.setattr(db, "market_status", lambda conn, key: dict(ESTADO))
     with TestClient(create_app(settings(tmp_path))) as c:
         yield c
 
 
 def test_pagina_y_estado(cliente):
-    assert cliente.get("/").status_code == 200
-    s = cliente.get("/api/estado").json()
+    inicio = cliente.get("/")
+    assert inicio.status_code == 200 and 'src="app.js"' in inicio.text
+    for archivo in ("/app.js", "/styles.css"):          # mismas rutas que en Netlify
+        assert cliente.get(archivo).status_code == 200
+    r = cliente.get("/api/estado")
+    assert r.headers["cache-control"] == "no-store"
+    s = r.json()
     assert s["mercado"]["clave"] == "tsm:forever:us:pvp-horde"
-    assert s["mercado"]["ficticio"] is False
-    a = s["actualizacion"]
-    assert a["hora_dato_original"] == "2026-11-07T22:16:24Z"
-    assert a["proxima"] is None
+    assert s["actualizacion"]["objetos"] == 3728
     assert s["base_de_datos"] == {"proveedor": "Supabase", "proyecto": "abcd", "migraciones_pendientes": []}
+    assert "autenticado" not in s     # en local no hay sesión: no se muestra «Salir»
 
 
 def test_el_estado_nunca_incluye_credenciales(cliente):
@@ -139,39 +154,36 @@ def test_sin_conexion_responde_503_sin_romperse(tmp_path, monkeypatch):
 
 def test_migraciones_pendientes_se_avisan(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "connect", lambda url: ConexionFalsa())
-    monkeypatch.setattr(db, "pending_migrations", lambda conn: ["0001_esquema"])
+    monkeypatch.setattr(db, "pending_migrations", lambda conn: ["0003_web"])
     with TestClient(create_app(settings(tmp_path))) as c:
         s = c.get("/api/estado").json()
-    assert s["base_de_datos"]["migraciones_pendientes"] == ["0001_esquema"]
+    assert s["base_de_datos"]["migraciones_pendientes"] == ["0003_web"]
     assert s["actualizacion"] == {"configurada": False}
 
 
 @pytest.mark.parametrize("respuesta, codigo", [
     ({"ok": False, "motivo": "espera", "segundos": 120}, 429),
     ({"ok": False, "motivo": "en_curso"}, 409),
+    ({"ok": True}, 202),
 ])
-def test_boton_manual_protegido(cliente, monkeypatch, respuesta, codigo):
-    llamadas = []
+def test_boton_manual(cliente, monkeypatch, respuesta, codigo):
     monkeypatch.setattr(db, "request_update", lambda conn, key: respuesta)
-    monkeypatch.setattr("app.main.httpx.post", lambda *a, **k: llamadas.append(a))
-    r = cliente.post("/api/actualizar")
-    assert r.status_code == codigo
-    assert llamadas == []          # no se invoca la función
+    assert cliente.post("/api/actualizar").status_code == codigo
 
 
-def test_boton_manual_aceptado_invoca_la_funcion(cliente, monkeypatch):
-    llamadas = []
-
-    class R:
-        status_code, text = 200, "{}"
-
-    monkeypatch.setattr(db, "request_update", lambda conn, key: {"ok": True})
-    monkeypatch.setattr("app.main.httpx.post", lambda url, **k: llamadas.append(url) or R())
-    r = cliente.post("/api/actualizar")
-    assert r.status_code == 202
-    assert llamadas == ["https://abcd.supabase.co/functions/v1/actualizar-mercado"]
+@pytest.mark.parametrize("respuesta, dispara", [
+    ({"ok": True}, True),
+    ({"ok": False, "motivo": "espera", "segundos": 60}, False),
+])
+def test_request_update_solo_dispara_si_se_acepta(respuesta, dispara):
+    conn = ConexionFalsa([{"r": respuesta}])
+    assert db.request_update(conn, "tsm:forever:us:pvp-horde") == respuesta
+    assert any("disparar_si_corresponde" in s for s in conn.sql) is dispara
 
 
-def test_build_status_sin_fila():
+def test_build_status_sin_datos():
     s = build_status(load_settings(environ=BASE_ENV), None, [])
     assert s["actualizacion"] == {"configurada": False}
+    assert s["registro"] == []
+
+

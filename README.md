@@ -15,8 +15,9 @@ El plan completo y las fuentes verificadas están en [PLAN.md](PLAN.md).
 
 ## Uso diario
 
-- Doble clic en **`iniciar.bat`** y abre **http://127.0.0.1:8000**.
-- La consulta horaria **no depende de tu PC**: la hace Supabase.
+- **En internet (recomendado):** publícala en Netlify siguiendo **[docs/NETLIFY.md](docs/NETLIFY.md)**. La página pide contraseña (`CLAVE_ACCESO`).
+- **En tu PC:** doble clic en **`iniciar.bat`** y abre **http://127.0.0.1:8000**. Sin contraseña, solo accesible desde este PC.
+- La consulta horaria **no depende de ninguna de las dos**: la hace Supabase.
 
 ## Configuración (`.env`)
 

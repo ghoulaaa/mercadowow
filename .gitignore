@@ -6,4 +6,5 @@ node_modules/
 logs/
 backups/
 supabase/.temp/
+.netlify/
 supabase/.branches/

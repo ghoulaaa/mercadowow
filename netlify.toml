@@ -1,0 +1,20 @@
+# Despliegue en Netlify: página estática (app/static) + funciones (netlify/functions).
+# Variables necesarias en Netlify → Site configuration → Environment variables:
+#   DATABASE_URL, SUPABASE_URL, CLAVE_ACCESO   (ver docs/NETLIFY.md)
+
+[build]
+  publish = "app/static"
+  # Sin paso de compilación: Netlify solo instala dependencias y empaqueta las funciones.
+  command = ""
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"

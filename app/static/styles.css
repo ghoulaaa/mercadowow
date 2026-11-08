@@ -104,6 +104,25 @@ body {
 .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .log li { overflow-wrap: anywhere; }
 
+#vista-panel { display: grid; gap: 16px; min-width: 0; }
+[hidden] { display: none !important; }
+
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.btn-small { padding: 3px 10px; font-size: 13px; }
+
+.login { max-width: 420px; width: 100%; justify-self: center; }
+.login form { display: grid; gap: 8px; margin-top: 12px; }
+.login label { color: var(--muted); font-size: 14px; }
+.login input {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+.login input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+
 .notice {
   margin: 0;
   padding: 10px 14px;

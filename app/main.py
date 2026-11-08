@@ -1,4 +1,7 @@
-"""Servidor web (FastAPI): interfaz y API. Los datos viven en Supabase."""
+"""Servidor web local (FastAPI). Es la alternativa a Netlify para usar la página en tu PC.
+
+Escucha solo en 127.0.0.1, así que no pide contraseña. Los datos viven en Supabase.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +10,8 @@ from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -18,6 +20,7 @@ from app.config import Settings, load_settings
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 log = logging.getLogger("mercado")
+SIN_CACHE = {"Cache-Control": "no-store"}
 
 
 def setup_logging(log_dir: Path) -> None:
@@ -32,47 +35,19 @@ def setup_logging(log_dir: Path) -> None:
     log.setLevel(logging.INFO)
 
 
-def _iso(value) -> str | None:
-    return value.isoformat().replace("+00:00", "Z") if value is not None else None
-
-
-def build_status(settings: Settings, row: dict | None, pendientes: list[str]) -> dict:
-    """Convierte la fila de la BD en la respuesta pública. Nunca incluye credenciales."""
-    base = {
-        "app_version": __version__,
-        "base_de_datos": {"proveedor": "Supabase", "proyecto": settings.project_ref,
-                          "migraciones_pendientes": pendientes},
-    }
-    if row is None:
-        base["mercado"] = {"clave": settings.market, "nombre": settings.market_label}
-        base["actualizacion"] = {"configurada": False}
-        return base
-    base["hora_servidor"] = _iso(row["hora_bd"])
-    base["mercado"] = {
-        "clave": row["key"], "nombre": row["label"],
-        "proveedor": row["provider"].upper(), "ficticio": row["is_demo"],
-        "fuente": row["source_url"],
-    }
-    base["actualizacion"] = {
-        "configurada": bool(row["programada"]),
-        "en_curso": bool(row["en_curso"]),
-        "hora_dato_original": _iso(row["last_source_updated_at"]),
-        "ultima_consulta_ok": _iso(row["last_success_at"]),
-        "ultimo_dato_nuevo": _iso(row["last_new_data_at"]),
-        "ultimo_intento": _iso(row["last_attempt_at"]),
-        "proxima": _iso(row["next_attempt_at"]),  # null = en cuanto se pueda
-        "fallos_seguidos": row["consecutive_failures"],
-        "ultimo_error": row["last_error"],
-        "ultimo_error_hora": _iso(row["last_error_at"]),
-        "versiones_guardadas": row["versiones"],
-        "objetos": row["objetos"],
-    }
-    base["registro"] = [
-        {"hora": _iso(r["finished_at"]), "estado": r["status"], "http": r["http_status"],
-         "filas": r["rows_received"], "mensaje": r["message"]}
-        for r in row["registro"]
-    ]
-    return base
+def build_status(settings: Settings, estado: dict | None, pendientes: list[str]) -> dict:
+    """Respuesta pública del panel. Nunca incluye credenciales."""
+    base_de_datos = {"proveedor": "Supabase", "proyecto": settings.project_ref,
+                     "migraciones_pendientes": pendientes}
+    if estado is None:
+        return {
+            "app_version": __version__,
+            "mercado": {"clave": settings.market, "nombre": settings.market_label},
+            "actualizacion": {"configurada": False},
+            "registro": [],
+            "base_de_datos": base_de_datos,
+        }
+    return {**estado, "app_version": __version__, "base_de_datos": base_de_datos}
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -87,42 +62,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Mercado WoW Forever", version=__version__, lifespan=lifespan)
     app.state.settings = settings
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-    @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
 
     @app.get("/api/estado")
     def estado():
         try:
             with db.connect(settings.database_url) as conn:
                 pendientes = db.pending_migrations(conn)
-                row = None if pendientes else db.market_status(conn, settings.market)
+                datos = None if pendientes else db.market_status(conn, settings.market)
         except Exception as exc:  # sin conexión: el panel lo muestra en vez de romperse
             log.warning("No se pudo leer el estado: %s", exc)
-            return JSONResponse(status_code=503, content={
+            return JSONResponse(status_code=503, headers=SIN_CACHE, content={
                 "error": "No se pudo conectar con Supabase",
                 "detalle": type(exc).__name__,
             })
-        return build_status(settings, row, pendientes)
-
-    def _invocar_funcion() -> None:
-        try:
-            r = httpx.post(settings.function_url, json={}, timeout=90)
-            log.info("Actualización manual: HTTP %s %s", r.status_code, r.text[:300])
-        except httpx.HTTPError as exc:
-            # El programador de Supabase la recogerá en ≤5 min igualmente.
-            log.warning("No se pudo invocar la función: %s", exc)
+        return JSONResponse(build_status(settings, datos, pendientes), headers=SIN_CACHE)
 
     @app.post("/api/actualizar")
-    def actualizar(tareas: BackgroundTasks):
+    def actualizar():
         try:
             with db.connect(settings.database_url) as conn:
                 r = db.request_update(conn, settings.market)
         except Exception as exc:
             log.warning("Fallo al pedir actualización: %s", exc)
-            raise HTTPException(503, "No se pudo conectar con Supabase") from exc
+            return JSONResponse(status_code=503, content={"error": "No se pudo conectar con Supabase"})
         if not r.get("ok"):
             mensajes = {
                 "en_curso": "Ya hay una actualización en curso.",
@@ -131,7 +93,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
             return JSONResponse(status_code=429 if r.get("motivo") == "espera" else 409,
                                 content={**r, "mensaje": mensajes.get(r.get("motivo"), "No disponible")})
-        tareas.add_task(_invocar_funcion)
+        log.info("Actualización manual solicitada")
         return JSONResponse(status_code=202, content={"ok": True, "mensaje": "Actualización solicitada."})
 
+    # La misma carpeta que publica Netlify: index.html, app.js, styles.css.
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
     return app
