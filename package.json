@@ -2,11 +2,14 @@
   "name": "mercadowow-funciones",
   "private": true,
   "type": "module",
-  "description": "Pruebas de la Edge Function y del SQL con Postgres simulado (PGlite).",
+  "description": "Pruebas de la Edge Function, del SQL (PGlite) y de la función de Netlify.",
   "scripts": {
-    "test": "node --test \"supabase/pruebas/*.test.ts\""
+    "test": "node --test \"supabase/pruebas/*.test.ts\" \"netlify/pruebas/*.test.ts\""
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.15"
+  },
+  "dependencies": {
+    "postgres": "3.4.9"
   }
 }
