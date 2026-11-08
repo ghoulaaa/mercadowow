@@ -123,6 +123,58 @@ body {
 }
 .login input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
 
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.pill-select {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text);
+  max-width: 220px;
+}
+
+.banda-demo {
+  background: repeating-linear-gradient(45deg, #5a1d1d, #5a1d1d 12px, #6b2424 12px, #6b2424 24px);
+  color: #ffd6d6;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 16px;
+  letter-spacing: .03em;
+  border-bottom: 1px solid var(--danger);
+}
+body.modo-demo .card { border-color: #6b2424; }
+
+code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: .92em;
+  background: var(--panel-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.form-grid { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: center; margin: 12px 0; }
+.form-grid input, .fila-acciones input {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  min-width: 0;
+}
+.fila-acciones { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.fila-acciones input { width: 80px; }
+#resumen-csv, #errores-csv { margin: 0 0 12px; }
+
+@media (max-width: 560px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .pill-select { max-width: 160px; }
+}
+
 .notice {
   margin: 0;
   padding: 10px 14px;

@@ -3,7 +3,8 @@
 App web personal para decidir qué objetos **VENDER**, **GUARDAR** o dejar **EN OBSERVACIÓN**.
 El plan completo y las fuentes verificadas están en [PLAN.md](PLAN.md).
 
-> **Estado: Hitos 1 y 2 terminados.** Supabase descarga los datos reales de TSM cada hora.
+> **Estado: Hitos 1–3 terminados.** Supabase descarga los datos reales de TSM cada hora.
+> Hay además un mercado de **importación manual (CSV)**, que sirve de plan B, y un mercado **DEMO** con datos ficticios. Los tres están separados.
 > Los datos y la consulta horaria a TSM viven en **Supabase**. La página web corre en tu PC.
 
 ## Instalar (una sola vez, en Windows)

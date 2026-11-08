@@ -199,7 +199,7 @@ En el hito final se **medirán** de verdad (RSS y CPU con psutil, tamaño de la 
 |---|---|---|
 | **1** ✅ | Esqueleto + configuración + base de datos (rehecho para Supabase) + `iniciar.bat` | Página local con el estado; pruebas de configuración |
 | **2** ✅ | Conector TSM en Supabase: ETag, reintentos, registro, pg_cron, anti-duplicados | 2026-11-08: primera descarga real (3.728 objetos) y disparo automático de pg_cron verificado (respuesta 304, sin observación nueva) |
-| **3** | Datos demo separados + importación CSV de precios | El mercado demo no aparece mezclado con el real (con test) |
+| **3** ✅ | Datos demo separados + importación CSV de precios | 2026-11-08: tres mercados (TSM, importación manual, DEMO). La BD impide mezclarlos (trigger de origen + clave compuesta). Demo con 16 objetos [FICTICIO] generado en Supabase |
 | **4** | Interfaz: panel, tabla, formato oro/plata/cobre, filtros, favoritos, estado en vivo (SSE) | El panel se actualiza solo al terminar una consulta |
 | **5** | Motor: estadísticas, comisión y depósito, reglas, confianza, explicaciones | Tests con casos de VENDER, GUARDAR y OBSERVACIÓN |
 | **6** | Inventario (manual + CSV), beneficio y margen, detalle con gráfico | Sin coste → no se muestra beneficio (con test) |

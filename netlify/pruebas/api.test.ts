@@ -20,11 +20,12 @@ beforeEach(async () => {
   pg = new PGlite();
   await pg.exec("create role anon; create role authenticated;"); // roles que Supabase ya trae
   await pg.exec(leer("0001_esquema.sql"));
-  await pg.exec(leer("0003_web.sql"));
   // En Supabase esta función (0002) llama a pg_net; aquí solo se anota la llamada.
   await pg.exec(`create table disparos (at timestamptz default now());
                  create function disparar_si_corresponde() returns void language sql as
                  $$ insert into disparos default values $$;`);
+  await pg.exec(leer("0003_web.sql"));
+  await pg.exec(leer("0004_demo_csv.sql"));
   db = { consulta: async (q, p) => (await pg.query<Record<string, unknown>>(q, p)).rows };
   reloj = new Date("2026-11-08T03:00:00Z");
 });

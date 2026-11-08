@@ -84,11 +84,21 @@ export function crearApi(db: Db, o: OpcionesApi) {
 
   const fallaBd = (e: unknown) => {
     const msg = String((e as Error)?.message ?? e);
-    if (/estado_mercado|login_bloqueado|does not exist/.test(msg)) {
+    if (/does not exist|no existe/.test(msg)) {
       return json(503, { error: "Faltan migraciones en Supabase: ejecuta configurar.bat" });
     }
+    // Errores de validación lanzados a propósito por las funciones SQL (raise exception).
+    if ((e as { code?: string })?.code === "P0001") return json(422, { error: msg });
     console.error("Error de base de datos:", msg);
     return json(503, { error: "No se pudo conectar con Supabase" });
+  };
+
+  const leerJson = async (req: Request, maxBytes: number): Promise<any> => {
+    const largo = Number(req.headers.get("content-length") ?? 0);
+    if (largo > maxBytes) throw new RangeError("demasiado grande");
+    const texto = await req.text();
+    if (texto.length > maxBytes) throw new RangeError("demasiado grande");
+    return JSON.parse(texto);
   };
 
   return {
@@ -124,14 +134,62 @@ export function crearApi(db: Db, o: OpcionesApi) {
     async estado(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();
       if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      // Por defecto, el mercado real configurado. Se puede pedir otro (demo, importación) por ?mercado=.
+      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
       try {
-        const r = await llamar(db, "select estado_mercado($1) as r", [o.mercado]);
-        if (!r) return json(500, { error: `Mercado ${o.mercado} no registrado` });
+        const r = await llamar(db, "select estado_mercado($1) as r", [mercado]);
+        if (!r) return json(404, { error: `Mercado ${mercado} no registrado` });
+        const mercados = await llamar(db, "select listar_mercados() as r", []);
         return json(200, {
           ...r,
+          mercados,
+          mercado_principal: o.mercado,
           autenticado: true,
           base_de_datos: { proveedor: "Supabase", proyecto: o.proyecto, migraciones_pendientes: [] },
         });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async importar(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      let c: any;
+      try {
+        c = await leerJson(req, 5_000_000);
+      } catch (e) {
+        return json(e instanceof RangeError ? 413 : 400,
+          { error: e instanceof RangeError ? "Archivo demasiado grande (máx. 5 MB)" : "Petición mal formada" });
+      }
+      if (typeof c?.mercado !== "string" || typeof c?.hora_dato !== "string" || !Array.isArray(c?.filas)) {
+        return json(400, { error: "Faltan mercado, hora_dato o filas" });
+      }
+      try {
+        const r = await llamar(db,
+          "select importar_precios($1, $2::timestamptz, $3::text::jsonb, $4, $5::timestamptz) as r",
+          [c.mercado, c.hora_dato, JSON.stringify(c.filas), String(c.nombre_archivo ?? "sin nombre"),
+            ahora().toISOString()]);
+        return json(200, r);
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async demo(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      let dias = 30;
+      try {
+        const c = await leerJson(req, 1000);
+        if (c?.dias !== undefined) dias = Number(c.dias);
+      } catch { /* cuerpo vacío: 30 días */ }
+      if (!Number.isInteger(dias) || dias < 1 || dias > 60) return json(400, { error: "dias debe estar entre 1 y 60" });
+      try {
+        return json(200, await llamar(db, "select generar_demo($1::integer, $2::timestamptz) as r",
+          [dias, ahora().toISOString()]));
       } catch (e) {
         return fallaBd(e);
       }

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from app.config import BASE_DIR
 
@@ -67,6 +68,24 @@ def pending_migrations(conn: psycopg.Connection) -> list[str]:
 def market_status(conn: psycopg.Connection, market_key: str) -> dict | None:
     """Estado del panel. Lo calcula la función SQL estado_mercado (la misma que usa Netlify)."""
     return conn.execute("select estado_mercado(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def list_markets(conn: psycopg.Connection) -> list[dict]:
+    return conn.execute("select listar_mercados() as r").fetchone()["r"]
+
+
+def import_prices(conn: psycopg.Connection, market_key: str, hora_dato: str,
+                  filas: list[dict], nombre_archivo: str) -> dict:
+    """Plan B: guarda un CSV ya validado en el navegador. La BD vuelve a validar y solo acepta mercados csv."""
+    return conn.execute(
+        "select importar_precios(%s, %s::timestamptz, %s::jsonb, %s) as r",
+        (market_key, hora_dato, Jsonb(filas), nombre_archivo),
+    ).fetchone()["r"]
+
+
+def generate_demo(conn: psycopg.Connection, dias: int) -> dict:
+    """Regenera los datos FICTICIOS del mercado demo (y solo de ese mercado)."""
+    return conn.execute("select generar_demo(%s) as r", (dias,)).fetchone()["r"]
 
 
 def request_update(conn: psycopg.Connection, market_key: str) -> dict:

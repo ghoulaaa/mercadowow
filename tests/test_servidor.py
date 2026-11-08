@@ -6,6 +6,7 @@ Aquí la base de datos se sustituye por respuestas preparadas.
 
 from datetime import datetime, timezone
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -78,7 +79,7 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:3] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql"]
+    assert nombres[:4] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -113,11 +114,17 @@ class ConexionFalsa:
         return type("Cursor", (), {"fetchone": lambda _s: r})()
 
 
+MERCADOS = [{"clave": "tsm:forever:us:pvp-horde"}, {"clave": "csv:forever:us:pvp-horde"},
+            {"clave": "demo:forever:us:demo"}]
+
+
 @pytest.fixture
 def cliente(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "connect", lambda url: ConexionFalsa())
     monkeypatch.setattr(db, "pending_migrations", lambda conn: [])
-    monkeypatch.setattr(db, "market_status", lambda conn, key: dict(ESTADO))
+    monkeypatch.setattr(db, "market_status",
+                        lambda conn, key: dict(ESTADO) if key in {m["clave"] for m in MERCADOS} else None)
+    monkeypatch.setattr(db, "list_markets", lambda conn: MERCADOS)
     with TestClient(create_app(settings(tmp_path))) as c:
         yield c
 
@@ -179,6 +186,43 @@ def test_request_update_solo_dispara_si_se_acepta(respuesta, dispara):
     conn = ConexionFalsa([{"r": respuesta}])
     assert db.request_update(conn, "tsm:forever:us:pvp-horde") == respuesta
     assert any("disparar_si_corresponde" in s for s in conn.sql) is dispara
+
+
+def test_estado_de_otro_mercado_y_mercado_inexistente(cliente):
+    s = cliente.get("/api/estado", params={"mercado": "demo:forever:us:demo"}).json()
+    assert s["mercados"] == MERCADOS and s["mercado_principal"] == "tsm:forever:us:pvp-horde"
+    assert cliente.get("/api/estado", params={"mercado": "no-existe"}).status_code == 404
+
+
+def test_js_se_sirve_como_javascript(cliente):
+    for archivo in ("/app.js", "/csv.js", "/moneda.js"):
+        assert "javascript" in cliente.get(archivo).headers["content-type"]
+
+
+def test_importar_valida_el_cuerpo_y_pasa_errores_sql(cliente, monkeypatch):
+    assert cliente.post("/api/importar", json={"mercado": "x"}).status_code == 400
+
+    class Diag:
+        message_primary = "Solo se puede importar en un mercado de importación manual"
+
+    class ErrorSql(psycopg.errors.RaiseException):
+        diag = Diag()
+
+    def falla(*a):
+        raise ErrorSql()
+    monkeypatch.setattr(db, "import_prices", falla)
+    r = cliente.post("/api/importar", json={"mercado": "tsm:forever:us:pvp-horde",
+                                            "hora_dato": "2026-11-08T02:00:00Z", "filas": []})
+    assert r.status_code == 422
+    assert "importación manual" in r.json()["error"]
+
+
+def test_demo_valida_dias(cliente, monkeypatch):
+    monkeypatch.setattr(db, "generate_demo", lambda conn, dias: {"estado": "nuevo_dato", "dias": dias})
+    assert cliente.post("/api/demo", json={"dias": 0}).status_code == 400
+    assert cliente.post("/api/demo", json={"dias": "5"}).status_code == 400
+    assert cliente.post("/api/demo", json={"dias": 7}).json()["dias"] == 7
+    assert cliente.post("/api/demo").json()["dias"] == 30
 
 
 def test_build_status_sin_datos():
