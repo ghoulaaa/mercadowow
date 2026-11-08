@@ -137,7 +137,11 @@ Cumple el punto 17 de la especificación: buscar un objeto real → abrir su fic
 3. **R3 · Interfaz nueva de 3 columnas** ✅ (2026-11-08): verificada en el navegador con teclas reales (Tab y Shift+Tab, Enter, Esc y salida sin atrapar el foco), con las 3 columnas en escritorio y en móvil la ficha como vista propia. El historial de 24 h, 7, 30 y 90 días sale de AHledger, con la cantidad publicada en un gráfico aparte y los huecos sin escaneos marcados:
    - buscador con autocompletado accesible: Tab y Shift+Tab, ↑↓, Enter, Esc, sin atrapar el foco, sin distinguir tildes ni mayúsculas, descartando respuestas antiguas;
    - ficha del objeto con estadísticas y gráfico de 24 h, 7, 30 y 90 días.
-4. **R4 · Calculadora de rentabilidad**:
+4. **R4 · Calculadora de rentabilidad** ✅ (2026-11-08):
+   - Tabla `auction_fee_rules` con los valores iniciales por verificar, la fecha de vigencia y la fuente. Se editan desde la página; la comisión y el mínimo de la casa de facción se copian al motor y al inventario.
+   - Accesos desde la ficha («Planificar venta») y desde el inventario («Calcular»).
+   - Ejemplo verificado: 20 Essence of Air a 1o 20p, con coste de 80p cada una. Da comisión 1o 20p, depósito 48p (devuelto al vender), neto 22o 80p, beneficio 6o 80p y equilibrio en 84p 22c por unidad.
+   - Detalle técnico:
    - reglas de comisión y depósito configurables por tipo de casa de subastas y duración;
    - cálculo en cobre entero, con el depósito de la publicación vendida devuelto y los de publicaciones fallidas anteriores contados como pérdida;
    - precio mínimo para no perder dinero.

@@ -7,7 +7,7 @@ export const VISTAS = ["inicio", "basedatos", "mercado", "historial", "profesion
 export function leerRuta(hash) {
   const partes = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
   const [vista, arg] = partes;
-  if ((vista === "objeto" || vista === "historial") && /^\d{1,9}$/.test(arg ?? "")) {
+  if ((vista === "objeto" || vista === "historial" || vista === "rentabilidad") && /^\d{1,9}$/.test(arg ?? "")) {
     return { vista, id: Number(arg) };
   }
   if (vista === "objeto") return { vista: "mercado", id: null };

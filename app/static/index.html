@@ -286,13 +286,87 @@
 
       <!-- ===================== RENTABILIDAD (R4) ===================== -->
       <section class="vista" data-vista="rentabilidad" hidden>
-        <section class="card">
-          <h3>Calculadora de rentabilidad</h3>
-          <p class="muted">
-            Llega en la entrega R4: comisión según el tipo de casa de subastas, depósito por duración (2, 8 o 24 h)
-            calculado con el valor de venta al NPC, reembolso del depósito al vender, publicaciones fallidas y precio
-            mínimo para no perder oro. Hoy el inventario ya calcula el ingreso neto estimado con la comisión asumida.
+        <section class="card" id="card-calculadora">
+          <div class="card-head">
+            <h3>Calculadora de rentabilidad</h3>
+            <span id="calc-regla" class="muted small"></span>
+          </div>
+          <form id="form-calc" class="form-grid calc" autocomplete="off">
+            <label for="calc-objeto">Objeto <span class="muted">(opcional)</span></label>
+            <div class="fila-acciones sin-margen">
+              <input id="calc-objeto" list="lista-objetos" placeholder="Nombre o ID: rellena precio y venta al NPC">
+              <button id="calc-cargar" type="button" class="btn btn-small btn-piedra">Cargar datos</button>
+            </div>
+
+            <label for="calc-precio">Precio de venta</label>
+            <div class="fila-acciones sin-margen">
+              <input id="calc-precio" placeholder="p. ej. 1o 20p o 12000" required>
+              <select id="calc-modo-precio" aria-label="El precio es">
+                <option value="unitario">por unidad</option>
+                <option value="total">total del lote</option>
+              </select>
+            </div>
+
+            <label for="calc-cantidad">Cantidad</label>
+            <input id="calc-cantidad" type="number" min="1" step="1" value="1" required>
+
+            <label for="calc-por-subasta">Unidades por subasta</label>
+            <input id="calc-por-subasta" type="number" min="1" step="1" value="20" required>
+
+            <label for="calc-coste">Coste de adquisición <span class="muted">(opcional)</span></label>
+            <div class="fila-acciones sin-margen">
+              <input id="calc-coste" placeholder="vacío = desconocido">
+              <select id="calc-modo-coste" aria-label="El coste es">
+                <option value="unitario">por unidad</option>
+                <option value="total">total</option>
+              </select>
+            </div>
+
+            <label for="calc-casa">Casa de subastas</label>
+            <select id="calc-casa">
+              <option value="faccion">De facción (Horda)</option>
+              <option value="neutral">Neutral</option>
+            </select>
+
+            <label for="calc-duracion">Duración</label>
+            <select id="calc-duracion"></select>
+
+            <label for="calc-npc">Valor de venta al NPC <span class="muted">(por unidad)</span></label>
+            <input id="calc-npc" placeholder="se rellena con el objeto; vacío = desconocido">
+
+            <label for="calc-fallidas">Publicaciones fallidas anteriores</label>
+            <input id="calc-fallidas" type="number" min="0" step="1" value="0">
+
+            <label for="calc-perdidos">Depósitos perdidos reales <span class="muted">(opcional)</span></label>
+            <input id="calc-perdidos" placeholder="si los sabes; si no, se estiman con las fallidas">
+          </form>
+          <ul id="calc-errores" class="log bad small" hidden></ul>
+          <dl id="calc-resultado" class="kv calc-res"></dl>
+          <ul id="calc-supuestos" class="det-lista riesgos small"></ul>
+          <p class="muted small nota">
+            Fórmulas: <strong>ingreso neto = precio de venta − comisión</strong>;
+            <strong>beneficio = ingreso neto − coste de adquisición − depósitos perdidos antes</strong>.
+            El depósito de la subasta que se vende se devuelve: no cuenta como pérdida. Todo se calcula en cobres
+            enteros, subasta por subasta, con el redondeo de la regla elegida.
           </p>
+        </section>
+
+        <section class="card" id="card-tasas">
+          <h3>Reglas de comisión y depósito</h3>
+          <p class="muted small">
+            Blizzard no publica estas reglas para Forever. Son valores <strong>por verificar</strong>: compruébalos en el
+            juego (el correo de una venta trae la comisión; al publicar se ve el depósito) y márcalos como verificados.
+            La comisión y el depósito mínimo valen para todas las duraciones del mismo tipo de casa; los de la casa de
+            facción también los usan el inventario y las recomendaciones.
+          </p>
+          <div class="tabla-wrap">
+            <table class="tabla mini tabla-tasas">
+              <thead><tr><th>Casa</th><th>Duración</th><th class="num">Comisión %</th><th class="num">Depósito % del NPC</th>
+                <th class="num">Mínimo (cobre)</th><th>Verificado</th><th>Vigente desde · fuente</th><th></th></tr></thead>
+              <tbody id="tasas-tbody"></tbody>
+            </table>
+          </div>
+          <p id="tasas-msg" class="small" hidden></p>
         </section>
       </section>
 

@@ -3,6 +3,7 @@ import { dibujarGrafico } from "./grafico.js";
 import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
 import { leerRuta } from "./ruta.js";
+import { calcular } from "./rentabilidad.js";
 import {
   NOMBRE_CALIDAD, NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas, subcategorias,
 } from "./tabla.js";
@@ -768,7 +769,8 @@ function pintarInventario() {
     const acc = el("div", "acciones-lote");
     const be = el("button", "btn-mini", "Editar"); be.type = "button"; be.dataset.editar = f.id;
     const bb = el("button", "btn-mini peligro", "Borrar"); bb.type = "button"; bb.dataset.borrar = f.id;
-    acc.append(be, bb); tdAcc.append(acc); tr.append(tdAcc);
+    const bc = el("button", "btn-mini", "Calcular"); bc.type = "button"; bc.dataset.calcular = f.id;
+    acc.append(bc, be, bb); tdAcc.append(acc); tr.append(tdAcc);
     tbody.append(tr);
   }
 }
@@ -825,6 +827,15 @@ $("form-inv").addEventListener("submit", async (ev) => {
 $("inv-tbody").addEventListener("click", async (ev) => {
   const ver = ev.target.closest("[data-detalle]");
   if (ver) { abrirDetalle(Number(ver.dataset.detalle)); return; }
+  const calc = ev.target.closest("[data-calcular]");
+  if (calc) {
+    const f = inventario.filas.find((x) => x.id === Number(calc.dataset.calcular));
+    loteParaCalculo = f;
+    calcObjetoId = null;   // fuerza a rellenar de nuevo aunque sea el mismo objeto
+    location.hash = `#/rentabilidad/${f.item_id}`;
+    if (leerRuta(location.hash).id === f.item_id) cargarObjetoCalc(f.item_id);
+    return;
+  }
   const bor = ev.target.closest("[data-borrar]");
   if (bor) {
     const f = inventario.filas.find((x) => x.id === Number(bor.dataset.borrar));
@@ -1093,8 +1104,6 @@ const AJUSTES = [
   ["motor.min_observaciones", "Observaciones mínimas en 30 días", ""],
   ["motor.dato_antiguo_horas", "Dato antiguo a partir de", "horas"],
   ["motor.extremo_factor", "Precio extremo: veces por encima o por debajo de la mediana", "×"],
-  ["motor.comision_pct", "Comisión de la casa de subastas (asumida, compruébala en el juego)", "%"],
-  ["motor.deposito_minimo_cobre", "Depósito mínimo por publicación (en cobre)", "c"],
   ["motor.unidades_por_publicacion", "Unidades que pones en cada subasta (para contar depósitos)", "uds."],
   ["motor.prob_no_venta_pct", "Supuesto: % de subastas que caducan sin venderse (pérdida de depósito)", "%"],
 ];
@@ -1168,6 +1177,7 @@ function aplicarRuta() {
   if (r.vista === "objeto" && r.id !== objetoActual) abrirObjeto(r.id);
   if (r.vista === "historial") { if (r.id) objetoActual = r.id; pintarHistorial(); }
   if (r.vista === "oportunidades") pintarOportunidades();
+  if (r.vista === "rentabilidad" && r.id && r.id !== calcObjetoId) cargarObjetoCalc(r.id);
 }
 window.addEventListener("hashchange", aplicarRuta);
 
@@ -1224,6 +1234,10 @@ function accionesObjeto(id, fila) {
     $("inv-objeto").value = `${nombre} #${id}`;
     $("inv-cantidad").focus();
   });
+  const plan = el("button", "btn btn-small btn-rojo", "Planificar venta");
+  plan.type = "button";
+  plan.addEventListener("click", () => { location.hash = `#/rentabilidad/${id}`; });
+  cont.append(plan);
   const hist = el("button", "btn btn-small btn-piedra", "Historial completo");
   hist.type = "button";
   hist.addEventListener("click", () => { location.hash = `#/historial/${id}`; });
@@ -1543,6 +1557,193 @@ $("btn-restablecer").addEventListener("click", () => {
   pintarArbol();
 });
 
+// =====================================================================
+// R4 · Calculadora de rentabilidad y reglas de comisión/depósito
+// =====================================================================
+let tasas = [];
+let loteParaCalculo = null;   // lote del inventario desde el que se pidió «Calcular»
+let calcObjetoId = null;
+
+async function cargarTasas() {
+  try {
+    const r = await fetch("/api/tasas", { cache: "no-store" });
+    if (!r.ok) return;
+    tasas = await r.json();
+  } catch { return; }
+  pintarDuraciones();
+  pintarTasas();
+  recalcular();
+}
+
+function reglaElegida() {
+  return tasas.find((t) => t.tipo_casa === $("calc-casa").value && String(t.duracion_horas) === $("calc-duracion").value) ?? null;
+}
+
+function pintarDuraciones() {
+  const sel = $("calc-duracion"), previa = sel.value || "24";
+  sel.replaceChildren();
+  for (const t of tasas.filter((x) => x.tipo_casa === $("calc-casa").value)) {
+    const op = el("option", "", `${t.duracion_horas} h`);
+    op.value = String(t.duracion_horas);
+    sel.append(op);
+  }
+  sel.value = [...sel.options].some((o) => o.value === previa) ? previa : sel.options[0]?.value ?? "";
+}
+
+function leerDinero(id, errores, nombre) {
+  try { return parsearMoneda($(id).value); }
+  catch (e) { errores.push(`${nombre}: ${e.message}`); return null; }
+}
+
+function recalcular() {
+  const regla = reglaElegida();
+  const res = $("calc-resultado"), lista = $("calc-errores"), sup = $("calc-supuestos");
+  res.replaceChildren(); sup.replaceChildren(); lista.replaceChildren();
+  if (!regla) { lista.hidden = true; return; }
+  $("calc-regla").textContent = `Regla: ${regla.tipo_casa === "faccion" ? "casa de facción" : "casa neutral"}, ` +
+    `${regla.duracion_horas} h · comisión ${String(regla.comision_pct).replace(".", ",")} % · depósito ` +
+    `${String(regla.deposito_pct).replace(".", ",")} % del NPC (mín. ${formatearMoneda(regla.deposito_minimo)})` +
+    (regla.verificado ? " · verificada" : " · SIN VERIFICAR");
+  const errores = [];
+  const precio = leerDinero("calc-precio", errores, "Precio");
+  const coste = leerDinero("calc-coste", errores, "Coste");
+  const ventaNpc = leerDinero("calc-npc", errores, "Venta al NPC");
+  const perdidos = leerDinero("calc-perdidos", errores, "Depósitos perdidos");
+  if (precio == null && !errores.length) {
+    lista.hidden = true;
+    res.append(el("dt", "", "Resultado"), el("dd", "muted", "Escribe un precio de venta para calcular."));
+    return;
+  }
+  const r = errores.length ? { errores } : calcular({
+    precio, modoPrecio: $("calc-modo-precio").value,
+    cantidad: Number($("calc-cantidad").value), porSubasta: Number($("calc-por-subasta").value),
+    coste, modoCoste: $("calc-modo-coste").value, ventaNpc,
+    fallidas: Number($("calc-fallidas").value || 0), depositosPerdidosReales: perdidos,
+  }, { ...regla, comision_pct: Number(regla.comision_pct), deposito_pct: Number(regla.deposito_pct),
+       deposito_minimo: Number(regla.deposito_minimo) });
+  for (const e of r.errores) lista.append(el("li", "", e));
+  lista.hidden = r.errores.length === 0;
+  if (r.errores.length) return;
+
+  const fila = (k, v, cls = "") => res.append(el("dt", "", k), el("dd", cls, v));
+  fila("Valor total de venta", formatearMoneda(r.valorTotal) +
+    (r.subastas > 1 ? ` · ${r.subastas} subastas (${r.unidadesPorSubasta.join(" + ")} uds.)` : ""));
+  fila("Comisión (coste definitivo)", "−" + formatearMoneda(r.comision));
+  fila("Depósito inicial (se paga al publicar)", formatearMoneda(r.depositoInicial));
+  fila("Reembolso del depósito si se vende", "+" + formatearMoneda(r.reembolsoDeposito));
+  fila("Te llega por correo al vender", formatearMoneda(r.recibidoPorCorreo) + " (venta − comisión + depósito devuelto)");
+  fila("Oro neto recibido (ingreso neto)", formatearMoneda(r.ingresoNeto), "destacado");
+  fila("Depósitos perdidos antes", r.depositosPerdidos ? "−" + formatearMoneda(r.depositosPerdidos) +
+    (r.depositosPerdidosEstimados ? " (estimado)" : "") : "0c");
+  fila("Coste total de adquisición", r.costeTotal == null ? "desconocido" : formatearMoneda(r.costeTotal));
+  fila("Ganancia o pérdida", r.beneficio == null ? "sin calcular (falta el coste)" : formatearMoneda(r.beneficio),
+    r.beneficio == null ? "muted" : r.beneficio >= 0 ? "destacado sube" : "destacado baja");
+  fila("Margen", r.margen == null ? "—" : formatearPct(100 * r.margen));
+  fila("Precio mínimo para no perder oro", r.precioEquilibrioUnitario == null ? "—"
+    : `${formatearMoneda(r.precioEquilibrioUnitario)} por unidad` +
+      (r.costeTotal == null && !r.depositosPerdidos ? " (sin coste ni depósitos perdidos, cualquier precio cubre)" : ""));
+  for (const s of r.supuestos) sup.append(el("li", "", s));
+}
+
+async function cargarObjetoCalc(id) {
+  calcObjetoId = id;
+  const fila = filasTabla.find((f) => f.id === id);
+  let ventaNpc = null, nombre = fila?.nombre, precio = fila?.precio_ref ?? null;
+  try {
+    const r = await fetch(`/api/objeto?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}`, { cache: "no-store" });
+    if (r.ok) {
+      const f = await r.json();
+      ventaNpc = f.venta_npc ?? null;
+      nombre = nombre ?? f.nombre;
+      precio = precio ?? f.mercado?.precio ?? null;
+    }
+  } catch { /* se queda con lo que haya */ }
+  if (calcObjetoId !== id) return;
+  $("calc-objeto").value = nombre ? `${nombre} #${id}` : `#${id}`;
+  $("calc-npc").value = ventaNpc == null ? "" : formatearMoneda(ventaNpc);
+  if (precio != null) { $("calc-precio").value = formatearMoneda(precio); $("calc-modo-precio").value = "unitario"; }
+  if (loteParaCalculo && loteParaCalculo.item_id === id) {
+    $("calc-cantidad").value = loteParaCalculo.cantidad;
+    $("calc-coste").value = loteParaCalculo.coste_unitario == null ? "" : formatearMoneda(loteParaCalculo.coste_unitario);
+    $("calc-modo-coste").value = "unitario";
+    loteParaCalculo = null;
+  }
+  recalcular();
+}
+
+$("calc-cargar").addEventListener("click", async () => {
+  const t = $("calc-objeto").value.trim();
+  const fila = resolverObjeto(t);
+  const id = fila?.id ?? (/^#?(\d{1,9})$/.exec(t)?.[1] ? Number(/(\d{1,9})/.exec(t)[1]) : null);
+  if (id) await cargarObjetoCalc(id);
+  else { $("calc-errores").replaceChildren(el("li", "", "No encuentro ese objeto: elígelo de la lista o escribe su ID.")); $("calc-errores").hidden = false; }
+});
+$("calc-casa").addEventListener("change", () => { pintarDuraciones(); recalcular(); });
+for (const id of ["calc-precio", "calc-modo-precio", "calc-cantidad", "calc-por-subasta", "calc-coste", "calc-modo-coste",
+  "calc-duracion", "calc-npc", "calc-fallidas", "calc-perdidos"]) {
+  $(id).addEventListener("input", recalcular);
+  $(id).addEventListener("change", recalcular);
+}
+$("form-calc").addEventListener("submit", (ev) => ev.preventDefault());
+
+function pintarTasas() {
+  const tb = $("tasas-tbody");
+  tb.replaceChildren();
+  for (const t of tasas) {
+    const tr = el("tr");
+    tr.dataset.id = t.id;
+    const inp = (campo, valor, etiqueta) => {
+      const td = el("td", "num");
+      const i = el("input");
+      i.value = valor; i.dataset.campo = campo; i.inputMode = "decimal";
+      i.setAttribute("aria-label", `${etiqueta} (${t.tipo_casa}, ${t.duracion_horas} h)`);
+      td.append(i);
+      return td;
+    };
+    const tdVer = el("td");
+    const cb = el("input");
+    cb.type = "checkbox"; cb.checked = t.verificado; cb.dataset.campo = "verificado";
+    cb.setAttribute("aria-label", `Verificada (${t.tipo_casa}, ${t.duracion_horas} h)`);
+    tdVer.append(cb);
+    const tdG = el("td");
+    const b = el("button", "btn-mini", "Guardar");
+    b.type = "button"; b.dataset.guardarTasa = t.id;
+    tdG.append(b);
+    tr.append(el("td", "", t.tipo_casa === "faccion" ? "Facción" : "Neutral"), el("td", "", `${t.duracion_horas} h`),
+      inp("comision_pct", t.comision_pct, "Comisión %"), inp("deposito_pct", t.deposito_pct, "Depósito %"),
+      inp("deposito_minimo", t.deposito_minimo, "Depósito mínimo en cobre"), tdVer,
+      el("td", "muted small", `${t.vigente_desde} · ${t.fuente}${t.nota ? " · " + t.nota : ""}`), tdG);
+    tb.append(tr);
+  }
+}
+
+$("tasas-tbody").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("[data-guardar-tasa]");
+  if (!b) return;
+  const tr = b.closest("tr"), cambios = {};
+  for (const i of tr.querySelectorAll("[data-campo]")) {
+    cambios[i.dataset.campo] = i.type === "checkbox" ? i.checked : Number(String(i.value).replace(",", "."));
+  }
+  const msg = $("tasas-msg");
+  msg.hidden = false;
+  try {
+    const r = await fetch("/api/tasas", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(b.dataset.guardarTasa), cambios }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    tasas = d;
+    pintarTasas(); pintarDuraciones(); recalcular();
+    msg.className = "small ok";
+    msg.textContent = "Regla guardada. La comisión y el mínimo se aplican a todas las duraciones de esa casa.";
+    cargarPrecios(); cargarInventario();   // el motor y el inventario usan la comisión de facción
+  } catch (e) {
+    msg.className = "small bad";
+    msg.textContent = e.message;
+  }
+});
+
 // ---------- actualización en vivo ----------
 // Cada 30 s (o cada 5 s justo después de pulsar «Actualizar») se consulta una huella mínima
 // del mercado; si cambió, se recargan el estado y la tabla sin recargar la página.
@@ -1570,6 +1771,8 @@ async function vigilar() {
 }
 async function refrescar() {
   await cargar();
+  aplicarRuta();          // muestra ya la sección pedida, sin esperar a los 3.000+ precios
+  cargarTasas();          // la calculadora no depende de la tabla de precios
   await cargarPrecios();
   rellenarListaObjetos();
   pintarArbol();

@@ -611,3 +611,16 @@ h2, h3, h4 { color: var(--gold); }
   .cabecera { position: static; }
   .accesos a { padding: 8px 6px; font-size: 13px; }
 }
+
+/* ---------- R4 · calculadora ---------- */
+.calc { grid-template-columns: max-content minmax(0, 1fr); }
+.calc input, .calc select { width: 100%; }
+.fila-acciones.sin-margen { margin: 0; flex-wrap: nowrap; }
+.fila-acciones.sin-margen input { flex: 1 1 auto; width: auto; }
+.fila-acciones.sin-margen select { flex: 0 0 auto; width: auto; }
+.calc-res dd { font-variant-numeric: tabular-nums; font-size: 16px; }
+.calc-res .destacado { color: var(--gold); font-weight: 650; }
+.tabla-tasas input { width: 80px; font: inherit; font-size: 13px; padding: 2px 6px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text); text-align: right; }
+@media (max-width: 560px) { .calc { grid-template-columns: 1fr; } .fila-acciones.sin-margen { flex-wrap: wrap; } }
+.calc-res { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }

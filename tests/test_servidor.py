@@ -79,10 +79,10 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:13] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:14] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
-                           "0012_busqueda_mercado.sql", "0013_textos_fuente.sql"]
+                           "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -442,6 +442,17 @@ def test_paginas_nuevas_se_sirven(cliente):
     html = cliente.get("/").text
     for id_ in ('id="buscador"', 'role="combobox"', 'data-vista="mercado"', 'id="panel-ficha"', 'class="accesos"'):
         assert id_ in html
+
+
+@pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])
+def test_tasas_valida(cliente, cuerpo):
+    assert cliente.post("/api/tasas", json=cuerpo).status_code == 400
+
+
+def test_calculadora_se_sirve(cliente):
+    assert "javascript" in cliente.get("/rentabilidad.js").headers["content-type"]
+    html = cliente.get("/").text
+    assert 'id="form-calc"' in html and 'id="tasas-tbody"' in html
 
 
 def test_build_status_sin_datos():

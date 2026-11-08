@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 import psycopg
+from psycopg.types.json import Jsonb
 from fastapi import Body, FastAPI, Query
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -323,6 +324,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception as exc:
             log.warning("Fallo al leer categorías: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    @app.get("/api/tasas")
+    def tasas_leer():
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select leer_tasas('forever') as r").fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer tasas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/tasas")
+    def tasas_guardar(c: dict = Body(...)):
+        if not (isinstance(c.get("id"), int) and not isinstance(c.get("id"), bool)) or not isinstance(c.get("cambios"), dict):
+            return JSONResponse(status_code=400, content={"error": "Faltan id o cambios"})
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                r = conn.execute("select guardar_tasa(%s::smallint, %s::jsonb) as r",
+                                 (c["id"], Jsonb(c["cambios"]))).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al guardar tasa: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        log.info("Regla de comisión/depósito cambiada: %s", c)
+        return r
 
     @app.get("/api/ajustes")
     def ajustes_leer():

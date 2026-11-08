@@ -484,6 +484,25 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Reglas de comisión y depósito (auction_fee_rules): leer y editar. */
+    async tasas(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") return json(200, await llamar(db, "select leer_tasas('forever') as r", []));
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 2000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!Number.isInteger(c?.id) || !c?.cambios || typeof c.cambios !== "object" || Array.isArray(c.cambios)) {
+          return json(400, { error: "Faltan id o cambios" });
+        }
+        return json(200, await llamar(db, "select guardar_tasa($1::smallint, $2::text::jsonb, $3::date) as r",
+          [c.id, JSON.stringify(c.cambios), ahora().toISOString().slice(0, 10)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     async favorito(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();
       if (req.method !== "POST") return json(405, { error: "Método no permitido" });
