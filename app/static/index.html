@@ -66,6 +66,22 @@
         </div>
       </section>
 
+      <section class="card" id="card-catalogo">
+        <div class="card-head">
+          <h3>Catálogo de objetos</h3>
+          <span id="cat-estado" class="muted small"></span>
+        </div>
+        <label class="sr-only" for="cat-q">Buscar objeto por nombre o ID</label>
+        <input id="cat-q" class="buscador" type="search" autocomplete="off"
+               placeholder="Busca por nombre (en inglés) o por ID, p. ej. «essence» o 7082">
+        <ul id="cat-resultados" class="cat-lista" aria-live="polite"></ul>
+        <div id="cat-ficha" hidden></div>
+        <p class="muted small nota">
+          Datos del objeto de AHledger (que salen de los datos de Blizzard). Nombres en inglés mientras no haya
+          traducción verificada. Si buscas un ID que aún no está en el catálogo, se pide a AHledger y se añade.
+        </p>
+      </section>
+
       <section class="card" id="card-inventario">
         <div class="card-head">
           <h3>Mi inventario</h3>
@@ -221,6 +237,16 @@
         <div class="filtros">
           <input id="f-texto" type="search" placeholder="Buscar objeto o ID…" aria-label="Buscar">
           <select id="f-categoria" aria-label="Categoría"><option value="">Todas las categorías</option></select>
+          <select id="f-subcategoria" aria-label="Subcategoría" disabled><option value="">Todas las subcategorías</option></select>
+          <select id="f-calidad" aria-label="Calidad">
+            <option value="">Todas las calidades</option>
+            <option value="POOR">Pobre (gris)</option>
+            <option value="COMMON">Común (blanco)</option>
+            <option value="UNCOMMON">Poco común (verde)</option>
+            <option value="RARE">Raro (azul)</option>
+            <option value="EPIC">Épico (morado)</option>
+            <option value="LEGENDARY">Legendario (naranja)</option>
+          </select>
           <select id="f-recomendacion" aria-label="Recomendación">
             <option value="">Todas las recomendaciones</option>
             <option value="VENDER">Vender</option>

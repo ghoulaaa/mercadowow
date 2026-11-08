@@ -353,3 +353,68 @@ export async function ejecutarTodos(db: Db, o: Omit<Opciones, "mercado">): Promi
   }
   return resultados;
 }
+
+// ---------------------------------------------------------------------
+// Catálogo (R2): metadatos completos desde AHledger /v1/items/{id}?game=forever,
+// por lotes pequeños para respetar su límite (300 peticiones por minuto).
+
+export const URL_OBJETO_AHLEDGER = "https://api.ahledger.com/v1/items/";
+
+export type ResultadoObjeto =
+  | { tipo: "ok"; objeto: Record<string, unknown> }
+  | { tipo: "no_encontrado" }
+  | { tipo: "parar"; motivo: string };
+
+/** Pide un objeto a AHledger. «parar» = límite o caída del servicio: no seguir pidiendo. */
+export async function pedirObjetoAhledger(f: typeof fetch, id: number, juego = "forever",
+                                          userAgent = "mercadowow/0.1 (uso personal)"): Promise<ResultadoObjeto> {
+  let r: Response;
+  try {
+    r = await f(`${URL_OBJETO_AHLEDGER}${id}?game=${juego}`, {
+      headers: { "User-Agent": userAgent, Accept: "application/json" },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (e) {
+    return { tipo: "parar", motivo: `Error de conexión: ${(e as Error).message ?? e}` };
+  }
+  if (r.status === 404) { await r.body?.cancel(); return { tipo: "no_encontrado" }; }
+  if (r.status !== 200) { await r.body?.cancel(); return { tipo: "parar", motivo: `HTTP ${r.status}` }; }
+  const j = await r.json().catch(() => null) as Record<string, unknown> | null;
+  if (!j || j.id !== id || typeof j.name !== "string" || !j.name.trim()) return { tipo: "no_encontrado" };
+  return { tipo: "ok", objeto: j };
+}
+
+export async function completarCatalogo(db: Db, o: { fetch: typeof fetch; ahora?: () => Date; limite?: number;
+                                                     simultaneas?: number }) {
+  const ahora = o.ahora ?? (() => new Date());
+  const t = () => ahora().toISOString();
+  const turno = (await db.consulta("select tomar_turno_catalogo(180, $1::timestamptz) as r", [t()]))[0]?.r;
+  if (!turno) return { estado: "omitido", motivo: "en_curso" };
+  try {
+    const ids = ((await db.consulta("select catalogo_pendientes('forever', $1::integer, $2::timestamptz) as r",
+      [o.limite ?? 150, t()]))[0]?.r ?? []) as number[];
+    const ok: Record<string, unknown>[] = [];
+    const sinDatos: number[] = [];
+    let parado: string | null = null;
+    const n = o.simultaneas ?? 5;
+    for (let i = 0; i < ids.length && !parado; i += n) {
+      const res = await Promise.all(ids.slice(i, i + n).map((id) => pedirObjetoAhledger(o.fetch, id)));
+      res.forEach((r, k) => {
+        if (r.tipo === "ok") ok.push(r.objeto);
+        else if (r.tipo === "no_encontrado") sinDatos.push(ids[i + k]);
+        else parado ??= r.motivo;
+      });
+    }
+    if (ok.length) {
+      await db.consulta("select guardar_catalogo('forever', $1::text::jsonb, 'ahledger', $2::timestamptz) as r",
+        [JSON.stringify(ok), t()]);
+    }
+    if (sinDatos.length) {
+      await db.consulta("select registrar_fallo_catalogo('forever', $1::integer[], 'AHledger no tiene este objeto', $2::timestamptz)",
+        [sinDatos, t()]);
+    }
+    return { estado: "ok", pedidos: ids.length, guardados: ok.length, sin_datos: sinDatos.length, parado };
+  } finally {
+    await db.consulta("select soltar_turno_catalogo()", []);
+  }
+}

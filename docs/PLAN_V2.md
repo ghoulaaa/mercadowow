@@ -128,7 +128,12 @@ Se amplía lo que ya existe; no se rehace.
 Cumple el punto 17 de la especificación: buscar un objeto real → abrir su ficha → elegir un mercado disponible → ver su precio e historial → calcular la rentabilidad de venta.
 
 1. **R1 · Proveedor AHledger** ✅ (2026-11-08): mercado nuevo, sincronización horaria con ETag, mediana, cantidad y ventas estimadas; atribución visible. Primera descarga real: 3.613 objetos en 11,7 s; todos con nombre, 3.500 con icono oficial y 3.526 con calidad. La función recorre TSM y AHledger, y si uno falla el otro sigue.
-2. **R2 · Catálogo**: metadatos de AHledger para los ~3.600 objetos con precio y alta de otros por ID; categorías generadas a partir de sus clases y subclases reales.
+2. **R2 · Catálogo** ✅ (2026-11-08):
+   - Tabla `catalogo` por versión del juego, con procedencia y fecha de verificación.
+   - Se completa sola por lotes de 150 objetos cada 5 minutos (pg_cron + Edge Function), respetando el límite de AHledger. Prueba real: 300 objetos en 2 lotes de unos 17 s, sin fallos.
+   - Búsqueda por nombre (prefijo antes que «contiene», sin tildes ni mayúsculas) o por ID. Un ID que falta se pide a AHledger y se añade: 7082 Essence of Air.
+   - Mientras el catálogo se completa, la búsqueda incluye también los objetos del mercado que aún no tienen ficha.
+   - Ficha con enlaces a Wowhead y AHledger, filtros de categoría › subcategoría reales y filtro de calidad.
 3. **R3 · Interfaz nueva de 3 columnas**:
    - buscador con autocompletado accesible: Tab y Shift+Tab, ↑↓, Enter, Esc, sin atrapar el foco, sin distinguir tildes ni mayúsculas, descartando respuestas antiguas;
    - ficha del objeto con estadísticas y gráfico de 24 h, 7, 30 y 90 días.

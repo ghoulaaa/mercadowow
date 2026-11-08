@@ -3,6 +3,7 @@
 // en el servidor; el navegador recibe únicamente una cookie de sesión firmada.
 
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import { pedirObjetoAhledger } from "../../supabase/functions/actualizar-mercado/nucleo.ts";
 
 export interface Db {
   consulta(sql: string, params: unknown[]): Promise<Record<string, unknown>[]>;
@@ -14,6 +15,7 @@ export interface OpcionesApi {
   proyecto: string;            // ref del proyecto Supabase (solo informativo)
   ahora?: () => Date;
   segura?: boolean;            // cookie Secure (true en Netlify, false en pruebas locales)
+  fetch?: typeof fetch;        // para pedir a AHledger un objeto que aún no está en el catálogo
 }
 
 export const CLAVE_MINIMA = 12;
@@ -93,6 +95,17 @@ export function crearApi(db: Db, o: OpcionesApi) {
     }
     console.error("Error de base de datos:", msg);
     return json(503, { error: "No se pudo conectar con Supabase" });
+  };
+
+  /** Pide a AHledger un objeto que falta en el catálogo y lo guarda. Solo para mercados reales. */
+  const altaPorId = async (mercado: string, id: number): Promise<boolean> => {
+    const m = (await db.consulta("select game_type, is_demo from markets where key = $1", [mercado]))[0];
+    if (!m || m.is_demo) return false;
+    const r = await pedirObjetoAhledger(o.fetch ?? fetch, id, String(m.game_type));
+    if (r.tipo !== "ok") return false;
+    await db.consulta("select guardar_catalogo($1, $2::text::jsonb, 'ahledger', $3::timestamptz) as r",
+      [m.game_type, JSON.stringify([r.objeto]), ahora().toISOString()]);
+    return true;
   };
 
   const leerJson = async (req: Request, maxBytes: number): Promise<any> => {
@@ -335,6 +348,55 @@ export function crearApi(db: Db, o: OpcionesApi) {
           return json(200, await llamar(db, "select borrar_venta($1, $2::bigint) as r", [c.mercado, c.id]));
         }
         return json(400, { error: "Acción desconocida" });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async catalogo(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const q = (u.get("q") ?? "").trim().slice(0, 80);
+      if (!q) return json(200, { q, resultados: [] });
+      try {
+        let resultados = await llamar(db, "select buscar_catalogo($1, $2, 20) as r", [mercado, q]);
+        // Un ID que no está en el catálogo: se pide a AHledger y se añade (alta por ID).
+        if (/^\d{1,9}$/.test(q) && !resultados.some((r: any) => r.id === Number(q))) {
+          const anadido = await altaPorId(mercado, Number(q));
+          if (anadido) resultados = await llamar(db, "select buscar_catalogo($1, $2, 20) as r", [mercado, q]);
+        }
+        return json(200, { q, resultados });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async objeto(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const id = Number(u.get("id"));
+      if (!Number.isInteger(id) || id <= 0) return json(400, { error: "Falta id" });
+      try {
+        let f = await llamar(db, "select ficha_objeto($1, $2::integer) as r", [mercado, id]);
+        if (!f?.en_catalogo && await altaPorId(mercado, id)) {
+          f = await llamar(db, "select ficha_objeto($1, $2::integer) as r", [mercado, id]);
+        }
+        return f ? json(200, f) : json(404, { error: "Ese objeto no existe en el catálogo ni en AHledger" });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async categorias(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+      try {
+        return json(200, await llamar(db, "select categorias_mercado($1) as r", [mercado]));
       } catch (e) {
         return fallaBd(e);
       }

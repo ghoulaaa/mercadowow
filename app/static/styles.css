@@ -361,6 +361,28 @@ h3.inline { display: inline; }
 .icono[data-calidad="EPIC"] { box-shadow: 0 0 0 1px #a335ee; }
 .icono[data-calidad="LEGENDARY"] { box-shadow: 0 0 0 1px #ff8000; }
 
+/* ---------- calidad y catálogo ---------- */
+.q-POOR { color: #9d9d9d; } .q-COMMON { color: #e6e6e6; } .q-UNCOMMON { color: #1eff00; }
+.q-RARE { color: #3d9bff; } .q-EPIC { color: #b467f0; } .q-LEGENDARY { color: #ff8000; }
+.buscador {
+  width: 100%; font: inherit; font-size: 15px; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+.buscador:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+.cat-lista { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; }
+.cat-lista button {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; font: inherit; font-size: 14px;
+  background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; color: var(--text); cursor: pointer;
+}
+.cat-lista button:hover, .cat-lista button:focus-visible { background: var(--panel-2); border-color: var(--border); outline: none; }
+.cat-lista .cat-sub { color: var(--muted); font-size: 12px; }
+.cat-ficha { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
+.cat-ficha-cab { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.icono.grande { flex: 0 0 48px; width: 48px; height: 48px; font-size: 20px; }
+.cat-ficha h4 { margin: 0; font-size: 17px; }
+.enlaces { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
+.enlaces a { color: var(--gold); }
+
 /* ---------- gráfico ---------- */
 :root { --serie-1: #b98a14; --serie-2: #4c94d6; }
 .g-marco { position: relative; }

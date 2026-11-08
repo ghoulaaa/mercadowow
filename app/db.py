@@ -153,6 +153,36 @@ def sales_action(conn: psycopg.Connection, c: dict) -> dict:
         return conn.execute("select borrar_venta(%s, %s) as r", (c["mercado"], c["id"])).fetchone()["r"]
 
 
+def search_catalog(conn: psycopg.Connection, market_key: str, q: str) -> list[dict]:
+    return conn.execute("select buscar_catalogo(%s, %s, 20) as r", (market_key, q)).fetchone()["r"]
+
+
+def item_sheet(conn: psycopg.Connection, market_key: str, item_id: int) -> dict | None:
+    return conn.execute("select ficha_objeto(%s, %s) as r", (market_key, item_id)).fetchone()["r"]
+
+
+def categories(conn: psycopg.Connection, market_key: str) -> list[dict]:
+    return conn.execute("select categorias_mercado(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def add_to_catalog(conn: psycopg.Connection, market_key: str, item_id: int, http_get) -> bool:
+    """Alta por ID: pide el objeto a AHledger y lo guarda en el catálogo. Solo mercados reales."""
+    m = conn.execute("select game_type, is_demo from markets where key = %s", (market_key,)).fetchone()
+    if not m or m["is_demo"]:
+        return False
+    try:
+        r = http_get(f"https://api.ahledger.com/v1/items/{item_id}?game={m['game_type']}")
+    except Exception:
+        return False
+    if r.status_code != 200:
+        return False
+    obj = r.json()
+    if not isinstance(obj, dict) or obj.get("id") != item_id or not str(obj.get("name") or "").strip():
+        return False
+    conn.execute("select guardar_catalogo(%s, %s::jsonb, 'ahledger')", (m["game_type"], Jsonb([obj])))
+    return True
+
+
 def market_version(conn: psycopg.Connection, market_key: str) -> dict | None:
     return conn.execute("select version_mercado(%s) as r", (market_key,)).fetchone()["r"]
 

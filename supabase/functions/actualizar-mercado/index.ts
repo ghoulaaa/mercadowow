@@ -1,10 +1,13 @@
-// Edge Function de Supabase: la llama pg_cron (cada 5 min comprueba si toca)
-// y el botón manual. Recorre todos los mercados con descarga automática (TSM y
-// AHledger) y solo descarga los que la base de datos dice que tocan, así que
-// llamarla de más no provoca consultas extra a los proveedores.
+// Edge Function de Supabase. La llaman:
+//   * pg_cron cada 5 min si toca consultar algún mercado → recorre TSM y AHledger
+//     y solo descarga los que la base de datos dice que tocan;
+//   * pg_cron cada 5 min si hay objetos sin ficha en el catálogo → {"tarea": "catalogo"}
+//     completa un lote de ≈150 objetos desde AHledger;
+//   * el botón «Actualizar» de la página.
+// Llamarla de más no provoca consultas extra a los proveedores.
 
 import postgres from "npm:postgres@3.4.9";
-import { ejecutarTodos, type Db } from "./nucleo.ts";
+import { completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -15,9 +18,12 @@ Deno.serve(async (req) => {
     return new Response("Método no permitido", { status: 405 });
   }
   try {
-    const resultados = await ejecutarTodos(db, { fetch });
-    console.log(JSON.stringify(resultados));
-    return Response.json(resultados);
+    const cuerpo = await req.json().catch(() => ({})) as { tarea?: string };
+    const resultado = cuerpo?.tarea === "catalogo"
+      ? { catalogo: await completarCatalogo(db, { fetch }) }
+      : await ejecutarTodos(db, { fetch });
+    console.log(JSON.stringify(resultado));
+    return Response.json(resultado);
   } catch (e) {
     console.error("Fallo inesperado:", e);
     return Response.json({ estado: "error", detalle: { mensaje: String(e) } }, { status: 500 });

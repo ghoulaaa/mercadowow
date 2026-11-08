@@ -25,6 +25,19 @@ export function prepararFilas(objetos) {
   });
 }
 
+/** Subcategorías reales de una categoría (sin vacías), ordenadas. */
+export function subcategorias(filas, categoria) {
+  if (!categoria) return [];
+  const set = new Set(filas.filter((f) => f.categoria === categoria && f.subcategoria).map((f) => f.subcategoria));
+  return [...set].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+/** Nombre en español de la calidad (es la escala de colores del juego, no una traducción de objetos). */
+export const NOMBRE_CALIDAD = {
+  POOR: "Pobre", COMMON: "Común", UNCOMMON: "Poco común", RARE: "Raro", EPIC: "Épico", LEGENDARY: "Legendario",
+  ARTIFACT: "Artefacto", HEIRLOOM: "Reliquia",
+};
+
 export function categorias(filas) {
   const set = new Set(filas.map((f) => f.categoria));
   return [...set].sort((a, b) =>
@@ -41,6 +54,8 @@ export function filtrar(filas, f = {}) {
   return filas.filter((x) =>
     (!palabras.length || palabras.every((p) => x.texto.includes(p))) &&
     (!f.categoria || x.categoria === f.categoria) &&
+    (!f.subcategoria || x.subcategoria === f.subcategoria) &&
+    (!f.calidad || x.calidad === f.calidad) &&
     (!f.soloFavoritos || x.favorito) &&
     (!f.recomendacion || x.rec === f.recomendacion) &&
     (!f.ocultarAusentes || !x.ausente));

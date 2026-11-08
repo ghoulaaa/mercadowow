@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import httpx
 import psycopg
 from fastapi import Body, FastAPI, Query
 from fastapi.responses import JSONResponse
@@ -255,6 +256,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if (resp := _error_validacion(exc)) is not None:
                 return resp
             log.warning("Fallo en ventas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    def _http_get(url: str):
+        return httpx.get(url, timeout=20, headers={"User-Agent": "mercadowow/0.1 (uso personal)"})
+
+    @app.get("/api/catalogo")
+    def catalogo(q: str = Query(default="", max_length=200), mercado: str | None = Query(default=None, max_length=100)):
+        clave, texto = mercado or settings.market, q.strip()[:80]
+        if not texto:
+            return {"q": texto, "resultados": []}
+        try:
+            with db.connect(settings.database_url) as conn:
+                res = db.search_catalog(conn, clave, texto)
+                if texto.isdigit() and len(texto) <= 9 and not any(r["id"] == int(texto) for r in res):
+                    if db.add_to_catalog(conn, clave, int(texto), _http_get):
+                        res = db.search_catalog(conn, clave, texto)
+        except Exception as exc:
+            log.warning("Fallo al buscar en el catálogo: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse({"q": texto, "resultados": res}, headers=SIN_CACHE)
+
+    @app.get("/api/objeto")
+    def objeto(id: int = Query(gt=0), mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                f = db.item_sheet(conn, clave, id)
+                if not (f and f.get("en_catalogo")) and db.add_to_catalog(conn, clave, id, _http_get):
+                    f = db.item_sheet(conn, clave, id)
+        except Exception as exc:
+            log.warning("Fallo al leer la ficha: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        if f is None:
+            return JSONResponse(status_code=404, content={"error": "Ese objeto no existe en el catálogo ni en AHledger"})
+        return JSONResponse(f, headers=SIN_CACHE)
+
+    @app.get("/api/categorias")
+    def categorias(mercado: str | None = Query(default=None, max_length=100)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                return JSONResponse(db.categories(conn, mercado or settings.market), headers=SIN_CACHE)
+        except Exception as exc:
+            log.warning("Fallo al leer categorías: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
 
     @app.get("/api/ajustes")

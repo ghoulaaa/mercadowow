@@ -79,9 +79,10 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:9] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:12] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
-                           "0009_ahledger.sql"]
+                           "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
+                           "0012_busqueda_mercado.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -343,6 +344,62 @@ def test_ventas_lectura(cliente, monkeypatch):
     monkeypatch.setattr(db, "recompute", lambda conn, key: {"estado": "al_dia"})
     monkeypatch.setattr(db, "sales", lambda conn, key: {"ventas": [], "evaluacion": {"resumen": []}})
     assert cliente.get("/api/ventas").json()["evaluacion"] == {"resumen": []}
+
+
+def test_catalogo_busca_y_da_de_alta_por_id(cliente, monkeypatch):
+    catalogo = {}
+    monkeypatch.setattr(db, "search_catalog", lambda conn, mk, q: [v for k, v in catalogo.items() if str(k) == q or q in v["nombre"].lower()])
+    altas = []
+
+    def alta(conn, mk, item_id, http_get):
+        altas.append(item_id)
+        if item_id == 7082:
+            catalogo[7082] = {"id": 7082, "nombre": "Essence of Air"}
+            return True
+        return False
+    monkeypatch.setattr(db, "add_to_catalog", alta)
+    assert cliente.get("/api/catalogo", params={"q": ""}).json() == {"q": "", "resultados": []}
+    assert cliente.get("/api/catalogo", params={"q": "7082"}).json()["resultados"][0]["nombre"] == "Essence of Air"
+    cliente.get("/api/catalogo", params={"q": "7082"})
+    assert altas == [7082]                        # la segunda vez ya estaba
+    assert cliente.get("/api/catalogo", params={"q": "essence"}).json()["resultados"]
+    assert altas == [7082]                        # un texto no dispara altas
+
+
+def test_objeto_y_categorias(cliente, monkeypatch):
+    monkeypatch.setattr(db, "item_sheet", lambda conn, mk, i: {"id": i, "en_catalogo": True} if i == 7082 else None)
+    monkeypatch.setattr(db, "add_to_catalog", lambda *a: False)
+    monkeypatch.setattr(db, "categories", lambda conn, mk: [{"clase": "Trade Goods", "n": 1, "subclases": []}])
+    assert cliente.get("/api/objeto", params={"id": 7082}).json()["id"] == 7082
+    assert cliente.get("/api/objeto", params={"id": 5}).status_code == 404
+    assert cliente.get("/api/objeto", params={"id": "x"}).status_code == 422
+    assert cliente.get("/api/categorias").json()[0]["clase"] == "Trade Goods"
+
+
+def test_add_to_catalog_valida_la_respuesta_de_ahledger():
+    class Conn:
+        def __init__(self, mercado):
+            self.mercado, self.sql = mercado, []
+
+        def execute(self, sql, params=None):
+            self.sql.append(sql)
+            m = self.mercado
+            return type("C", (), {"fetchone": lambda _s: m})()
+
+    class Resp:
+        def __init__(self, status, cuerpo):
+            self.status_code, self._c = status, cuerpo
+
+        def json(self):
+            return self._c
+
+    real = {"game_type": "forever", "is_demo": False}
+    c = Conn(real)
+    assert db.add_to_catalog(c, "ahl", 7082, lambda url: Resp(200, {"id": 7082, "name": "Essence of Air"})) is True
+    assert any("guardar_catalogo" in s for s in c.sql)
+    assert db.add_to_catalog(Conn(real), "ahl", 7082, lambda url: Resp(200, {"id": 1, "name": "Otro"})) is False
+    assert db.add_to_catalog(Conn(real), "ahl", 7082, lambda url: Resp(404, None)) is False
+    assert db.add_to_catalog(Conn({"game_type": "forever", "is_demo": True}), "demo", 7082, lambda url: 1 / 0) is False
 
 
 def test_build_status_sin_datos():

@@ -1,7 +1,9 @@
 import { leerCsvInventario, leerCsvPrecios } from "./csv.js";
 import { dibujarGrafico } from "./grafico.js";
 import { formatearMoneda, parsearMoneda } from "./moneda.js";
-import { NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas } from "./tabla.js";
+import {
+  NOMBRE_CALIDAD, NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas, subcategorias,
+} from "./tabla.js";
 
 const $ = (id) => document.getElementById(id);
 const fecha = (iso) => iso ? new Date(iso).toLocaleString("es", { dateStyle: "short", timeStyle: "short" }) : "—";
@@ -191,6 +193,7 @@ const leerFiltros = () => {
   const [clave, dir] = $("f-orden").value.split(":");
   return {
     texto: $("f-texto").value, categoria: $("f-categoria").value, recomendacion: $("f-recomendacion").value,
+    subcategoria: $("f-subcategoria").value, calidad: $("f-calidad").value,
     soloFavoritos: $("f-favoritos").checked, ocultarAusentes: $("f-ausentes").checked, clave, dir,
   };
 };
@@ -214,6 +217,7 @@ async function cargarPrecios() {
     const op = document.createElement("option"); op.value = op.textContent = c; sel.append(op);
   }
   sel.value = [...sel.options].some((o) => o.value === previa) ? previa : "";
+  rellenarSubcategorias();
   pintarAtribucion();
 
   const res = d.resumen || {};
@@ -282,10 +286,12 @@ function pintarTabla() {
     if (x.calidad) ic.dataset.calidad = x.calidad;
     const txt = document.createElement("div");
     const nom = document.createElement("button");
-    nom.type = "button"; nom.className = "objeto-nombre enlace"; nom.dataset.detalle = x.id; nom.textContent = x.nombre;
+    nom.type = "button"; nom.className = "objeto-nombre enlace" + (x.calidad ? ` q-${x.calidad}` : "");
+    nom.dataset.detalle = x.id; nom.textContent = x.nombre;
     nom.title = "Ver por qué se recomienda";
     const sub = document.createElement("div"); sub.className = "objeto-id";
-    sub.textContent = `#${x.id} · ${x.categoria}` + (x.ausente ? ` · ausente desde ${fecha(x.hora)}` : "");
+    sub.textContent = `#${x.id} · ${x.categoria}` + (x.subcategoria ? ` › ${x.subcategoria}` : "")
+      + (x.nivel_objeto ? ` · nivel ${x.nivel_objeto}` : "") + (x.ausente ? ` · ausente desde ${fecha(x.hora)}` : "");
     txt.append(nom, sub); div.append(ic, txt); tdObj.append(div);
 
     const tdPrecio = document.createElement("td"); tdPrecio.className = "num"; tdPrecio.dataset.k = "Precio:";
@@ -335,8 +341,19 @@ function colorCategoria(c) {
   return c === "Sin clasificar" ? "#c0c6cf" : COLORES[h % COLORES.length];
 }
 
+function rellenarSubcategorias() {
+  const sel = $("f-subcategoria"), previa = sel.value;
+  const lista = subcategorias(filasTabla, $("f-categoria").value);
+  sel.replaceChildren(el("option", "", "Todas las subcategorías"));
+  sel.firstChild.value = "";
+  for (const s of lista) { const op = el("option", "", s); op.value = s; sel.append(op); }
+  sel.disabled = lista.length === 0;
+  sel.value = lista.includes(previa) ? previa : "";
+}
+$("f-categoria").addEventListener("change", rellenarSubcategorias);
+
 let temporizadorFiltro = null;
-for (const id of ["f-texto", "f-categoria", "f-recomendacion", "f-orden", "f-favoritos", "f-ausentes"]) {
+for (const id of ["f-texto", "f-categoria", "f-subcategoria", "f-calidad", "f-recomendacion", "f-orden", "f-favoritos", "f-ausentes"]) {
   $(id).addEventListener(id === "f-texto" ? "input" : "change", () => {
     clearTimeout(temporizadorFiltro);
     temporizadorFiltro = setTimeout(() => { visibles = POR_PAGINA; pintarTabla(); }, id === "f-texto" ? 150 : 0);
@@ -363,6 +380,120 @@ $("tbody").addEventListener("click", async (ev) => {
   } catch {
     fila.favorito = !nuevo;
     pintarTabla();
+  }
+});
+
+// ---------- catálogo: búsqueda y ficha ----------
+function iconoNodo(url, nombre, grande = false) {
+  const ic = el("span", "icono" + (grande ? " grande" : ""));
+  ic.setAttribute("aria-hidden", "true");
+  ic.textContent = (nombre || "?").replace(/^\[FICTICIO\]\s*/, "").charAt(0).toUpperCase();
+  if (url) {
+    const img = document.createElement("img");
+    img.src = url; img.alt = ""; img.loading = "lazy";
+    img.addEventListener("error", () => img.remove());
+    ic.append(img);
+  }
+  return ic;
+}
+
+function fichaNodo(f, conBotonDetalle = true) {
+  const cont = el("div", "cat-ficha");
+  const cab = el("div", "cat-ficha-cab");
+  cab.append(iconoNodo(f.icono, f.nombre, true));
+  const t = el("div");
+  t.append(el("h4", f.calidad ? `q-${f.calidad}` : "", f.nombre));
+  const sub = [NOMBRE_CALIDAD[f.calidad] || f.calidad, [f.clase, f.subclase].filter(Boolean).join(" › ")].filter(Boolean).join(" · ");
+  t.append(el("div", "muted small", sub || "—"));
+  cab.append(t);
+  cont.append(cab);
+  const dl = el("dl", "kv");
+  const fila = (k, v) => dl.append(el("dt", "", k), el("dd", "", v));
+  const idDd = el("dd");
+  const idBtn = el("button", "btn-mini", `${f.id} · copiar`);
+  idBtn.type = "button";
+  idBtn.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(String(f.id)); idBtn.textContent = `${f.id} · copiado`; }
+    catch { idBtn.textContent = String(f.id); }
+  });
+  idDd.append(idBtn);
+  dl.append(el("dt", "", "ID"), idDd);
+  fila("Nivel del objeto", f.nivel ?? "desconocido");
+  fila("Nivel requerido", f.nivel_requerido ?? "desconocido / ninguno");
+  fila("Venta al NPC", f.venta_npc == null ? "desconocido" : `${formatearMoneda(f.venta_npc)} (precio del vendedor, no de subasta)`);
+  if (f.nombre_es) fila("Nombre en español", f.nombre_es);
+  fila("Descripción, pila, obtención", "no disponibles desde fuentes autorizadas: consulta Wowhead");
+  if (f.mercado) {
+    fila("En este mercado", `${formatearMoneda(f.mercado.precio)} compra mínima` +
+      (f.mercado.cantidad != null ? ` · ${f.mercado.cantidad.toLocaleString("es")} uds.` : "") + ` · escaneo ${fecha(f.mercado.hora)}`);
+  } else {
+    fila("En este mercado", "Sin datos disponibles (nadie lo tiene a la venta en los escaneos guardados)");
+  }
+  if (f.verificado_en) fila("Verificado", `${fecha(f.verificado_en)} · fuente ${f.fuente}`);
+  cont.append(dl);
+  const enl = el("div", "enlaces");
+  const a = (texto, url) => { const x = el("a", "", texto); x.href = url; x.target = "_blank"; x.rel = "noopener"; enl.append(x); };
+  if (f.wowhead_url) a("Ver en Wowhead", f.wowhead_url);
+  if (f.fuente_url) a("Ver en AHledger", f.fuente_url);
+  if (f.en_mercado && conBotonDetalle) {
+    const b = el("button", "btn btn-small", "Ver precio, historial y recomendación");
+    b.type = "button";
+    b.addEventListener("click", () => abrirDetalle(f.id));
+    enl.append(b);
+  }
+  cont.append(enl);
+  return cont;
+}
+
+let busquedaN = 0;
+async function buscarCatalogo() {
+  const q = $("cat-q").value.trim();
+  const n = ++busquedaN;   // se descartan las respuestas de búsquedas anteriores
+  const ul = $("cat-resultados");
+  if (!q || !ultimo) { ul.replaceChildren(); $("cat-estado").textContent = ""; return; }
+  $("cat-estado").textContent = "buscando…";
+  let d;
+  try {
+    const r = await fetch(`/api/catalogo?mercado=${encodeURIComponent(ultimo.mercado.clave)}&q=${encodeURIComponent(q)}`, { cache: "no-store" });
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+  } catch (e) {
+    if (n === busquedaN) $("cat-estado").textContent = "error: " + e.message;
+    return;
+  }
+  if (n !== busquedaN) return;
+  $("cat-estado").textContent = d.resultados.length ? `${d.resultados.length} resultado(s)` : "sin resultados";
+  ul.replaceChildren();
+  for (const x of d.resultados) {
+    const li = el("li");
+    const b = el("button");
+    b.type = "button";
+    b.dataset.id = x.id;
+    const txt = el("span");
+    txt.append(el("span", x.calidad ? `q-${x.calidad}` : "", x.nombre), " ",
+      el("span", "cat-sub", `#${x.id} · ${[x.clase, x.subclase].filter(Boolean).join(" › ")}` +
+        (x.nivel ? ` · nivel ${x.nivel}` : "") + (x.en_mercado ? "" : " · sin precio en este mercado")));
+    b.append(iconoNodo(x.icono, x.nombre), txt);
+    li.append(b);
+    ul.append(li);
+  }
+}
+
+let temporizadorCat = null;
+$("cat-q").addEventListener("input", () => { clearTimeout(temporizadorCat); temporizadorCat = setTimeout(buscarCatalogo, 250); });
+$("cat-resultados").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-id]");
+  if (!b) return;
+  const caja = $("cat-ficha");
+  caja.hidden = false;
+  caja.replaceChildren(el("p", "muted small", "Cargando ficha…"));
+  try {
+    const r = await fetch(`/api/objeto?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${b.dataset.id}`, { cache: "no-store" });
+    const f = await r.json();
+    if (!r.ok) throw new Error(f.error || "HTTP " + r.status);
+    caja.replaceChildren(fichaNodo(f));
+  } catch (e) {
+    caja.replaceChildren(el("p", "bad small", "No se pudo cargar la ficha: " + e.message));
   }
 });
 
@@ -450,6 +581,13 @@ async function abrirDetalle(id) {
     nodos.push(sec);
   }
   if (d.en_inventario) nodos.push(el("p", "small", `Tienes ${d.en_inventario} unidades en tu inventario.`));
+  const fichaCont = el("div");
+  if (!d.ficticio) {
+    const secFicha = el("section", "det-sec");
+    secFicha.append(el("h3", "", "Ficha del objeto"), fichaCont);
+    fichaCont.append(el("p", "muted small", "Cargando ficha…"));
+    nodos.push(secFicha);
+  }
   const secGraf = el("section", "det-sec");
   secGraf.append(el("h3", "", "Historial de 30 días"));
   const graf = el("div", "");
@@ -495,6 +633,12 @@ async function abrirDetalle(id) {
   if (cita) nodos.push(cita);
   cuerpo.replaceChildren(...nodos);
 
+  if (!d.ficticio) {
+    fetch(`/api/objeto?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}`, { cache: "no-store" })
+      .then(async (r) => { const f = await r.json(); if (!r.ok) throw new Error(f.error || "HTTP " + r.status); return f; })
+      .then((f) => { if (fichaCont.isConnected) fichaCont.replaceChildren(fichaNodo(f, false)); })
+      .catch((e) => fichaCont.replaceChildren(el("p", "bad small", "No se pudo cargar la ficha: " + e.message)));
+  }
   try {
     const r = await fetch(`/api/historial?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}&dias=30`, { cache: "no-store" });
     const h = await r.json();
