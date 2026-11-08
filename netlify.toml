@@ -1,0 +1,18 @@
+# Despliegue en Netlify: página estática + función de solo lectura.
+# El servidor local (iniciar.bat) sigue funcionando igual; esto es solo la versión pública.
+
+[build]
+  publish = "app/static"
+  functions = "netlify/functions"
+  command = ""
+
+[functions]
+  node_bundler = "esbuild"
+
+# index.html pide /static/styles.css (ruta del servidor local).
+[[redirects]]
+  from = "/static/*"
+  to = "/:splat"
+  status = 200
+
+# /api/actualizar no existe aquí: la versión pública es de solo lectura.

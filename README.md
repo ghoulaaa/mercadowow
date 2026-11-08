@@ -17,6 +17,7 @@ El plan completo y las fuentes verificadas están en [PLAN.md](PLAN.md).
 
 - Doble clic en **`iniciar.bat`** y abre **http://127.0.0.1:8000**.
 - La consulta horaria **no depende de tu PC**: la hace Supabase.
+- **Versión pública (solo lectura)** en Netlify: guía en [docs/NETLIFY.md](docs/NETLIFY.md).
 
 ## Configuración (`.env`)
 

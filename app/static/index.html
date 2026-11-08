@@ -35,9 +35,13 @@
       <ul id="registro" class="log"><li class="muted">—</li></ul>
     </section>
 
-    <p class="notice">
+    <p class="notice" id="aviso-local">
       La consulta horaria la hace Supabase en la nube: sigue funcionando con tu PC apagado.
       Esta página, en cambio, solo está disponible mientras <strong>iniciar.bat</strong> esté abierto.
+    </p>
+    <p class="notice" id="aviso-publico" hidden>
+      Versión pública de solo lectura. Supabase consulta TSM automáticamente cada hora;
+      los datos de esta página se refrescan cada minuto.
     </p>
   </main>
 
@@ -75,12 +79,17 @@
       } catch (e) {
         $("market").textContent = "sin conexión";
         $("titulo").textContent = "Sin conexión con la base de datos";
-        $("subtitulo").textContent = e.message + ". Revisa DATABASE_URL en .env y tu conexión a internet.";
+        $("subtitulo").textContent = e.message + ". Revisa DATABASE_URL (en .env o en las variables de Netlify) y la conexión a internet.";
         filas($("status"), [["Servidor", "OK (pero sin acceso a Supabase)", "bad"]]);
         return;
       }
 
       $("market").textContent = s.mercado.nombre;
+      if (s.solo_lectura) {
+        $("btn-actualizar").hidden = true;
+        $("aviso-local").hidden = true;
+        $("aviso-publico").hidden = false;
+      }
       const pend = s.base_de_datos.migraciones_pendientes;
       if (pend.length) {
         $("titulo").textContent = "Falta configurar Supabase";
