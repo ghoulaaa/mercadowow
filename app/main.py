@@ -133,6 +133,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("Importación CSV: %s", r)
         return r
 
+    @app.get("/api/precios")
+    def precios(mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                version = db.market_version(conn, clave)
+                objetos = db.price_table(conn, clave) if version else None
+        except Exception as exc:
+            log.warning("Fallo al leer precios: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        if version is None:
+            return JSONResponse(status_code=404, content={"error": f"Mercado {clave} no registrado"})
+        return JSONResponse({"mercado": clave, "version": version, "objetos": objetos}, headers=SIN_CACHE)
+
+    @app.get("/api/version")
+    def version(mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                v = db.market_version(conn, clave)
+        except Exception as exc:
+            log.warning("Fallo al leer versión: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        if v is None:
+            return JSONResponse(status_code=404, content={"error": f"Mercado {clave} no registrado"})
+        return JSONResponse(v, headers=SIN_CACHE)
+
+    @app.post("/api/favorito")
+    def favorito(cuerpo: dict = Body(...)):
+        mercado, item, fav = cuerpo.get("mercado"), cuerpo.get("id"), cuerpo.get("favorito")
+        if not isinstance(mercado, str) or not isinstance(fav, bool) \
+                or not isinstance(item, int) or isinstance(item, bool):
+            return JSONResponse(status_code=400, content={"error": "Faltan mercado, id o favorito"})
+        try:
+            with db.connect(settings.database_url) as conn:
+                return db.set_favorite(conn, mercado, item, fav)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al marcar favorito: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
     @app.post("/api/demo")
     def demo(cuerpo: dict | None = Body(default=None)):
         dias = (cuerpo or {}).get("dias", 30)

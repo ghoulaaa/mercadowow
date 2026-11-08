@@ -83,6 +83,19 @@ def import_prices(conn: psycopg.Connection, market_key: str, hora_dato: str,
     ).fetchone()["r"]
 
 
+def price_table(conn: psycopg.Connection, market_key: str) -> list[dict]:
+    return conn.execute("select tabla_precios(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def market_version(conn: psycopg.Connection, market_key: str) -> dict | None:
+    return conn.execute("select version_mercado(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def set_favorite(conn: psycopg.Connection, market_key: str, item_id: int, favorito: bool) -> dict:
+    return conn.execute("select marcar_favorito(%s, %s, %s) as r",
+                        (market_key, item_id, favorito)).fetchone()["r"]
+
+
 def generate_demo(conn: psycopg.Connection, dias: int) -> dict:
     """Regenera los datos FICTICIOS del mercado demo (y solo de ese mercado)."""
     return conn.execute("select generar_demo(%s) as r", (dias,)).fetchone()["r"]

@@ -1,5 +1,6 @@
 import { leerCsvPrecios } from "./csv.js";
 import { formatearMoneda } from "./moneda.js";
+import { categorias, filtrar, formatearPct, ordenar, prepararFilas } from "./tabla.js";
 
 const $ = (id) => document.getElementById(id);
 const fecha = (iso) => iso ? new Date(iso).toLocaleString("es", { dateStyle: "short", timeStyle: "short" }) : "—";
@@ -138,6 +139,12 @@ async function cargar() {
   filas($("status"), [...comunes, ...automaticas,
     ["Base de datos", "Supabase · proyecto " + s.base_de_datos.proyecto]]);
 
+  // Resumen: dato del mercado y alertas.
+  $("tile-dato").textContent = a.hora_dato_original ? hace(a.hora_dato_original).replace(/[()]/g, "").trim() : "sin datos";
+  $("tile-dato").className = "tile-v" + (viejo && !demo ? " bad" : "");
+  $("tile-dato-n").textContent = demo ? "FICTICIO" : (a.hora_dato_original ? "escaneo de " + fecha(a.hora_dato_original) : "");
+  pintarAlertas();
+
   const ul = $("registro");
   ul.innerHTML = "";
   if (!s.registro.length) ul.innerHTML = '<li class="muted">Todavía no hay registros.</li>';
@@ -153,11 +160,209 @@ async function cargar() {
   }
 }
 
+// ---------- alertas ----------
+function pintarAlertas() {
+  if (!ultimo) return;
+  const a = ultimo.actualizacion, m = ultimo.mercado, avisos = [];
+  const viejo = a.hora_dato_original && (Date.now() - new Date(a.hora_dato_original)) > 8 * 3600e3;
+  if (!m.ficticio && viejo) avisos.push("dato con más de 8 h");
+  if (a.fallos_seguidos) avisos.push(`${a.fallos_seguidos} fallo(s) seguidos al consultar`);
+  if (m.automatico && !a.configurada) avisos.push("consulta automática sin activar");
+  const ausentes = filasTabla.filter((f) => f.ausente).length;
+  if (ausentes) avisos.push(`${ausentes} objetos no aparecen en el último escaneo`);
+  $("tile-alertas").textContent = String(avisos.length);
+  $("tile-alertas").className = "tile-v" + (avisos.length ? " bad" : " ok");
+  $("tile-alertas-n").textContent = avisos.length ? avisos.join(" · ") : "sin alertas";
+}
+
+// ---------- tabla de precios ----------
+const POR_PAGINA = 100;
+let filasTabla = [];        // filas preparadas del mercado actual
+let mercadoTabla = null;    // mercado al que pertenecen
+let visibles = POR_PAGINA;
+
+const leerFiltros = () => {
+  const [clave, dir] = $("f-orden").value.split(":");
+  return {
+    texto: $("f-texto").value, categoria: $("f-categoria").value,
+    soloFavoritos: $("f-favoritos").checked, ocultarAusentes: $("f-ausentes").checked, clave, dir,
+  };
+};
+
+async function cargarPrecios() {
+  const clave = ultimo?.mercado?.clave;
+  if (!clave) return;
+  let r, d;
+  try {
+    r = await fetch("/api/precios?mercado=" + encodeURIComponent(clave), { cache: "no-store" });
+    d = await r.json();
+  } catch { return; }
+  if (!r.ok || d.mercado !== clave) return;     // respuesta de otro mercado: se descarta
+  filasTabla = prepararFilas(d.objetos);
+  if (mercadoTabla !== clave) { visibles = POR_PAGINA; mercadoTabla = clave; }
+  firmaVersion = JSON.stringify(d.version);
+
+  const sel = $("f-categoria"), previa = sel.value;
+  sel.innerHTML = '<option value="">Todas las categorías</option>';
+  for (const c of categorias(filasTabla)) {
+    const op = document.createElement("option"); op.value = op.textContent = c; sel.append(op);
+  }
+  sel.value = [...sel.options].some((o) => o.value === previa) ? previa : "";
+  pintarTabla();
+  pintarAlertas();
+}
+
+function celdaMoneda(td, cobre) {
+  td.textContent = "";
+  const span = document.createElement("span");
+  span.className = "moneda";
+  const txt = formatearMoneda(cobre);
+  for (const parte of txt.split(" ")) {
+    const s = document.createElement("span");
+    const u = parte.slice(-1);
+    s.className = { o: "o", p: "p", c: "c" }[u] || "";
+    s.textContent = parte;
+    span.append(s, " ");
+  }
+  td.append(span);
+}
+
+function celdaPct(td, p, precioAnterior, horaAnterior) {
+  td.textContent = formatearPct(p);
+  td.className = "num" + (p > 0.05 ? " sube" : p < -0.05 ? " baja" : "");
+  if (precioAnterior != null) td.title = `Antes: ${formatearMoneda(precioAnterior)} (${fecha(horaAnterior)})`;
+  else td.title = "Todavía no hay una observación propia en ese momento";
+}
+
+function pintarTabla() {
+  const f = leerFiltros();
+  const lista = ordenar(filtrar(filasTabla, f), f.clave, f.dir);
+  const tbody = $("tbody");
+  tbody.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  for (const x of lista.slice(0, visibles)) {
+    const tr = document.createElement("tr");
+    if (x.ausente) tr.className = "ausente";
+
+    const tdFav = document.createElement("td"); tdFav.className = "c-fav";
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "estrella"; b.dataset.id = x.id;
+    b.setAttribute("aria-pressed", String(!!x.favorito));
+    b.setAttribute("aria-label", (x.favorito ? "Quitar de favoritos: " : "Añadir a favoritos: ") + x.nombre);
+    b.textContent = x.favorito ? "★" : "☆";
+    tdFav.append(b);
+
+    const tdObj = document.createElement("td"); tdObj.className = "c-obj";
+    const div = document.createElement("div"); div.className = "objeto";
+    const ic = document.createElement("span"); ic.className = "icono"; ic.setAttribute("aria-hidden", "true");
+    ic.textContent = x.nombre.replace(/^\[FICTICIO\]\s*/, "").charAt(0).toUpperCase();
+    ic.style.background = colorCategoria(x.categoria);
+    const txt = document.createElement("div");
+    const nom = document.createElement("div"); nom.className = "objeto-nombre"; nom.textContent = x.nombre;
+    const sub = document.createElement("div"); sub.className = "objeto-id";
+    sub.textContent = `#${x.id} · ${x.categoria}` + (x.ausente ? ` · ausente desde ${fecha(x.hora)}` : "");
+    txt.append(nom, sub); div.append(ic, txt); tdObj.append(div);
+
+    const tdPrecio = document.createElement("td"); tdPrecio.className = "num"; tdPrecio.dataset.k = "Precio:";
+    celdaMoneda(tdPrecio, x.precio_ref);
+    if (x.precio == null && x.valor_mercado != null) tdPrecio.title = "Sin compra inmediata: se muestra el valor de mercado";
+    const tdHist = document.createElement("td"); tdHist.className = "num"; tdHist.dataset.k = "Histórico:";
+    celdaMoneda(tdHist, x.historico);
+    const td24 = document.createElement("td"); td24.dataset.k = "24 h:";
+    celdaPct(td24, x.var24, x.precio_24h, x.hora_24h);
+    const td7 = document.createElement("td"); td7.dataset.k = "7 días:";
+    celdaPct(td7, x.var7, x.precio_7d, x.hora_7d);
+    const tdOferta = document.createElement("td"); tdOferta.className = "num"; tdOferta.dataset.k = "Oferta:";
+    tdOferta.textContent = "sin dato"; tdOferta.title = "TSM no publica cantidades en venta";
+    const tdRec = document.createElement("td"); tdRec.dataset.k = "Recomendación:";
+    tdRec.innerHTML = '<span class="etiqueta">Pendiente</span>';
+    tdRec.title = "El motor de recomendaciones llega en el Hito 5";
+    const tdConf = document.createElement("td"); tdConf.dataset.k = "Confianza:"; tdConf.textContent = "—";
+
+    tr.append(tdFav, tdObj, tdPrecio, tdHist, td24, td7, tdOferta, tdRec, tdConf);
+    frag.append(tr);
+  }
+  tbody.append(frag);
+  $("sin-resultados").hidden = lista.length > 0 || filasTabla.length === 0;
+  $("btn-mas").hidden = lista.length <= visibles;
+  $("btn-mas").textContent = `Mostrar ${Math.min(POR_PAGINA, lista.length - visibles)} más`;
+  $("contador").textContent = `${Math.min(visibles, lista.length).toLocaleString("es")} de ${lista.length.toLocaleString("es")}`
+    + (lista.length !== filasTabla.length ? ` (filtrados de ${filasTabla.length.toLocaleString("es")})` : "");
+}
+
+const COLORES = ["#f2c94c", "#5aa9e6", "#4cc38a", "#e0b04a", "#c7783e", "#b48ead", "#88c0d0", "#e5534b", "#a3be8c"];
+function colorCategoria(c) {
+  let h = 0;
+  for (const ch of c) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return c === "Sin clasificar" ? "#c0c6cf" : COLORES[h % COLORES.length];
+}
+
+let temporizadorFiltro = null;
+for (const id of ["f-texto", "f-categoria", "f-orden", "f-favoritos", "f-ausentes"]) {
+  $(id).addEventListener(id === "f-texto" ? "input" : "change", () => {
+    clearTimeout(temporizadorFiltro);
+    temporizadorFiltro = setTimeout(() => { visibles = POR_PAGINA; pintarTabla(); }, id === "f-texto" ? 150 : 0);
+  });
+}
+$("btn-mas").addEventListener("click", () => { visibles += POR_PAGINA; pintarTabla(); });
+
+// Favoritos: se marca al instante y se deshace si el servidor falla.
+$("tbody").addEventListener("click", async (ev) => {
+  const b = ev.target.closest(".estrella");
+  if (!b || !ultimo) return;
+  const id = Number(b.dataset.id);
+  const fila = filasTabla.find((f) => f.id === id);
+  if (!fila) return;
+  const nuevo = !fila.favorito;
+  fila.favorito = nuevo;
+  pintarTabla();
+  try {
+    const r = await fetch("/api/favorito", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mercado: ultimo.mercado.clave, id, favorito: nuevo }),
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+  } catch {
+    fila.favorito = !nuevo;
+    pintarTabla();
+  }
+});
+
+// ---------- actualización en vivo ----------
+// Cada 30 s (o cada 5 s justo después de pulsar «Actualizar») se consulta una huella mínima
+// del mercado; si cambió, se recargan el estado y la tabla sin recargar la página.
+let firmaVersion = null;
+let rapidoHasta = 0;
+
+async function vigilar() {
+  if (document.visibilityState === "visible" && !$("vista-panel").hidden && ultimo?.mercado?.clave) {
+    try {
+      const r = await fetch("/api/version?mercado=" + encodeURIComponent(ultimo.mercado.clave), { cache: "no-store" });
+      if (r.status === 401) { await cargar(); }
+      else if (r.ok) {
+        const firma = JSON.stringify(await r.json());
+        if (firmaVersion !== null && firma !== firmaVersion) {
+          await cargar();
+          await cargarPrecios();
+        }
+        firmaVersion = firma;
+      }
+    } catch { /* sin red: se reintenta en la próxima vuelta */ }
+  }
+  setTimeout(vigilar, Date.now() < rapidoHasta ? 5000 : 30000);
+}
+async function refrescar() {
+  await cargar();
+  await cargarPrecios();
+}
+
 // ---------- selector de mercado ----------
-$("sel-mercado").addEventListener("change", (ev) => {
+$("sel-mercado").addEventListener("change", async (ev) => {
   mercadoActual = ev.target.value;
   guardado.escribir(mercadoActual);
-  cargar();
+  filasTabla = []; firmaVersion = null; pintarTabla();
+  await cargar();
+  await cargarPrecios();
 });
 
 // ---------- acceso ----------
@@ -174,7 +379,7 @@ $("form-login").addEventListener("submit", async (ev) => {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
     $("clave").value = "";
-    await cargar();
+    await refrescar();
   } catch (e) {
     err.textContent = e.message;
     err.hidden = false;
@@ -196,7 +401,7 @@ $("btn-actualizar").addEventListener("click", async () => {
     const d = await r.json();
     aviso.textContent = d.mensaje || d.error || "Hecho";
     aviso.hidden = false;
-    setTimeout(cargar, 8000);
+    rapidoHasta = Date.now() + 3 * 60_000;   // vigilar cada 5 s durante 3 min
   } catch (e) {
     aviso.textContent = "No se pudo pedir la actualización: " + e.message;
     aviso.hidden = false;
@@ -263,7 +468,7 @@ $("btn-importar").addEventListener("click", async () => {
     out.className = "small " + (d.estado === "nuevo_dato" ? "ok" : "muted");
     $("archivo-csv").value = "";
     lectura = null;
-    cargar();
+    refrescar();
   } catch (e) {
     out.textContent = "Error al importar: " + e.message;
     out.className = "small bad";
@@ -287,7 +492,7 @@ $("btn-demo").addEventListener("click", async () => {
     if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
     out.textContent = `Generados ${d.filas} precios FICTICIOS (${d.objetos} objetos, ${d.dias} días).`;
     out.className = "small ok";
-    cargar();
+    refrescar();
   } catch (e) {
     out.textContent = "Error: " + e.message;
     out.className = "small bad";
@@ -296,5 +501,8 @@ $("btn-demo").addEventListener("click", async () => {
   }
 });
 
-cargar();
-setInterval(() => { if (!$("vista-panel").hidden) cargar(); }, 60000);
+(async () => {
+  await cargar();
+  await cargarPrecios();
+  setTimeout(vigilar, 30000);
+})();

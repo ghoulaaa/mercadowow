@@ -84,11 +84,13 @@ export function crearApi(db: Db, o: OpcionesApi) {
 
   const fallaBd = (e: unknown) => {
     const msg = String((e as Error)?.message ?? e);
-    if (/does not exist|no existe/.test(msg)) {
+    const codigo = (e as { code?: string })?.code;
+    // Errores de validación lanzados a propósito por las funciones SQL (raise exception).
+    if (codigo === "P0001") return json(422, { error: msg });
+    // 42883 = función inexistente, 42P01 = tabla inexistente: falta aplicar una migración.
+    if (codigo === "42883" || codigo === "42P01") {
       return json(503, { error: "Faltan migraciones en Supabase: ejecuta configurar.bat" });
     }
-    // Errores de validación lanzados a propósito por las funciones SQL (raise exception).
-    if ((e as { code?: string })?.code === "P0001") return json(422, { error: msg });
     console.error("Error de base de datos:", msg);
     return json(503, { error: "No se pudo conectar con Supabase" });
   };
@@ -172,6 +174,53 @@ export function crearApi(db: Db, o: OpcionesApi) {
           [c.mercado, c.hora_dato, JSON.stringify(c.filas), String(c.nombre_archivo ?? "sin nombre"),
             ahora().toISOString()]);
         return json(200, r);
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async precios(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+      try {
+        const v = await llamar(db, "select version_mercado($1) as r", [mercado]);
+        if (!v) return json(404, { error: `Mercado ${mercado} no registrado` });
+        const objetos = await llamar(db, "select tabla_precios($1) as r", [mercado]);
+        return json(200, { mercado, version: v, objetos });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async version(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+      try {
+        const v = await llamar(db, "select version_mercado($1) as r", [mercado]);
+        return v ? json(200, v) : json(404, { error: `Mercado ${mercado} no registrado` });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async favorito(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      let c: any;
+      try {
+        c = await leerJson(req, 1000);
+      } catch {
+        return json(400, { error: "Petición mal formada" });
+      }
+      if (typeof c?.mercado !== "string" || !Number.isInteger(c?.id) || typeof c?.favorito !== "boolean") {
+        return json(400, { error: "Faltan mercado, id o favorito" });
+      }
+      try {
+        return json(200, await llamar(db, "select marcar_favorito($1, $2::integer, $3::boolean) as r",
+          [c.mercado, c.id, c.favorito]));
       } catch (e) {
         return fallaBd(e);
       }

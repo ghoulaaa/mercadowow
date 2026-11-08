@@ -43,6 +43,81 @@
         <p id="subtitulo" class="muted"></p>
       </section>
 
+      <section class="resumen" aria-label="Resumen">
+        <div class="tile">
+          <span class="tile-k">Oportunidades de venta</span>
+          <span class="tile-v muted">—</span>
+          <span class="tile-n">Llegan con el motor de recomendaciones (Hito 5)</span>
+        </div>
+        <div class="tile">
+          <span class="tile-k">Para guardar</span>
+          <span class="tile-v muted">—</span>
+          <span class="tile-n">Llegan con el motor de recomendaciones (Hito 5)</span>
+        </div>
+        <div class="tile">
+          <span class="tile-k">Alertas</span>
+          <span id="tile-alertas" class="tile-v">—</span>
+          <span id="tile-alertas-n" class="tile-n"></span>
+        </div>
+        <div class="tile">
+          <span class="tile-k">Dato del mercado</span>
+          <span id="tile-dato" class="tile-v">—</span>
+          <span id="tile-dato-n" class="tile-n"></span>
+        </div>
+      </section>
+
+      <section class="card" id="card-tabla">
+        <div class="card-head">
+          <h3>Precios</h3>
+          <span id="contador" class="muted small"></span>
+        </div>
+        <div class="filtros">
+          <input id="f-texto" type="search" placeholder="Buscar objeto o ID…" aria-label="Buscar">
+          <select id="f-categoria" aria-label="Categoría"><option value="">Todas las categorías</option></select>
+          <select id="f-recomendacion" aria-label="Recomendación" disabled title="Disponible con el motor de recomendaciones (Hito 5)">
+            <option>Recomendación: Hito 5</option>
+          </select>
+          <select id="f-orden" aria-label="Ordenar por">
+            <option value="nombre:asc">Nombre (A–Z)</option>
+            <option value="precio:desc">Precio (mayor)</option>
+            <option value="precio:asc">Precio (menor)</option>
+            <option value="vs_hist:desc">Precio vs histórico (más caro)</option>
+            <option value="vs_hist:asc">Precio vs histórico (más barato)</option>
+            <option value="var24:desc">Variación 24 h (sube)</option>
+            <option value="var24:asc">Variación 24 h (baja)</option>
+            <option value="var7:desc">Variación 7 días (sube)</option>
+            <option value="var7:asc">Variación 7 días (baja)</option>
+          </select>
+          <label class="check"><input id="f-favoritos" type="checkbox"> Solo favoritos</label>
+          <label class="check"><input id="f-ausentes" type="checkbox" checked> Ocultar ausentes del último escaneo</label>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr-only">Favorito</span></th>
+                <th scope="col">Objeto</th>
+                <th scope="col" class="num">Precio unitario</th>
+                <th scope="col" class="num" title="Valor histórico calculado por TSM">Ref. histórica</th>
+                <th scope="col" class="num">24 h</th>
+                <th scope="col" class="num">7 días</th>
+                <th scope="col" class="num" title="TSM no publica cantidades en venta">Oferta</th>
+                <th scope="col">Recomendación</th>
+                <th scope="col">Confianza</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <p id="sin-resultados" class="muted" hidden>Ningún objeto coincide con los filtros.</p>
+        <button id="btn-mas" type="button" class="btn" hidden>Mostrar más</button>
+        <p class="muted small nota">
+          Precio unitario = compra inmediata mínima del último escaneo. Las variaciones de 24 h y 7 días usan solo
+          observaciones guardadas por esta app («—» = todavía no hay historial suficiente). La oferta disponible no
+          se muestra porque TSM no publica cantidades.
+        </p>
+      </section>
+
       <section class="card">
         <div class="card-head">
           <h3>Estado del mercado</h3>
