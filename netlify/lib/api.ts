@@ -298,6 +298,48 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    async ventas(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      if (req.method === "GET") {
+        const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+        try {
+          await llamar(db, "select recalcular_recomendaciones($1) as r", [mercado]);   // registra el día si falta
+          const lista = await llamar(db, "select ventas_listado($1, $2::timestamptz) as r", [mercado, ahora().toISOString()]);
+          const evaluacion = await llamar(db, "select evaluar_recomendaciones($1, $2::timestamptz) as r", [mercado, ahora().toISOString()]);
+          return json(200, { ...lista, evaluacion });
+        } catch (e) {
+          return fallaBd(e);
+        }
+      }
+      if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+      let c: any;
+      try { c = await leerJson(req, 5000); } catch { return json(400, { error: "Petición mal formada" }); }
+      const entero = (v: unknown) => Number.isInteger(v);
+      const opcional = (v: unknown) => v === null || v === undefined || entero(v);
+      if (typeof c?.mercado !== "string") return json(400, { error: "Falta mercado" });
+      try {
+        if (c.accion === "registrar") {
+          if (!entero(c.item_id) || !entero(c.cantidad) || !entero(c.precio) || typeof c.vendido_en !== "string"
+              || !opcional(c.comision) || !opcional(c.deposito) || !opcional(c.lote_id)) {
+            return json(400, { error: "Datos de la venta no válidos" });
+          }
+          return json(200, await llamar(db,
+            `select registrar_venta($1, $2::integer, $3::integer, $4::bigint, $5::timestamptz, $6::bigint, $7::bigint,
+                                    $8::bigint, $9::boolean, $10, $11::timestamptz) as r`,
+            [c.mercado, c.item_id, c.cantidad, c.precio, c.vendido_en, c.comision ?? null, c.deposito ?? null,
+              c.lote_id ?? null, c.descontar === true, c.nota ?? null, ahora().toISOString()]));
+        }
+        if (c.accion === "borrar") {
+          if (!entero(c.id)) return json(400, { error: "Falta id" });
+          return json(200, await llamar(db, "select borrar_venta($1, $2::bigint) as r", [c.mercado, c.id]));
+        }
+        return json(400, { error: "Acción desconocida" });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     async favorito(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();
       if (req.method !== "POST") return json(405, { error: "Método no permitido" });

@@ -133,6 +133,86 @@
         <p id="inv-supuestos" class="muted small nota"></p>
       </section>
 
+      <section class="card" id="card-ventas">
+        <div class="card-head">
+          <h3>Ventas y aciertos</h3>
+          <span id="ven-contador" class="muted small"></span>
+        </div>
+        <div class="resumen resumen-inv">
+          <div class="tile"><span class="tile-k">Ingresos netos de tus ventas</span><span id="ven-neto" class="tile-v">—</span>
+            <span id="ven-neto-n" class="tile-n"></span></div>
+          <div class="tile"><span class="tile-k">Beneficio realizado (solo con coste)</span><span id="ven-benef" class="tile-v">—</span>
+            <span id="ven-benef-n" class="tile-n"></span></div>
+          <div class="tile"><span class="tile-k">¿Acertó el motor? (7 días)</span><span id="ven-acierto" class="tile-v">—</span>
+            <span id="ven-acierto-n" class="tile-n"></span></div>
+        </div>
+
+        <details class="inv-form" id="ven-registrar">
+          <summary>Registrar una venta</summary>
+          <form id="form-venta" class="form-grid">
+            <label for="ven-objeto">Objeto</label>
+            <input id="ven-objeto" list="lista-objetos" placeholder="Escribe el nombre o el ID" autocomplete="off" required>
+            <label for="ven-cantidad">Cantidad vendida</label>
+            <input id="ven-cantidad" type="number" min="1" step="1" required>
+            <label for="ven-precio">Precio por unidad</label>
+            <input id="ven-precio" placeholder="p. ej. 1o 20p" required>
+            <label for="ven-fecha">Fecha y hora de la venta</label>
+            <input id="ven-fecha" type="datetime-local" required>
+            <label for="ven-lote">Lote del inventario <span class="muted">(opcional)</span></label>
+            <select id="ven-lote"><option value="">— ninguno —</option></select>
+            <span></span>
+            <label class="check"><input id="ven-descontar" type="checkbox" checked> Descontar las unidades de ese lote</label>
+            <label for="ven-comision">Comisión pagada <span class="muted">(opcional; vacío = se estima)</span></label>
+            <input id="ven-comision" placeholder="la del correo de la casa de subastas">
+            <label for="ven-deposito">Depósitos perdidos <span class="muted">(opcional)</span></label>
+            <input id="ven-deposito" placeholder="si tuviste que volver a publicar">
+            <span></span>
+            <button type="submit" class="btn">Registrar venta</button>
+          </form>
+          <p id="ven-msg" class="small" hidden></p>
+        </details>
+
+        <div class="tabla-wrap">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Objeto</th>
+                <th scope="col" class="num">Cant.</th>
+                <th scope="col" class="num">Precio</th>
+                <th scope="col" class="num">Neto</th>
+                <th scope="col" class="num">Beneficio</th>
+                <th scope="col" class="num" title="Tu precio frente al precio de mercado observado en ese momento">vs mercado</th>
+                <th scope="col" class="num" title="Cuánto cambió el precio 7 días después de tu venta">7 días después</th>
+                <th scope="col">Recomendación ese día</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody id="ven-tbody"></tbody>
+          </table>
+        </div>
+        <p id="ven-vacio" class="muted" hidden>Todavía no has registrado ventas.</p>
+
+        <details class="inv-form" id="ven-evaluacion">
+          <summary>¿Acertaron las recomendaciones?</summary>
+          <p class="muted small">
+            Cada día se guarda qué objetos estaban en VENDER o GUARDAR y a qué precio. Pasados 7 y 14 días se
+            compara con el precio observado entonces. <strong>VENDER acierta</strong> si después el precio era igual o
+            más bajo (vender en ese momento fue mejor que esperar). <strong>GUARDAR acierta</strong> si después era más
+            alto. Se cuentan casos objeto-día, y se comparan precios de anuncios, no ventas confirmadas.
+          </p>
+          <div class="tabla-wrap">
+            <table class="tabla mini">
+              <thead><tr><th>Horizonte</th><th>Recomendación</th><th class="num">Casos</th><th class="num">Aciertos</th>
+                <th class="num">Tasa</th><th class="num">Cambio medio</th><th class="num">Pendientes</th></tr></thead>
+              <tbody id="eval-tbody"></tbody>
+            </table>
+          </div>
+          <p id="eval-nota" class="muted small"></p>
+          <ul id="eval-ultimos" class="log small"></ul>
+        </details>
+      </section>
+
       <section class="card" id="card-tabla">
         <div class="card-head">
           <h3>Precios</h3>

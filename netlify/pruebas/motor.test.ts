@@ -157,7 +157,8 @@ describe("lectura: datos antiguos y confianza", () => {
     assert.equal((await rec(1)).recomendacion, "VENDER");
     const fila = (await uno("select tabla_precios($1) as r", [CSV])).r[0];
     assert.equal(fila.rec, "OBSERVACION");
-    assert.match(fila.resumen, /^Datos antiguos \(10 h\)/);
+    // 10 h más los minutos de la hora en curso (la serie se trunca a la hora): 10 u 11 h.
+    assert.match(fila.resumen, /^Datos antiguos \(1[01] h\)/);
     const ex = (await uno("select explicar_objeto($1, 1) as r", [CSV])).r;
     assert.equal(ex.lectura.antiguo, true);
     assert.equal(ex.recomendacion_motor, "VENDER");

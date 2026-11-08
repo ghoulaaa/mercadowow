@@ -135,6 +135,24 @@ def inventory_action(conn: psycopg.Connection, c: dict) -> dict:
         return conn.execute(sql, args).fetchone()["r"]
 
 
+def sales(conn: psycopg.Connection, market_key: str) -> dict:
+    lista = conn.execute("select ventas_listado(%s) as r", (market_key,)).fetchone()["r"]
+    evaluacion = conn.execute("select evaluar_recomendaciones(%s) as r", (market_key,)).fetchone()["r"]
+    return {**lista, "evaluacion": evaluacion}
+
+
+def sales_action(conn: psycopg.Connection, c: dict) -> dict:
+    """Registrar o borrar una venta. La BD valida mercado, objeto, lote y fechas."""
+    with conn.transaction():
+        if c["accion"] == "registrar":
+            return conn.execute(
+                "select registrar_venta(%s, %s, %s, %s, %s::timestamptz, %s, %s, %s, %s, %s) as r",
+                (c["mercado"], c["item_id"], c["cantidad"], c["precio"], c["vendido_en"], c.get("comision"),
+                 c.get("deposito"), c.get("lote_id"), c.get("descontar") is True, c.get("nota")),
+            ).fetchone()["r"]
+        return conn.execute("select borrar_venta(%s, %s) as r", (c["mercado"], c["id"])).fetchone()["r"]
+
+
 def market_version(conn: psycopg.Connection, market_key: str) -> dict | None:
     return conn.execute("select version_mercado(%s) as r", (market_key,)).fetchone()["r"]
 

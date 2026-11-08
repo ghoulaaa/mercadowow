@@ -215,6 +215,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("Fallo en inventario: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
 
+    @app.get("/api/ventas")
+    def ventas_leer(mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                db.recompute(conn, clave)
+                return JSONResponse(db.sales(conn, clave), headers=SIN_CACHE)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al leer ventas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    @app.post("/api/ventas")
+    def ventas_cambiar(c: dict = Body(...)):
+        def entero(v):
+            return isinstance(v, int) and not isinstance(v, bool)
+
+        def opcional(v):
+            return v is None or entero(v)
+
+        accion = c.get("accion")
+        if not isinstance(c.get("mercado"), str) or accion not in ("registrar", "borrar"):
+            return JSONResponse(status_code=400, content={"error": "Falta mercado o la acción es desconocida"})
+        ok = (entero(c.get("item_id")) and entero(c.get("cantidad")) and entero(c.get("precio"))
+              and isinstance(c.get("vendido_en"), str) and opcional(c.get("comision"))
+              and opcional(c.get("deposito")) and opcional(c.get("lote_id"))) if accion == "registrar" \
+            else entero(c.get("id"))
+        if not ok:
+            return JSONResponse(status_code=400, content={"error": "Datos de la venta no válidos"})
+        try:
+            with db.connect(settings.database_url) as conn:
+                return db.sales_action(conn, c)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo en ventas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
     @app.get("/api/ajustes")
     def ajustes_leer():
         try:

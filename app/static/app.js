@@ -610,6 +610,200 @@ $("inv-tbody").addEventListener("click", async (ev) => {
   }
 });
 
+// ---------- ventas y aciertos ----------
+let ventas = null;
+
+const ahoraLocal = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+};
+
+async function cargarVentas() {
+  const clave = ultimo?.mercado?.clave;
+  if (!clave) return;
+  try {
+    const r = await fetch("/api/ventas?mercado=" + encodeURIComponent(clave), { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok || ultimo?.mercado?.clave !== clave) return;
+    ventas = d;
+  } catch { return; }
+  pintarVentas();
+}
+
+function pctCelda(tr, p, k, titulo) {
+  const td = celdaTexto(tr, p == null ? "—" : formatearPct(100 * p),
+    "num" + (p == null ? " desconocido" : p > 0.0005 ? " sube" : p < -0.0005 ? " baja" : ""), k);
+  if (titulo) td.title = titulo;
+  return td;
+}
+
+function pintarVentas() {
+  const v = ventas;
+  if (!v) return;
+  const t = v.totales;
+  $("ven-contador").textContent = t.ventas ? `${t.ventas} ventas · ${t.unidades} unidades` : "";
+  $("ven-neto").textContent = t.ventas ? formatearMoneda(t.neto) : "—";
+  $("ven-neto-n").textContent = t.comisiones_estimadas
+    ? `${t.comisiones_estimadas} con comisión estimada (no registraste la pagada)` : (t.ventas ? "con las comisiones que registraste" : "");
+  if (t.con_coste) {
+    $("ven-benef").textContent = formatearMoneda(t.beneficio_con_coste);
+    $("ven-benef").className = "tile-v " + (t.beneficio_con_coste >= 0 ? "ok" : "bad");
+    $("ven-benef-n").textContent = `${t.con_coste} venta(s) con coste` + (t.sin_coste ? ` · ${t.sin_coste} sin coste: no se incluyen` : "");
+  } else {
+    $("ven-benef").textContent = t.ventas ? "sin calcular" : "—";
+    $("ven-benef").className = "tile-v muted";
+    $("ven-benef-n").textContent = t.ventas ? "Ninguna venta tiene coste de compra (elige el lote del inventario al registrarla)" : "";
+  }
+
+  const ev = v.evaluacion;
+  const v7 = ev.resumen.find((x) => x.horizonte === 7 && x.rec === "VENDER");
+  const g7 = ev.resumen.find((x) => x.horizonte === 7 && x.rec === "GUARDAR");
+  const casos = (v7?.n || 0) + (g7?.n || 0);
+  if (casos) {
+    const aciertos = (v7?.aciertos || 0) + (g7?.aciertos || 0);
+    $("ven-acierto").textContent = formatearPct(100 * aciertos / casos).replace("+", "");
+    $("ven-acierto").className = "tile-v";
+    $("ven-acierto-n").textContent = `${aciertos} de ${casos} casos · vender ${v7?.n ? formatearPct(100 * v7.tasa).replace("+", "") : "—"}`
+      + ` · guardar ${g7?.n ? formatearPct(100 * g7.tasa).replace("+", "") : "—"}`;
+  } else {
+    $("ven-acierto").textContent = "aún no";
+    $("ven-acierto").className = "tile-v muted";
+    const pend = (v7?.pendientes || 0) + (g7?.pendientes || 0);
+    $("ven-acierto-n").textContent = pend
+      ? `${pend} recomendaciones esperando a cumplir 7 días`
+      : "Todavía no hay recomendaciones de VENDER o GUARDAR registradas";
+  }
+
+  const tbody = $("ven-tbody");
+  tbody.replaceChildren();
+  $("ven-vacio").hidden = v.ventas.length > 0;
+  for (const s of v.ventas) {
+    const tr = el("tr");
+    celdaTexto(tr, fecha(s.vendido_en), "", "Fecha:");
+    const tdObj = el("td", "c-obj");
+    const b = el("button", "objeto-nombre enlace", s.nombre); b.type = "button"; b.dataset.detalle = s.item_id;
+    tdObj.append(b);
+    if (s.nota) tdObj.append(el("div", "objeto-id", s.nota));
+    tr.append(tdObj);
+    celdaTexto(tr, s.cantidad.toLocaleString("es"), "num", "Cantidad:");
+    celdaTexto(tr, formatearMoneda(s.precio), "num", "Precio:");
+    const tdNeto = celdaTexto(tr, formatearMoneda(s.neto), "num", "Neto:");
+    tdNeto.title = `Bruto ${formatearMoneda(s.bruto)} − comisión ${formatearMoneda(s.comision)}`
+      + (s.comision_estimada ? " (estimada)" : " (pagada)")
+      + (s.deposito_perdido ? ` − depósitos perdidos ${formatearMoneda(s.deposito_perdido)}` : "");
+    const tdB = celdaTexto(tr, s.beneficio == null ? "—" : formatearMoneda(s.beneficio),
+      "num" + (s.beneficio == null ? " desconocido" : s.beneficio >= 0 ? " sube" : " baja"), "Beneficio:");
+    if (s.beneficio == null) tdB.title = "Sin coste de compra: beneficio sin calcular";
+    pctCelda(tr, s.vs_mercado, "vs mercado:", s.precio_mercado != null
+      ? `Precio de mercado observado entonces: ${formatearMoneda(s.precio_mercado)}` : "No hay un precio observado en las 24 h anteriores");
+    pctCelda(tr, s.vs_7d, "7 días después:", s.precio_7d != null
+      ? `7 días después estaba a ${formatearMoneda(s.precio_7d)}: ${s.vs_7d > 0 ? "esperar habría dado más" : "vender entonces fue mejor o igual"}`
+      : "Todavía no han pasado 7 días o no hay dato");
+    const tdRec = el("td"); tdRec.dataset.k = "Recomendación:";
+    tdRec.append(el("span", "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[s.rec_ese_dia] || ""),
+      s.rec_ese_dia ? NOMBRE_REC[s.rec_ese_dia] : "sin registro"));
+    if (!s.rec_ese_dia) tdRec.title = "Solo se registran a diario las de VENDER/GUARDAR y los favoritos";
+    tr.append(tdRec);
+    const tdAcc = el("td");
+    const bb = el("button", "btn-mini peligro", "Borrar"); bb.type = "button"; bb.dataset.borrarVenta = s.id;
+    tdAcc.append(bb); tr.append(tdAcc);
+    tbody.append(tr);
+  }
+
+  const eb = $("eval-tbody");
+  eb.replaceChildren();
+  for (const x of ev.resumen) {
+    const tr = el("tr");
+    tr.append(el("td", "", `${x.horizonte} días`), el("td", "", NOMBRE_REC[x.rec]),
+      el("td", "num", String(x.n)), el("td", "num", String(x.aciertos)),
+      el("td", "num", x.tasa == null ? "—" : formatearPct(100 * x.tasa).replace("+", "")),
+      el("td", "num", x.cambio_medio == null ? "—" : formatearPct(100 * x.cambio_medio)),
+      el("td", "num", String(x.pendientes)));
+    eb.append(tr);
+  }
+  $("eval-nota").textContent = ev.dias_registrados
+    ? `Registro desde el ${ev.primer_registro} (${ev.dias_registrados} días). Con pocos casos, la tasa de acierto no es fiable todavía.`
+    : "Aún no hay ningún día registrado en este mercado.";
+  const ul = $("eval-ultimos");
+  ul.replaceChildren();
+  for (const c of ev.ultimos.slice(0, 15)) {
+    ul.append(el("li", c.acierto ? "ok" : "bad",
+      `${c.dia} · ${c.nombre} · ${NOMBRE_REC[c.rec]} a ${formatearMoneda(c.precio_rec)} → ${c.horizonte} días después ` +
+      `${formatearMoneda(c.precio_despues)} (${formatearPct(100 * c.cambio)}) · ${c.acierto ? "acierto" : "fallo"}`));
+  }
+}
+
+function rellenarLotes() {
+  const sel = $("ven-lote"), obj = resolverObjeto($("ven-objeto").value);
+  sel.replaceChildren(el("option", "", "— ninguno —"));
+  sel.firstChild.value = "";
+  if (!obj || !inventario) return;
+  for (const f of inventario.filas.filter((x) => x.item_id === obj.id)) {
+    const op = el("option", "", `${f.cantidad} uds.` + (f.coste_unitario != null ? ` a ${formatearMoneda(f.coste_unitario)}` : " (coste desconocido)"));
+    op.value = f.id;
+    sel.append(op);
+  }
+  if (sel.options.length === 2) sel.selectedIndex = 1;
+}
+$("ven-objeto").addEventListener("change", rellenarLotes);
+$("ven-registrar").addEventListener("toggle", () => {
+  if ($("ven-registrar").open && !$("ven-fecha").value) $("ven-fecha").value = ahoraLocal();
+});
+
+$("form-venta").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("ven-msg");
+  msg.hidden = false;
+  try {
+    const obj = resolverObjeto($("ven-objeto").value);
+    if (!obj) throw new Error("No encuentro ese objeto en este mercado. Elígelo de la lista.");
+    const cantidad = Number($("ven-cantidad").value);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) throw new Error("La cantidad debe ser un entero mayor que 0");
+    const precio = parsearMoneda($("ven-precio").value);
+    if (precio == null) throw new Error("Falta el precio por unidad");
+    const fechaVenta = new Date($("ven-fecha").value);
+    if (Number.isNaN(fechaVenta.getTime())) throw new Error("Fecha no válida");
+    const lote = $("ven-lote").value ? Number($("ven-lote").value) : null;
+    const r = await fetch("/api/ventas", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mercado: ultimo.mercado.clave, accion: "registrar", item_id: obj.id, cantidad, precio,
+        vendido_en: fechaVenta.toISOString(), comision: parsearMoneda($("ven-comision").value),
+        deposito: parsearMoneda($("ven-deposito").value), lote_id: lote,
+        descontar: lote != null && $("ven-descontar").checked,
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    msg.className = "small ok";
+    msg.textContent = `Venta registrada: ${cantidad} × ${obj.nombre} a ${formatearMoneda(precio)}` + (d.descontado ? " (descontada del inventario)" : "");
+    $("form-venta").reset();
+    $("ven-fecha").value = ahoraLocal();
+    await Promise.all([cargarVentas(), cargarInventario()]);
+  } catch (e) {
+    msg.className = "small bad";
+    msg.textContent = e.message;
+  }
+});
+
+$("ven-tbody").addEventListener("click", async (ev) => {
+  const ver = ev.target.closest("[data-detalle]");
+  if (ver) { abrirDetalle(Number(ver.dataset.detalle)); return; }
+  const b = ev.target.closest("[data-borrar-venta]");
+  if (!b) return;
+  const s = ventas.ventas.find((x) => x.id === Number(b.dataset.borrarVenta));
+  if (!confirm(`¿Borrar la venta de ${s.cantidad} × ${s.nombre}? Las unidades NO vuelven al inventario.`)) return;
+  try {
+    const r = await fetch("/api/ventas", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mercado: ultimo.mercado.clave, accion: "borrar", id: s.id }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || "HTTP " + r.status);
+    await cargarVentas();
+  } catch (e) { alert(e.message); }
+});
+
 let lecturaInv = null;
 $("inv-archivo").addEventListener("change", async () => {
   const a = $("inv-archivo").files[0], lista = $("inv-errores"), msg = $("inv-imp-msg");
@@ -726,6 +920,7 @@ async function vigilar() {
           await cargar();
           await cargarPrecios();
           cargarInventario();
+          cargarVentas();
         }
         firmaVersion = firma;
       }
@@ -738,6 +933,7 @@ async function refrescar() {
   await cargarPrecios();
   rellenarListaObjetos();
   cargarInventario();
+  cargarVentas();
   cargarAjustes();
 }
 
@@ -745,7 +941,7 @@ async function refrescar() {
 $("sel-mercado").addEventListener("change", async (ev) => {
   mercadoActual = ev.target.value;
   guardado.escribir(mercadoActual);
-  filasTabla = []; firmaVersion = null; inventario = null; pintarTabla();
+  filasTabla = []; firmaVersion = null; inventario = null; ventas = null; pintarTabla();
   await refrescar();
 });
 

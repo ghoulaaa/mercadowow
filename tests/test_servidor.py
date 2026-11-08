@@ -79,8 +79,8 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:7] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
-                           "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql"]
+    assert nombres[:8] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+                           "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -306,6 +306,33 @@ def test_inventario_e_historial_lectura(cliente, monkeypatch):
     assert cliente.get("/api/inventario").json()["totales"] == {"lotes": 0}
     assert cliente.get("/api/historial", params={"id": 5, "dias": 7}).json() == {"id": 5, "dias": 7}
     assert cliente.get("/api/historial", params={"id": 5, "dias": 90}).status_code == 422
+
+
+VENTA = {"mercado": "x", "accion": "registrar", "item_id": 1, "cantidad": 2, "precio": 950,
+         "vendido_en": "2026-11-10T12:00:00Z"}
+
+
+@pytest.mark.parametrize("cuerpo, codigo", [
+    ({**VENTA, "accion": "volar"}, 400),
+    ({k: v for k, v in VENTA.items() if k != "mercado"}, 400),
+    ({**VENTA, "precio": "950"}, 400),
+    ({**VENTA, "cantidad": True}, 400),
+    ({**VENTA, "comision": 1.5}, 400),
+    ({**VENTA, "vendido_en": None}, 400),
+    ({"mercado": "x", "accion": "borrar"}, 400),
+    (VENTA, 200),
+    ({**VENTA, "comision": 0, "deposito": None, "lote_id": 3, "descontar": True}, 200),
+    ({"mercado": "x", "accion": "borrar", "id": 9}, 200),
+])
+def test_ventas_valida(cliente, monkeypatch, cuerpo, codigo):
+    monkeypatch.setattr(db, "sales_action", lambda conn, c: {"ok": True})
+    assert cliente.post("/api/ventas", json=cuerpo).status_code == codigo
+
+
+def test_ventas_lectura(cliente, monkeypatch):
+    monkeypatch.setattr(db, "recompute", lambda conn, key: {"estado": "al_dia"})
+    monkeypatch.setattr(db, "sales", lambda conn, key: {"ventas": [], "evaluacion": {"resumen": []}})
+    assert cliente.get("/api/ventas").json()["evaluacion"] == {"resumen": []}
 
 
 def test_build_status_sin_datos():

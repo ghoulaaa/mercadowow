@@ -343,6 +343,12 @@ h3.inline { display: inline; }
 .tabla td input.edit { width: 90px; font: inherit; font-size: 13px; padding: 2px 6px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
 
+.form-grid select {
+  font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text); min-width: 0;
+}
+#ven-evaluacion table { margin: 8px 0; }
+
 /* ---------- gráfico ---------- */
 :root { --serie-1: #b98a14; --serie-2: #4c94d6; }
 .g-marco { position: relative; }
