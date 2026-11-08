@@ -98,10 +98,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(build_status(settings, datos, pendientes, mercados), headers=SIN_CACHE)
 
     @app.post("/api/actualizar")
-    def actualizar():
+    def actualizar(cuerpo: dict | None = Body(default=None)):
+        mercado = (cuerpo or {}).get("mercado") or settings.market
+        if not isinstance(mercado, str) or len(mercado) > 100:
+            return JSONResponse(status_code=400, content={"error": "Mercado no válido"})
         try:
             with db.connect(settings.database_url) as conn:
-                r = db.request_update(conn, settings.market)
+                r = db.request_update(conn, mercado)
         except Exception as exc:
             log.warning("Fallo al pedir actualización: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)

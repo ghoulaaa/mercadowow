@@ -383,8 +383,13 @@ export function crearApi(db: Db, o: OpcionesApi) {
       if (!configurada) return sinConfigurar();
       if (req.method !== "POST") return json(405, { error: "Método no permitido" });
       if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      let mercado = o.mercado;
       try {
-        const r = await llamar(db, "select solicitar_actualizacion($1) as r", [o.mercado]);
+        const c = await leerJson(req, 1000);
+        if (typeof c?.mercado === "string" && c.mercado.length <= 100) mercado = c.mercado;
+      } catch { /* sin cuerpo: el mercado principal */ }
+      try {
+        const r = await llamar(db, "select solicitar_actualizacion($1) as r", [mercado]);
         if (!r?.ok) {
           const mensajes: Record<string, string> = {
             en_curso: "Ya hay una actualización en curso.",

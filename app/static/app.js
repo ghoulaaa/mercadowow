@@ -49,7 +49,9 @@ function pintarSelector(s) {
   for (const m of lista) {
     const op = document.createElement("option");
     op.value = m.clave;
-    op.textContent = m.ficticio ? "DEMO (ficticio)" : (m.automatico ? "Real · TSM" : "Real · importación manual");
+    op.textContent = m.ficticio ? "DEMO (ficticio)"
+      : m.automatico ? `Real · ${m.proveedor === "ahledger" ? "AHledger" : m.proveedor.toUpperCase()}`
+      : "Real · importación manual";
     sel.append(op);
   }
   sel.value = s.mercado.clave;
@@ -117,8 +119,11 @@ async function cargar() {
     $("titulo").textContent = a.versiones_guardadas ? "Precios importados a mano" : "Sin precios importados";
     $("subtitulo").textContent = "Plan B: precios del mercado PvP Horda cargados desde un CSV. Se guardan aparte de los de TSM.";
   } else {
-    $("titulo").textContent = a.versiones_guardadas ? "Recibiendo datos reales de TSM" : "Conectado, esperando el primer dato";
-    $("subtitulo").textContent = "Hito 3 de 10. La tabla de precios y las recomendaciones llegan en los hitos 4 y 5.";
+    const fuente = m.proveedor === "AHLEDGER" ? "AHledger" : m.proveedor;
+    $("titulo").textContent = a.versiones_guardadas ? `Recibiendo datos reales de ${fuente}` : "Conectado, esperando el primer dato";
+    $("subtitulo").textContent = m.proveedor === "AHLEDGER"
+      ? "Escaneos de jugadores con el addon de AHledger: incluye unidades publicadas y una estimación de ventas por día."
+      : "Archivo público de TSM: precio mínimo, valor de mercado y valor histórico (sin cantidades).";
   }
 
   const errorResuelto = a.ultimo_error && a.ultima_consulta_ok &&
@@ -126,7 +131,7 @@ async function cargar() {
 
   const comunes = [
     ["Mercado", m.nombre + " (" + m.clave + ")"],
-    ["Origen de los datos", demo ? "FICTICIO (generado)" : (auto ? m.proveedor + " · archivo público" : "Importación manual (CSV)"), demo ? "bad" : ""],
+    ["Origen de los datos", demo ? "FICTICIO (generado)" : (auto ? (m.proveedor === "AHLEDGER" ? "AHledger · API pública (escaneos de jugadores con su addon)" : m.proveedor + " · archivo público") : "Importación manual (CSV)"), demo ? "bad" : ""],
     ["Hora del dato original", fecha(a.hora_dato_original) + hace(a.hora_dato_original) + (viejo && !demo ? " · ANTIGUO" : ""), viejo && !demo ? "bad" : ""],
     ["Versiones guardadas", String(a.versiones_guardadas) + " · " + a.objetos + " objetos"],
   ];
@@ -209,6 +214,7 @@ async function cargarPrecios() {
     const op = document.createElement("option"); op.value = op.textContent = c; sel.append(op);
   }
   sel.value = [...sel.options].some((o) => o.value === previa) ? previa : "";
+  pintarAtribucion();
 
   const res = d.resumen || {};
   $("tile-vender-v").textContent = res.vender ?? "—";
@@ -266,6 +272,14 @@ function pintarTabla() {
     const ic = document.createElement("span"); ic.className = "icono"; ic.setAttribute("aria-hidden", "true");
     ic.textContent = x.nombre.replace(/^\[FICTICIO\]\s*/, "").charAt(0).toUpperCase();
     ic.style.background = colorCategoria(x.categoria);
+    if (x.icono) {
+      // Icono oficial (CDN de Blizzard). Si no carga, queda la inicial como marcador neutro.
+      const img = document.createElement("img");
+      img.src = x.icono; img.alt = ""; img.loading = "lazy"; img.width = 26; img.height = 26;
+      img.addEventListener("error", () => img.remove());
+      ic.append(img);
+    }
+    if (x.calidad) ic.dataset.calidad = x.calidad;
     const txt = document.createElement("div");
     const nom = document.createElement("button");
     nom.type = "button"; nom.className = "objeto-nombre enlace"; nom.dataset.detalle = x.id; nom.textContent = x.nombre;
@@ -284,7 +298,13 @@ function pintarTabla() {
     const td7 = document.createElement("td"); td7.dataset.k = "7 días:";
     celdaPct(td7, x.var7, x.precio_7d, x.hora_7d);
     const tdOferta = document.createElement("td"); tdOferta.className = "num"; tdOferta.dataset.k = "Oferta:";
-    tdOferta.textContent = "sin dato"; tdOferta.title = "TSM no publica cantidades en venta";
+    if (x.cantidad != null) {
+      tdOferta.textContent = `${x.cantidad.toLocaleString("es")} uds.`;
+      tdOferta.title = "Unidades publicadas en el último escaneo"
+        + (x.ventas_dia != null ? ` · ventas estimadas por AHledger: ${x.ventas_dia.toLocaleString("es")} al día (estimación, no ventas confirmadas)` : "");
+    } else {
+      tdOferta.textContent = "sin dato"; tdOferta.title = "Esta fuente no publica cantidades en venta";
+    }
     const tdRec = document.createElement("td"); tdRec.dataset.k = "Recomendación:";
     const et = document.createElement("span");
     et.className = "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[x.rec] || "");
@@ -346,6 +366,24 @@ $("tbody").addEventListener("click", async (ev) => {
   }
 });
 
+// ---------- atribución de la fuente (obligatoria para AHledger) ----------
+function atribucion() {
+  const a = ultimo?.mercado?.atribucion;
+  if (!a) return null;
+  const p = el("p", "atribucion small");
+  const link = el("a", "", a.texto);
+  link.href = a.url; link.target = "_blank"; link.rel = "noopener";
+  p.append(link);
+  return p;
+}
+
+function pintarAtribucion() {
+  const cont = $("atribucion-tabla");
+  cont.replaceChildren();
+  const cita = atribucion();
+  if (cita) cont.append(cita);
+}
+
 // ---------- tarjetas de resumen → filtro ----------
 for (const id of ["tile-vender", "tile-guardar"]) {
   $(id).addEventListener("click", () => {
@@ -397,6 +435,20 @@ async function abrirDetalle(id) {
   const et = el("span", "etiqueta grande " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[l.rec] || ""), NOMBRE_REC[l.rec]);
   cab.append(et, el("span", "", " " + l.resumen));
   nodos.push(cab);
+  if (fila && (fila.mediana != null || fila.cantidad != null)) {
+    const sec = el("section", "det-sec");
+    sec.append(el("h3", "", "Mercado ahora"));
+    const dlm = el("dl", "kv");
+    const f = (k, v) => dlm.append(el("dt", "", k), el("dd", "", v));
+    f("Compra mínima", formatearMoneda(fila.precio));
+    if (fila.mediana != null) f("Mediana", formatearMoneda(fila.mediana));
+    if (fila.historico != null) f("Mediana de 30 días (fuente)", formatearMoneda(fila.historico));
+    if (fila.cantidad != null) f("Unidades publicadas", fila.cantidad.toLocaleString("es"));
+    if (fila.ventas_dia != null) f("Ventas por día", `${fila.ventas_dia.toLocaleString("es")} (estimación de la fuente: un escaneo no distingue una venta de una cancelación)`);
+    f("Escaneo", fecha(fila.hora));
+    sec.append(dlm);
+    nodos.push(sec);
+  }
   if (d.en_inventario) nodos.push(el("p", "small", `Tienes ${d.en_inventario} unidades en tu inventario.`));
   const secGraf = el("section", "det-sec");
   secGraf.append(el("h3", "", "Historial de 30 días"));
@@ -420,7 +472,7 @@ async function abrirDetalle(id) {
   fila2(`Comisión (${String(d.comision_pct).replace(".", ",")} %, asumida)`, "−" + formatearMoneda(Math.round(c.precio * d.comision_pct / 100)));
   fila2("Ingreso neto estimado", formatearMoneda(d.ingreso_neto_unidad));
   fila2("Depósito por publicación", `mín. ${formatearMoneda(d.deposito_minimo)} · se recupera si se vende, se pierde si expira · no incluido arriba`);
-  fila2("Beneficio y margen", "necesitan el coste de compra: llegan con el inventario (Hito 6)");
+  fila2("Beneficio y margen", "se calculan en «Mi inventario» si indicas el coste de compra");
   dinero.append(dl);
   nodos.push(dinero);
 
@@ -430,12 +482,17 @@ async function abrirDetalle(id) {
   const tb = el("table", "tabla mini");
   for (const p of [...d.desglose, { k: "Antigüedad del dato", puntos: l.p_edad, max: 20, detalle: l.horas_dato != null ? `${String(l.horas_dato).replace(".", ",")} h` : "—" }]) {
     const tr = el("tr");
-    tr.append(el("td", "", p.k), el("td", "num", `${p.puntos}/${p.max}`), el("td", "muted", p.detalle));
+    const detalle = p.k.startsWith("Liquidez") && fila?.ventas_dia != null
+      ? "la fuente publica una estimación; el motor todavía no la usa"
+      : p.detalle;
+    tr.append(el("td", "", p.k), el("td", "num", `${p.puntos}/${p.max}`), el("td", "muted", detalle));
     tb.append(tr);
   }
   conf.append(tb);
   nodos.push(conf);
   nodos.push(el("p", "muted small", `Calculado ${fecha(d.calculado_en)} con el escaneo de ${fecha(d.hora_dato)}. No es una garantía de subida ni de venta.`));
+  const cita = atribucion();
+  if (cita) nodos.push(cita);
   cuerpo.replaceChildren(...nodos);
 
   try {
@@ -977,7 +1034,10 @@ $("btn-actualizar").addEventListener("click", async () => {
   const btn = $("btn-actualizar"), aviso = $("aviso-boton");
   btn.disabled = true;
   try {
-    const r = await fetch("/api/actualizar", { method: "POST" });
+    const r = await fetch("/api/actualizar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mercado: ultimo?.mercado?.clave }),
+    });
     const d = await r.json();
     aviso.textContent = d.mensaje || d.error || "Hecho";
     aviso.hidden = false;

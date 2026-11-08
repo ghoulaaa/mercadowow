@@ -20,8 +20,10 @@ FUNCION = "actualizar-mercado"
 # Mercados reales conocidos. Un mercado nuevo exige añadirlo aquí y en la base de
 # datos a propósito: nada se mezcla por accidente.
 KNOWN_MARKETS = {
-    "tsm:forever:us:pvp-horde": "WoW Forever · US · PvP · Horda",
+    "ahledger:forever:us:pvp-horde": "WoW Forever · US · PvP · Horda (AHledger)",
+    "tsm:forever:us:pvp-horde": "WoW Forever · US · PvP · Horda (TSM)",
 }
+MERCADO_POR_DEFECTO = "ahledger:forever:us:pvp-horde"
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -118,7 +120,7 @@ def load_settings(env_file: Path | None = None, environ: dict[str, str] | None =
     def get(name: str, default: str = "") -> str:
         return merged.get(name, default).strip() or default
 
-    market = get("MERCADO", "tsm:forever:us:pvp-horde")
+    market = get("MERCADO", MERCADO_POR_DEFECTO)
     if market not in KNOWN_MARKETS:
         raise ValueError(
             f"MERCADO={market!r} no es un mercado conocido. Opciones: {', '.join(KNOWN_MARKETS)}"

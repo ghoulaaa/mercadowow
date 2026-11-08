@@ -1,11 +1,10 @@
 // Edge Function de Supabase: la llama pg_cron (cada 5 min comprueba si toca)
-// y el botón manual. Solo descarga si la base de datos dice que toca, así que
-// llamarla de más no provoca consultas extra al proveedor.
+// y el botón manual. Recorre todos los mercados con descarga automática (TSM y
+// AHledger) y solo descarga los que la base de datos dice que tocan, así que
+// llamarla de más no provoca consultas extra a los proveedores.
 
 import postgres from "npm:postgres@3.4.9";
-import { ejecutar, type Db } from "./nucleo.ts";
-
-const MERCADO = Deno.env.get("MERCADO") ?? "tsm:forever:us:pvp-horde";
+import { ejecutarTodos, type Db } from "./nucleo.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -16,9 +15,9 @@ Deno.serve(async (req) => {
     return new Response("Método no permitido", { status: 405 });
   }
   try {
-    const resultado = await ejecutar(db, { mercado: MERCADO, fetch });
-    console.log(JSON.stringify(resultado));
-    return Response.json(resultado);
+    const resultados = await ejecutarTodos(db, { fetch });
+    console.log(JSON.stringify(resultados));
+    return Response.json(resultados);
   } catch (e) {
     console.error("Fallo inesperado:", e);
     return Response.json({ estado: "error", detalle: { mensaje: String(e) } }, { status: 500 });

@@ -349,6 +349,18 @@ h3.inline { display: inline; }
 }
 #ven-evaluacion table { margin: 8px 0; }
 
+.atribucion { margin: 8px 0 0; text-align: right; }
+.atribucion a { color: var(--gold); }
+.icono { position: relative; overflow: hidden; }
+.icono img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 6px; }
+/* Borde según calidad (además del nombre, nunca solo color: la calidad sale en el detalle). */
+.icono[data-calidad="POOR"] { box-shadow: 0 0 0 1px #9d9d9d; }
+.icono[data-calidad="COMMON"] { box-shadow: 0 0 0 1px #d0d0d0; }
+.icono[data-calidad="UNCOMMON"] { box-shadow: 0 0 0 1px #1eff00; }
+.icono[data-calidad="RARE"] { box-shadow: 0 0 0 1px #0070dd; }
+.icono[data-calidad="EPIC"] { box-shadow: 0 0 0 1px #a335ee; }
+.icono[data-calidad="LEGENDARY"] { box-shadow: 0 0 0 1px #ff8000; }
+
 /* ---------- gráfico ---------- */
 :root { --serie-1: #b98a14; --serie-2: #4c94d6; }
 .g-marco { position: relative; }

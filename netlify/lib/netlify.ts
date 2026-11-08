@@ -23,7 +23,7 @@ const proyecto = (process.env.SUPABASE_URL ?? "").match(/^https:\/\/([a-z0-9]+)\
 
 export const api = crearApi(db, {
   clave: process.env.CLAVE_ACCESO,
-  mercado: process.env.MERCADO ?? "tsm:forever:us:pvp-horde",
+  mercado: process.env.MERCADO ?? "ahledger:forever:us:pvp-horde",
   proyecto,
 });
 

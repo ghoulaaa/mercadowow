@@ -252,10 +252,10 @@
                 <th scope="col"><span class="sr-only">Favorito</span></th>
                 <th scope="col">Objeto</th>
                 <th scope="col" class="num">Precio unitario</th>
-                <th scope="col" class="num" title="Valor histórico calculado por TSM">Ref. histórica</th>
+                <th scope="col" class="num" title="Referencia histórica de la fuente: valor histórico de TSM o mediana de 30 días de AHledger">Ref. histórica</th>
                 <th scope="col" class="num">24 h</th>
                 <th scope="col" class="num">7 días</th>
-                <th scope="col" class="num" title="TSM no publica cantidades en venta">Oferta</th>
+                <th scope="col" class="num" title="Unidades publicadas en el último escaneo (si la fuente lo publica)">Oferta</th>
                 <th scope="col">Recomendación</th>
                 <th scope="col">Confianza</th>
               </tr>
@@ -264,6 +264,7 @@
           </table>
         </div>
         <p id="sin-resultados" class="muted" hidden>Ningún objeto coincide con los filtros.</p>
+        <div id="atribucion-tabla"></div>
         <button id="btn-mas" type="button" class="btn" hidden>Mostrar más</button>
         <p class="muted small nota">
           Precio unitario = compra inmediata mínima del último escaneo. Las variaciones de 24 h y 7 días usan solo

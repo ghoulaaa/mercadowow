@@ -116,6 +116,130 @@ export function leerArchivoTsm(texto: string): ArchivoTsm {
 }
 
 // ---------------------------------------------------------------------
+// AHledger: tabla de precios en texto (formato AHL1), documentada en ahledger.com/developers.
+//   Cabecera: AHL1|forever/pvp/horde/us|<unix>|<filas>
+//   Fila:     id:mediana:mínimo:cantidad:mediana7d:mediana30d:mínimo30d:máximo30d:ventas_día×10
+//   Campo vacío = desconocido. Precios en cobre.
+
+export interface FilaAhledger {
+  item_id: number;
+  name?: string;
+  min_buyout: number | null;
+  market_value: number | null;   // = mediana (lo más parecido al «valor de mercado»)
+  historical: number | null;     // = mediana de 30 días según AHledger
+  recent: null;
+  median: number | null;
+  quantity: number | null;
+  auctions: null;                // la tabla no lo trae
+  sales_per_day: number | null;  // ESTIMACIÓN de AHledger (no son ventas confirmadas)
+}
+
+export const esAhledger = (mercado: string) => mercado.startsWith("ahledger:");
+
+/** «ahledger:forever:us:pvp-horde» → «forever/pvp/horde/us» (como lo escribe la cabecera). */
+export function slugAhledger(mercado: string): string {
+  const [, juego, region, slug] = mercado.split(":");
+  return `${juego}/${slug.replace("-", "/")}/${region}`;
+}
+
+export function leerTablaAhledger(texto: string, slugEsperado: string): ArchivoTsm & { filas: FilaAhledger[] } {
+  const lineas = texto.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (!lineas.length) throw new ErrorFormato("Tabla vacía");
+  const cab = lineas[0].split("|");
+  if (cab.length !== 4 || cab[0] !== "AHL1") {
+    throw new ErrorFormato(`Cabecera inesperada: ${JSON.stringify(lineas[0].slice(0, 80))}`);
+  }
+  // Separación de mercados: la tabla debe ser EXACTAMENTE del mercado pedido.
+  if (cab[1] !== slugEsperado) {
+    throw new ErrorFormato(`La tabla es del mercado ${cab[1]}, no de ${slugEsperado}`);
+  }
+  if (!/^\d+$/.test(cab[2]) || !/^\d+$/.test(cab[3])) throw new ErrorFormato("Cabecera con hora o filas no válidas");
+  const declaradas = Number(cab[3]);
+  if (lineas.length - 1 !== declaradas) {
+    throw new ErrorFormato(`La cabecera anuncia ${declaradas} filas y llegaron ${lineas.length - 1} (¿descarga cortada?)`);
+  }
+  const ent = (v: string, campo: string, n: number) => {
+    if (v === "") return null;
+    if (!/^\d+$/.test(v)) throw new ErrorFormato(`Fila ${n}: ${campo}=${JSON.stringify(v)} no es un entero`);
+    const x = Number(v);
+    if (!Number.isSafeInteger(x)) throw new ErrorFormato(`Fila ${n}: ${campo} demasiado grande`);
+    return x;
+  };
+  const porItem = new Map<number, FilaAhledger>();
+  for (let k = 1; k < lineas.length; k++) {
+    const c = lineas[k].split(":");
+    if (c.length !== 9) throw new ErrorFormato(`Fila ${k + 1}: ${c.length} campos en vez de 9`);
+    const id = ent(c[0], "id", k + 1);
+    if (!id || id > 2_147_483_647) throw new ErrorFormato(`Fila ${k + 1}: id no válido`);
+    const ventas10 = ent(c[8], "ventas", k + 1);
+    const mediana = ent(c[1], "mediana", k + 1);
+    porItem.set(id, {
+      item_id: id,
+      median: mediana,
+      market_value: mediana,
+      min_buyout: ent(c[2], "mínimo", k + 1),
+      quantity: ent(c[3], "cantidad", k + 1),
+      historical: ent(c[5], "mediana30d", k + 1),
+      recent: null,
+      auctions: null,
+      sales_per_day: ventas10 == null ? null : ventas10 / 10,
+    });
+  }
+  if (!porItem.size) throw new ErrorFormato("La tabla no tiene filas de datos");
+  return {
+    filas: [...porItem.values()],
+    updatedAt: new Date(Number(cab[2]) * 1000).toISOString(),
+    duplicadas: declaradas - porItem.size,
+  };
+}
+
+/**
+ * Pone nombre a cada fila: los conocidos salen de la base de datos; los nuevos se piden a
+ * /v1/tooltip en lotes de 100 (nombre, calidad, clase, nivel, icono) y se guardan.
+ * Si AHledger no da el nombre, se usa «Objeto #id» y se reintentará en la próxima versión.
+ */
+async function prepararAhledger(db: Db, o: Opciones, mk: string, urlTabla: string,
+                                archivo: ArchivoTsm & { filas: FilaAhledger[] }) {
+  const ids = archivo.filas.map((f) => f.item_id);
+  const faltan = ((await db.consulta("select objetos_sin_metadatos($1, $2::integer[]) as r", [mk, ids]))[0]?.r ?? []) as number[];
+  const urlTooltip = urlTabla.replace("/pricetable/", "/tooltip/");
+  const metadatos: Record<string, unknown>[] = [];
+  const lotes: number[][] = [];
+  for (let i = 0; i < faltan.length; i += 100) lotes.push(faltan.slice(i, i + 100));
+  // Pocas peticiones a la vez, para respetar el límite de AHledger (300 por minuto).
+  for (let i = 0; i < lotes.length; i += 4) {
+    await Promise.all(lotes.slice(i, i + 4).map(async (lote) => {
+      try {
+        const r = await o.fetch(`${urlTooltip}?items=${lote.join(",")}`, {
+          headers: { "User-Agent": o.userAgent ?? "mercadowow/0.1 (uso personal)" },
+          signal: AbortSignal.timeout(o.timeoutMs ?? 60_000),
+        });
+        if (!r.ok) { await r.body?.cancel(); return; }
+        const d = await r.json() as { items?: Record<string, unknown>[] };
+        for (const it of d.items ?? []) {
+          if (!Number.isInteger(it.id) || typeof it.name !== "string") continue;
+          metadatos.push({
+            item_id: it.id, name: it.name,
+            quality: typeof it.quality === "string" ? it.quality : null,
+            item_class: typeof it.itemClass === "string" ? it.itemClass : null,
+            level: Number.isInteger(it.level) ? it.level : null,
+            icon_url: typeof it.icon === "string" ? it.icon : null,
+          });
+        }
+      } catch { /* sin nombre: se reintenta en la próxima versión */ }
+    }));
+  }
+  const conNombre = new Set(metadatos.map((m) => m.item_id as number));
+  for (const id of faltan) {
+    if (!conNombre.has(id)) metadatos.push({ item_id: id, name: `Objeto #${id}`, fuente: "pendiente" });
+  }
+  if (metadatos.length) {
+    await db.consulta("select guardar_metadatos($1, $2::text::jsonb) as r", [mk, JSON.stringify(metadatos)]);
+  }
+  return archivo;
+}
+
+// ---------------------------------------------------------------------
 
 export interface Db {
   consulta(sql: string, params: unknown[]): Promise<Record<string, unknown>[]>;
@@ -196,7 +320,9 @@ export async function ejecutar(db: Db, o: Opciones): Promise<Resultado> {
     }
 
     const texto = await respuesta.text();
-    const archivo = leerArchivoTsm(texto);
+    const archivo = esAhledger(mk)
+      ? await prepararAhledger(db, o, mk, String(turno.url), leerTablaAhledger(texto, slugAhledger(mk)))
+      : leerArchivoTsm(texto);
     // $6::text::jsonb (no $6::jsonb): con un parámetro jsonb, el driver postgres.js de la
     // Edge Function vuelve a serializar el texto y llega un escalar JSON en vez del array.
     const r = await llamar(db,
@@ -211,4 +337,19 @@ export async function ejecutar(db: Db, o: Opciones): Promise<Resultado> {
     const msg = e instanceof ErrorFormato ? `Formato inesperado: ${e.message}` : `Error: ${(e as Error).message ?? e}`;
     return await fallo(respuesta.status, msg);
   }
+}
+
+/** Ejecuta todos los mercados con descarga automática (TSM, AHledger…). Uno que falle no frena al resto. */
+export async function ejecutarTodos(db: Db, o: Omit<Opciones, "mercado">): Promise<Record<string, Resultado>> {
+  const filas = await db.consulta("select key from markets where source_url is not null order by key", []);
+  const resultados: Record<string, Resultado> = {};
+  for (const f of filas) {
+    const mercado = String(f.key);
+    try {
+      resultados[mercado] = await ejecutar(db, { ...o, mercado, runId: undefined });
+    } catch (e) {
+      resultados[mercado] = { estado: "error", detalle: { mensaje: String((e as Error)?.message ?? e) } };
+    }
+  }
+  return resultados;
 }

@@ -27,7 +27,7 @@ def settings(tmp_path, **extra):
 
 def test_valores_por_defecto(tmp_path):
     s = settings(tmp_path)
-    assert (s.host, s.port, s.market) == ("127.0.0.1", 8000, "tsm:forever:us:pvp-horde")
+    assert (s.host, s.port, s.market) == ("127.0.0.1", 8000, "ahledger:forever:us:pvp-horde")
     assert s.project_ref == "abcd"
     assert s.function_url == "https://abcd.supabase.co/functions/v1/actualizar-mercado"
 
@@ -79,8 +79,9 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:8] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
-                           "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql"]
+    assert nombres[:9] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+                           "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
+                           "0009_ahledger.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -115,8 +116,8 @@ class ConexionFalsa:
         return type("Cursor", (), {"fetchone": lambda _s: r})()
 
 
-MERCADOS = [{"clave": "tsm:forever:us:pvp-horde"}, {"clave": "csv:forever:us:pvp-horde"},
-            {"clave": "demo:forever:us:demo"}]
+MERCADOS = [{"clave": "ahledger:forever:us:pvp-horde"}, {"clave": "tsm:forever:us:pvp-horde"},
+            {"clave": "csv:forever:us:pvp-horde"}, {"clave": "demo:forever:us:demo"}]
 
 
 @pytest.fixture
@@ -179,6 +180,15 @@ def test_boton_manual(cliente, monkeypatch, respuesta, codigo):
     assert cliente.post("/api/actualizar").status_code == codigo
 
 
+def test_boton_manual_usa_el_mercado_pedido(cliente, monkeypatch):
+    pedidos = []
+    monkeypatch.setattr(db, "request_update", lambda conn, key: pedidos.append(key) or {"ok": True})
+    cliente.post("/api/actualizar", json={"mercado": "tsm:forever:us:pvp-horde"})
+    cliente.post("/api/actualizar")
+    assert pedidos == ["tsm:forever:us:pvp-horde", "ahledger:forever:us:pvp-horde"]
+    assert cliente.post("/api/actualizar", json={"mercado": 5}).status_code == 400
+
+
 @pytest.mark.parametrize("respuesta, dispara", [
     ({"ok": True}, True),
     ({"ok": False, "motivo": "espera", "segundos": 60}, False),
@@ -191,7 +201,7 @@ def test_request_update_solo_dispara_si_se_acepta(respuesta, dispara):
 
 def test_estado_de_otro_mercado_y_mercado_inexistente(cliente):
     s = cliente.get("/api/estado", params={"mercado": "demo:forever:us:demo"}).json()
-    assert s["mercados"] == MERCADOS and s["mercado_principal"] == "tsm:forever:us:pvp-horde"
+    assert s["mercados"] == MERCADOS and s["mercado_principal"] == "ahledger:forever:us:pvp-horde"
     assert cliente.get("/api/estado", params={"mercado": "no-existe"}).status_code == 404
 
 
