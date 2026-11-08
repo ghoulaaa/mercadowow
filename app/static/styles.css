@@ -327,6 +327,51 @@ h3.inline { display: inline; }
 }
 @media (max-width: 560px) { .ajustes { grid-template-columns: 1fr; } }
 
+/* ---------- inventario ---------- */
+.resumen-inv { margin-bottom: 12px; }
+.inv-form { margin-top: 12px; }
+.inv-form summary { cursor: pointer; color: var(--gold); font-size: 14px; }
+.inv-form .form-grid input { width: 100%; }
+.acciones-lote { display: flex; gap: 4px; justify-content: flex-end; }
+.btn-mini {
+  font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+}
+.btn-mini:hover { color: var(--text); border-color: var(--muted); }
+.btn-mini.peligro:hover { color: var(--danger); border-color: var(--danger); }
+.desconocido { color: var(--muted); font-style: italic; }
+.tabla td input.edit { width: 90px; font: inherit; font-size: 13px; padding: 2px 6px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+
+/* ---------- gráfico ---------- */
+:root { --serie-1: #b98a14; --serie-2: #4c94d6; }
+.g-marco { position: relative; }
+.g-marco svg { display: block; max-width: 100%; height: auto; }
+.g-rejilla { stroke: var(--border); stroke-width: 1; }
+.g-eje { fill: var(--muted); font-size: 11px; }
+.g-etiqueta { fill: var(--text); font-size: 11px; }
+.g-ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: .7; }
+.g-linea { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.g-linea.serie-1 { stroke: var(--serie-1); }
+.g-linea.serie-2 { stroke: var(--serie-2); }
+.g-punto { stroke: var(--panel); stroke-width: 2; }
+.g-punto.serie-1 { fill: var(--serie-1); }
+.g-punto.serie-2 { fill: var(--serie-2); }
+.g-cruz { stroke: var(--muted); stroke-width: 1; }
+.g-zona { fill: transparent; cursor: crosshair; }
+.g-tip {
+  position: absolute; top: 8px; min-width: 170px; pointer-events: none;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+.g-tip-fecha { color: var(--muted); margin-bottom: 2px; }
+.g-tip-marca { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.g-tip-marca.serie-1 { background: var(--serie-1); }
+.g-tip-marca.serie-2 { background: var(--serie-2); }
+.g-ref-marca { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px); }
+.g-leyenda { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+#det-grafico details { margin-top: 6px; font-size: 13px; }
+
 .notice {
   margin: 0;
   padding: 10px 14px;

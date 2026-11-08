@@ -58,6 +58,57 @@ function mapearColumnas(cabecera) {
   return mapa;
 }
 
+const ALIAS_INV = {
+  item_id: ["itemid", "id", "item"],
+  nombre: ["name", "nombre", "objeto"],
+  cantidad: ["cantidad", "qty", "quantity", "count", "unidades"],
+  coste: ["coste", "costeunitario", "cost", "preciocompra", "costo", "costounitario"],
+};
+
+/**
+ * Valida un CSV de inventario: objeto (itemId o nombre), cantidad y coste unitario opcional.
+ * Un coste vacío significa «desconocido» (no 0): ese lote no tendrá beneficio calculado.
+ */
+export function leerCsvInventario(texto) {
+  const errores = [];
+  const error = (m) => { if (errores.length < MAX_ERRORES) errores.push(m); };
+  let tabla;
+  try { tabla = parsearCsv(texto); } catch (e) { return { filas: [], errores: [e.message] }; }
+  if (tabla.length < 2) return { filas: [], errores: ["El archivo no tiene filas de datos"] };
+
+  const mapa = {};
+  tabla[0].forEach((nombre, idx) => {
+    const n = normalizar(nombre);
+    for (const [campo, alias] of Object.entries(ALIAS_INV)) if (alias.includes(n) && mapa[campo] === undefined) mapa[campo] = idx;
+  });
+  if (mapa.item_id === undefined && mapa.nombre === undefined) error("Falta una columna itemId o nombre");
+  if (mapa.cantidad === undefined) error("Falta la columna cantidad");
+  if (tabla.length - 1 > 5000) error("Demasiadas filas (máximo 5000)");
+  if (errores.length) return { filas: [], errores };
+
+  const filas = [];
+  for (let k = 1; k < tabla.length; k++) {
+    const r = tabla[k], linea = k + 1;
+    if (r.length !== tabla[0].length) { error(`Línea ${linea}: número de columnas distinto`); continue; }
+    const fila = {};
+    const id = mapa.item_id !== undefined ? r[mapa.item_id].trim() : "";
+    const nombre = mapa.nombre !== undefined ? r[mapa.nombre].trim() : "";
+    if (id) {
+      if (!/^\d+$/.test(id) || Number(id) <= 0 || Number(id) > 2_147_483_647) { error(`Línea ${linea}: itemId no válido`); continue; }
+      fila.item_id = Number(id);
+    } else if (nombre) fila.nombre = nombre;
+    else { error(`Línea ${linea}: falta el objeto`); continue; }
+    const cant = r[mapa.cantidad].trim();
+    if (!/^\d+$/.test(cant) || Number(cant) <= 0 || Number(cant) > 1_000_000) { error(`Línea ${linea}: cantidad no válida ${JSON.stringify(cant)}`); continue; }
+    fila.cantidad = Number(cant);
+    if (mapa.coste !== undefined) {
+      try { fila.coste = parsearMoneda(r[mapa.coste]); } catch (e) { error(`Línea ${linea}: ${e.message}`); continue; }
+    } else fila.coste = null;
+    filas.push(fila);
+  }
+  return { filas: errores.length ? [] : filas, errores };
+}
+
 /**
  * Valida un CSV de precios.
  * @param {string} texto contenido del archivo

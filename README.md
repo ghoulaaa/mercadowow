@@ -3,8 +3,9 @@
 App web personal para decidir qué objetos **VENDER**, **GUARDAR** o dejar **EN OBSERVACIÓN**.
 El plan completo y las fuentes verificadas están en [PLAN.md](PLAN.md).
 
-> **Estado: Hitos 1–5 terminados.** Tabla de precios con búsqueda, filtros, favoritos, refresco en vivo y
-> recomendaciones VENDER / GUARDAR / EN OBSERVACIÓN explicadas, con reglas editables desde la página. Supabase descarga los datos reales de TSM cada hora.
+> **Estado: Hitos 1–6 terminados.** Tabla de precios con búsqueda, filtros, favoritos, refresco en vivo,
+> recomendaciones VENDER / GUARDAR / EN OBSERVACIÓN explicadas (reglas editables), inventario con valor neto,
+> beneficio y margen (solo con coste conocido) y gráfico histórico de cada objeto. Supabase descarga los datos reales de TSM cada hora.
 > Hay además un mercado de **importación manual (CSV)**, que sirve de plan B, y un mercado **DEMO** con datos ficticios. Los tres están separados.
 > Los datos y la consulta horaria a TSM viven en **Supabase**. La página web corre en tu PC.
 

@@ -66,6 +66,73 @@
         </div>
       </section>
 
+      <section class="card" id="card-inventario">
+        <div class="card-head">
+          <h3>Mi inventario</h3>
+          <span id="inv-contador" class="muted small"></span>
+        </div>
+        <div class="resumen resumen-inv">
+          <div class="tile"><span class="tile-k">Valor neto estimado</span><span id="inv-neto" class="tile-v">—</span>
+            <span class="tile-n">Si vendieras todo al precio actual, tras comisión y pérdida esperada de depósitos</span></div>
+          <div class="tile"><span class="tile-k">Beneficio (solo lotes con coste)</span><span id="inv-benef" class="tile-v">—</span>
+            <span id="inv-benef-n" class="tile-n"></span></div>
+          <div class="tile"><span class="tile-k">Para vender / guardar</span><span id="inv-recs" class="tile-v">—</span>
+            <span class="tile-n">Según la recomendación actual de cada objeto</span></div>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th scope="col">Objeto</th>
+                <th scope="col" class="num">Cantidad</th>
+                <th scope="col" class="num">Coste unit.</th>
+                <th scope="col" class="num">Precio actual</th>
+                <th scope="col" class="num">Neto estimado</th>
+                <th scope="col" class="num">Beneficio</th>
+                <th scope="col" class="num">Margen</th>
+                <th scope="col">Recomendación</th>
+                <th scope="col"><span class="sr-only">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+        <p id="inv-vacio" class="muted" hidden>Todavía no has añadido objetos a tu inventario.</p>
+
+        <details class="inv-form" id="inv-agregar">
+          <summary>Añadir un objeto</summary>
+          <form id="form-inv" class="form-grid">
+            <label for="inv-objeto">Objeto</label>
+            <input id="inv-objeto" list="lista-objetos" placeholder="Escribe el nombre o el ID" autocomplete="off" required>
+            <label for="inv-cantidad">Cantidad</label>
+            <input id="inv-cantidad" type="number" min="1" step="1" required>
+            <label for="inv-coste">Coste por unidad <span class="muted">(opcional)</span></label>
+            <input id="inv-coste" placeholder="p. ej. 12o 34p 56c — vacío = desconocido">
+            <span></span>
+            <button type="submit" class="btn">Añadir</button>
+          </form>
+          <datalist id="lista-objetos"></datalist>
+          <p id="inv-msg" class="small" hidden></p>
+        </details>
+
+        <details class="inv-form">
+          <summary>Importar inventario desde CSV</summary>
+          <p class="muted small">
+            Columnas: <code>itemId</code> o <code>nombre</code>, <code>cantidad</code> y, opcional, <code>coste</code>
+            (por unidad, en cobre o <code>12o 34p 56c</code>). Coste vacío = desconocido: ese lote no tendrá beneficio.
+          </p>
+          <div class="fila-acciones">
+            <input id="inv-archivo" type="file" accept=".csv,text/csv">
+            <label class="check"><input id="inv-reemplazar" type="checkbox"> Reemplazar todo el inventario</label>
+            <button id="inv-importar" type="button" class="btn" disabled>Importar</button>
+          </div>
+          <ul id="inv-errores" class="log bad small" hidden></ul>
+          <p id="inv-imp-msg" class="small" hidden></p>
+        </details>
+
+        <p id="inv-supuestos" class="muted small nota"></p>
+      </section>
+
       <section class="card" id="card-tabla">
         <div class="card-head">
           <h3>Precios</h3>

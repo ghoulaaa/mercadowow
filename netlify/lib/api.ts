@@ -239,6 +239,65 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    async historial(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const id = Number(u.get("id"));
+      const dias = Number(u.get("dias") ?? 30);
+      if (!Number.isInteger(id) || id <= 0) return json(400, { error: "Falta id" });
+      if (!Number.isInteger(dias) || dias < 1 || dias > 60) return json(400, { error: "dias debe estar entre 1 y 60" });
+      try {
+        return json(200, await llamar(db, "select historial_objeto($1, $2::integer, $3::integer) as r", [mercado, id, dias]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    async inventario(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      if (req.method === "GET") {
+        const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+        try {
+          await llamar(db, "select recalcular_recomendaciones($1) as r", [mercado]);
+          return json(200, await llamar(db, "select inventario_valorado($1) as r", [mercado]));
+        } catch (e) {
+          return fallaBd(e);
+        }
+      }
+      if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+      let c: any;
+      try { c = await leerJson(req, 2_000_000); } catch { return json(400, { error: "Petición mal formada" }); }
+      const entero = (v: unknown) => Number.isInteger(v);
+      const costeOk = (v: unknown) => v === null || v === undefined || entero(v);
+      if (typeof c?.mercado !== "string") return json(400, { error: "Falta mercado" });
+      try {
+        switch (c.accion) {
+          case "agregar":
+            if (!entero(c.item_id) || !entero(c.cantidad) || !costeOk(c.coste)) return json(400, { error: "Datos del lote no válidos" });
+            return json(200, await llamar(db, "select agregar_inventario($1, $2::integer, $3::integer, $4::bigint, $5) as r",
+              [c.mercado, c.item_id, c.cantidad, c.coste ?? null, c.nota ?? null]));
+          case "editar":
+            if (!entero(c.id) || !entero(c.cantidad) || !costeOk(c.coste)) return json(400, { error: "Datos del lote no válidos" });
+            return json(200, await llamar(db, "select editar_inventario($1, $2::bigint, $3::integer, $4::bigint, $5) as r",
+              [c.mercado, c.id, c.cantidad, c.coste ?? null, c.nota ?? null]));
+          case "borrar":
+            if (!entero(c.id)) return json(400, { error: "Falta id" });
+            return json(200, await llamar(db, "select borrar_inventario($1, $2::bigint) as r", [c.mercado, c.id]));
+          case "importar":
+            if (!Array.isArray(c.filas)) return json(400, { error: "Faltan filas" });
+            return json(200, await llamar(db, "select importar_inventario($1, $2::text::jsonb, $3::boolean) as r",
+              [c.mercado, JSON.stringify(c.filas), c.reemplazar === true]));
+          default:
+            return json(400, { error: "Acción desconocida" });
+        }
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     async favorito(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();
       if (req.method !== "POST") return json(405, { error: "Método no permitido" });

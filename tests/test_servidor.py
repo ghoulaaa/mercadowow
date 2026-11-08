@@ -79,8 +79,8 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:6] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
-                           "0005_tabla.sql", "0006_motor.sql"]
+    assert nombres[:7] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+                           "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -282,6 +282,30 @@ def test_ajustes(cliente, monkeypatch):
     monkeypatch.setattr(db, "save_settings", falla)
     r = cliente.post("/api/ajustes", json={"motor.comision_pct": 99})
     assert r.status_code == 422 and "entre 0 y 50" in r.json()["error"]
+
+
+@pytest.mark.parametrize("cuerpo, codigo", [
+    ({"mercado": "x", "accion": "volar"}, 400),
+    ({"accion": "agregar", "item_id": 1, "cantidad": 1}, 400),
+    ({"mercado": "x", "accion": "agregar", "item_id": 1, "cantidad": "1"}, 400),
+    ({"mercado": "x", "accion": "agregar", "item_id": 1, "cantidad": 1, "coste": 12.5}, 400),
+    ({"mercado": "x", "accion": "editar", "id": True, "cantidad": 1}, 400),
+    ({"mercado": "x", "accion": "importar", "filas": "no"}, 400),
+    ({"mercado": "x", "accion": "agregar", "item_id": 1, "cantidad": 3, "coste": None}, 200),
+    ({"mercado": "x", "accion": "borrar", "id": 4}, 200),
+])
+def test_inventario_valida(cliente, monkeypatch, cuerpo, codigo):
+    monkeypatch.setattr(db, "inventory_action", lambda conn, c: {"ok": True})
+    assert cliente.post("/api/inventario", json=cuerpo).status_code == codigo
+
+
+def test_inventario_e_historial_lectura(cliente, monkeypatch):
+    monkeypatch.setattr(db, "recompute", lambda conn, key: {"estado": "al_dia"})
+    monkeypatch.setattr(db, "inventory", lambda conn, key: {"filas": [], "totales": {"lotes": 0}})
+    monkeypatch.setattr(db, "price_history", lambda conn, key, i, d: {"id": i, "dias": d})
+    assert cliente.get("/api/inventario").json()["totales"] == {"lotes": 0}
+    assert cliente.get("/api/historial", params={"id": 5, "dias": 7}).json() == {"id": 5, "dias": 7}
+    assert cliente.get("/api/historial", params={"id": 5, "dias": 90}).status_code == 422
 
 
 def test_build_status_sin_datos():

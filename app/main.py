@@ -166,6 +166,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=404, content={"error": "Objeto sin recomendación en este mercado"})
         return JSONResponse(r, headers=SIN_CACHE)
 
+    @app.get("/api/historial")
+    def historial(id: int = Query(gt=0), dias: int = Query(default=30, ge=1, le=60),
+                  mercado: str | None = Query(default=None, max_length=100)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                return JSONResponse(db.price_history(conn, mercado or settings.market, id, dias), headers=SIN_CACHE)
+        except Exception as exc:
+            log.warning("Fallo al leer historial: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    @app.get("/api/inventario")
+    def inventario_leer(mercado: str | None = Query(default=None, max_length=100)):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                db.recompute(conn, clave)
+                return JSONResponse(db.inventory(conn, clave), headers=SIN_CACHE)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al leer inventario: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    @app.post("/api/inventario")
+    def inventario_cambiar(c: dict = Body(...)):
+        def entero(v):
+            return isinstance(v, int) and not isinstance(v, bool)
+
+        coste_ok = c.get("coste") is None or entero(c.get("coste"))
+        accion = c.get("accion")
+        validos = {
+            "agregar": entero(c.get("item_id")) and entero(c.get("cantidad")) and coste_ok,
+            "editar": entero(c.get("id")) and entero(c.get("cantidad")) and coste_ok,
+            "borrar": entero(c.get("id")),
+            "importar": isinstance(c.get("filas"), list),
+        }
+        if not isinstance(c.get("mercado"), str) or accion not in validos:
+            return JSONResponse(status_code=400, content={"error": "Falta mercado o la acción es desconocida"})
+        if not validos[accion]:
+            return JSONResponse(status_code=400, content={"error": "Datos del lote no válidos"})
+        try:
+            with db.connect(settings.database_url) as conn:
+                return db.inventory_action(conn, c)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo en inventario: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+
     @app.get("/api/ajustes")
     def ajustes_leer():
         try:

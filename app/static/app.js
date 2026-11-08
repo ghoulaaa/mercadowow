@@ -1,5 +1,6 @@
-import { leerCsvPrecios } from "./csv.js";
-import { formatearMoneda } from "./moneda.js";
+import { leerCsvInventario, leerCsvPrecios } from "./csv.js";
+import { dibujarGrafico } from "./grafico.js";
+import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas } from "./tabla.js";
 
 const $ = (id) => document.getElementById(id);
@@ -396,6 +397,14 @@ async function abrirDetalle(id) {
   const et = el("span", "etiqueta grande " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[l.rec] || ""), NOMBRE_REC[l.rec]);
   cab.append(et, el("span", "", " " + l.resumen));
   nodos.push(cab);
+  if (d.en_inventario) nodos.push(el("p", "small", `Tienes ${d.en_inventario} unidades en tu inventario.`));
+  const secGraf = el("section", "det-sec");
+  secGraf.append(el("h3", "", "Historial de 30 días"));
+  const graf = el("div", "");
+  graf.id = "det-grafico";
+  graf.append(el("p", "muted small", "Cargando gráfico…"));
+  secGraf.append(graf);
+  nodos.push(secGraf);
   if (l.antiguo && d.recomendacion_motor !== "OBSERVACION") {
     nodos.push(el("p", "bad small", `Con datos recientes el motor diría «${NOMBRE_REC[d.recomendacion_motor]}», pero el último escaneo tiene ${l.horas_dato} h.`));
   }
@@ -428,7 +437,212 @@ async function abrirDetalle(id) {
   nodos.push(conf);
   nodos.push(el("p", "muted small", `Calculado ${fecha(d.calculado_en)} con el escaneo de ${fecha(d.hora_dato)}. No es una garantía de subida ni de venta.`));
   cuerpo.replaceChildren(...nodos);
+
+  try {
+    const r = await fetch(`/api/historial?mercado=${encodeURIComponent(ultimo.mercado.clave)}&id=${id}&dias=30`, { cache: "no-store" });
+    const h = await r.json();
+    if (!r.ok) throw new Error(h.error || "HTTP " + r.status);
+    if ($("detalle").open && graf.isConnected) dibujarGrafico(graf, h);
+  } catch (e) {
+    graf.replaceChildren(el("p", "bad small", "No se pudo cargar el historial: " + e.message));
+  }
 }
+
+// ---------- inventario ----------
+let inventario = null;
+
+async function cargarInventario() {
+  const clave = ultimo?.mercado?.clave;
+  if (!clave) return;
+  try {
+    const r = await fetch("/api/inventario?mercado=" + encodeURIComponent(clave), { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok || ultimo?.mercado?.clave !== clave) return;
+    inventario = d;
+  } catch { return; }
+  pintarInventario();
+}
+
+function celdaTexto(tr, texto, cls, k) {
+  const td = el("td", cls || "", texto);
+  if (k) td.dataset.k = k;
+  tr.append(td);
+  return td;
+}
+
+function pintarInventario() {
+  const inv = inventario;
+  if (!inv) return;
+  const t = inv.totales, s = inv.supuestos;
+  $("inv-neto").textContent = t.lotes ? formatearMoneda(t.neto) : "—";
+  if (t.con_coste) {
+    $("inv-benef").textContent = formatearMoneda(t.beneficio_con_coste);
+    $("inv-benef").className = "tile-v " + (t.beneficio_con_coste >= 0 ? "ok" : "bad");
+    const margen = t.coste_con_coste > 0 ? ` · margen ${formatearPct(100 * t.beneficio_con_coste / t.coste_con_coste)}` : "";
+    $("inv-benef-n").textContent = `${t.con_coste} lote(s) con coste${margen}`
+      + (t.sin_coste ? ` · ${t.sin_coste} sin coste: no se incluyen` : "");
+  } else {
+    $("inv-benef").textContent = "sin calcular";
+    $("inv-benef").className = "tile-v muted";
+    $("inv-benef-n").textContent = t.lotes ? "Ningún lote tiene coste de compra: no se puede calcular beneficio" : "";
+  }
+  $("inv-recs").textContent = t.lotes ? `${t.vender} / ${t.guardar}` : "—";
+  $("inv-contador").textContent = t.lotes ? `${t.lotes} lotes · ${t.unidades} unidades` : "";
+  $("inv-supuestos").textContent =
+    `Supuestos (editables en «Reglas del motor»): comisión ${String(s.comision_pct).replace(".", ",")} % (coste definitivo); ` +
+    `depósito mínimo ${formatearMoneda(s.deposito_minimo)} por publicación de ${s.unidades_por_publicacion} unidades ` +
+    `(se recupera si se vende); se descuenta como pérdida esperada el ${s.prob_no_venta_pct} % del depósito, ` +
+    `suponiendo que esa parte de las subastas caduca. Sin coste de compra no se muestra beneficio.`;
+
+  const tbody = $("inv-tbody");
+  tbody.replaceChildren();
+  $("inv-vacio").hidden = inv.filas.length > 0;
+  for (const f of inv.filas) {
+    const tr = el("tr");
+    tr.dataset.lote = f.id;
+    if (f.ausente) tr.className = "ausente";
+    const tdObj = el("td", "c-obj");
+    const b = el("button", "objeto-nombre enlace", f.nombre);
+    b.type = "button"; b.dataset.detalle = f.item_id;
+    tdObj.append(b, el("div", "objeto-id", `#${f.item_id}` + (f.ausente ? ` · ausente desde ${fecha(f.hora)}` : "")));
+    tr.append(tdObj);
+    celdaTexto(tr, f.cantidad.toLocaleString("es"), "num", "Cantidad:");
+    const tdCoste = celdaTexto(tr, f.coste_unitario == null ? "desconocido" : formatearMoneda(f.coste_unitario),
+      "num" + (f.coste_unitario == null ? " desconocido" : ""), "Coste:");
+    tdCoste.dataset.campo = "coste";
+    celdaTexto(tr, formatearMoneda(f.precio), "num", "Precio:");
+    const tdNeto = celdaTexto(tr, formatearMoneda(f.neto), "num", "Neto:");
+    if (f.bruto != null) {
+      tdNeto.title = `Bruto ${formatearMoneda(f.bruto)} − comisión ${formatearMoneda(f.comision)} − pérdida esperada de depósito ` +
+        `${formatearMoneda(f.perdida_deposito)} (depósito total ${formatearMoneda(f.deposito)} en ${f.publicaciones} publicación/es, recuperable si se vende)`;
+    }
+    // Sin coste: el beneficio NO se calcula ni se muestra como 0.
+    const tdB = celdaTexto(tr, f.beneficio == null ? "—" : formatearMoneda(f.beneficio),
+      "num" + (f.beneficio == null ? " desconocido" : f.beneficio >= 0 ? " sube" : " baja"), "Beneficio:");
+    if (f.beneficio == null) tdB.title = f.coste_unitario == null ? "Sin coste de compra: beneficio sin calcular" : "Sin precio actual";
+    celdaTexto(tr, f.margen == null ? "—" : formatearPct(100 * f.margen), "num" + (f.margen == null ? " desconocido" : ""), "Margen:");
+    const tdRec = el("td");
+    tdRec.dataset.k = "Recomendación:";
+    const et = el("span", "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[f.rec] || ""),
+      NOMBRE_REC[f.rec] || "—");
+    tdRec.append(et);
+    if (f.resumen) tdRec.append(el("div", "objeto-id", f.resumen));
+    tr.append(tdRec);
+    const tdAcc = el("td");
+    const acc = el("div", "acciones-lote");
+    const be = el("button", "btn-mini", "Editar"); be.type = "button"; be.dataset.editar = f.id;
+    const bb = el("button", "btn-mini peligro", "Borrar"); bb.type = "button"; bb.dataset.borrar = f.id;
+    acc.append(be, bb); tdAcc.append(acc); tr.append(tdAcc);
+    tbody.append(tr);
+  }
+}
+
+async function accionInventario(cuerpo) {
+  const r = await fetch("/api/inventario", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mercado: ultimo.mercado.clave, ...cuerpo }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+  await cargarInventario();
+  return d;
+}
+
+function rellenarListaObjetos() {
+  const dl = $("lista-objetos");
+  dl.replaceChildren();
+  for (const f of [...filasTabla].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).slice(0, 5000)) {
+    const op = document.createElement("option");
+    op.value = `${f.nombre} #${f.id}`;
+    dl.append(op);
+  }
+}
+
+function resolverObjeto(texto) {
+  const t = texto.trim();
+  const m = t.match(/#(\d+)\s*$/) || t.match(/^(\d+)$/);
+  if (m) return filasTabla.find((f) => f.id === Number(m[1])) || null;
+  const iguales = filasTabla.filter((f) => f.nombre.toLowerCase() === t.toLowerCase());
+  return iguales.length === 1 ? iguales[0] : null;
+}
+
+$("form-inv").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("inv-msg");
+  msg.hidden = false;
+  try {
+    const obj = resolverObjeto($("inv-objeto").value);
+    if (!obj) throw new Error("No encuentro ese objeto en este mercado. Elígelo de la lista.");
+    const cantidad = Number($("inv-cantidad").value);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) throw new Error("La cantidad debe ser un entero mayor que 0");
+    const coste = parsearMoneda($("inv-coste").value);   // vacío → null (desconocido)
+    await accionInventario({ accion: "agregar", item_id: obj.id, cantidad, coste });
+    msg.className = "small ok";
+    msg.textContent = `Añadido: ${cantidad} × ${obj.nombre}` + (coste == null ? " (coste desconocido)" : "");
+    $("form-inv").reset();
+  } catch (e) {
+    msg.className = "small bad";
+    msg.textContent = e.message;
+  }
+});
+
+$("inv-tbody").addEventListener("click", async (ev) => {
+  const ver = ev.target.closest("[data-detalle]");
+  if (ver) { abrirDetalle(Number(ver.dataset.detalle)); return; }
+  const bor = ev.target.closest("[data-borrar]");
+  if (bor) {
+    const f = inventario.filas.find((x) => x.id === Number(bor.dataset.borrar));
+    if (!confirm(`¿Borrar ${f.cantidad} × ${f.nombre} de tu inventario?`)) return;
+    try { await accionInventario({ accion: "borrar", id: f.id }); } catch (e) { alert(e.message); }
+    return;
+  }
+  const ed = ev.target.closest("[data-editar]");
+  if (ed) {
+    const f = inventario.filas.find((x) => x.id === Number(ed.dataset.editar));
+    const cant = prompt(`Cantidad de ${f.nombre}:`, String(f.cantidad));
+    if (cant === null) return;
+    const coste = prompt("Coste por unidad (vacío = desconocido; cobre o 12o 34p 56c):",
+      f.coste_unitario == null ? "" : formatearMoneda(f.coste_unitario));
+    if (coste === null) return;
+    try {
+      await accionInventario({ accion: "editar", id: f.id, cantidad: Number(cant), coste: parsearMoneda(coste) });
+    } catch (e) { alert(e.message); }
+  }
+});
+
+let lecturaInv = null;
+$("inv-archivo").addEventListener("change", async () => {
+  const a = $("inv-archivo").files[0], lista = $("inv-errores"), msg = $("inv-imp-msg");
+  $("inv-importar").disabled = true;
+  lista.replaceChildren(); lista.hidden = true; msg.hidden = true; lecturaInv = null;
+  if (!a) return;
+  lecturaInv = leerCsvInventario(await a.text());
+  for (const e of lecturaInv.errores) lista.append(el("li", "", e));
+  lista.hidden = lecturaInv.errores.length === 0;
+  msg.hidden = false;
+  if (lecturaInv.errores.length) {
+    msg.className = "small bad"; msg.textContent = `${lecturaInv.errores.length} error(es): corrígelos para importar.`;
+  } else {
+    const sinCoste = lecturaInv.filas.filter((f) => f.coste == null).length;
+    msg.className = "small ok";
+    msg.textContent = `${lecturaInv.filas.length} lotes listos` + (sinCoste ? ` (${sinCoste} sin coste)` : "") + ".";
+    $("inv-importar").disabled = false;
+  }
+});
+
+$("inv-importar").addEventListener("click", async () => {
+  if (!lecturaInv || lecturaInv.errores.length) return;
+  const reemplazar = $("inv-reemplazar").checked;
+  if (reemplazar && !confirm("Se borrará TODO el inventario de este mercado y se sustituirá por el archivo. ¿Seguir?")) return;
+  const msg = $("inv-imp-msg");
+  try {
+    const d = await accionInventario({ accion: "importar", filas: lecturaInv.filas, reemplazar });
+    msg.className = "small ok"; msg.textContent = `Importados ${d.importados} lotes.`;
+    $("inv-archivo").value = ""; $("inv-importar").disabled = true; lecturaInv = null;
+  } catch (e) {
+    msg.className = "small bad"; msg.textContent = e.message;
+  }
+});
 
 $("tbody").addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-detalle]");
@@ -452,6 +666,8 @@ const AJUSTES = [
   ["motor.extremo_factor", "Precio extremo: veces por encima o por debajo de la mediana", "×"],
   ["motor.comision_pct", "Comisión de la casa de subastas (asumida, compruébala en el juego)", "%"],
   ["motor.deposito_minimo_cobre", "Depósito mínimo por publicación (en cobre)", "c"],
+  ["motor.unidades_por_publicacion", "Unidades que pones en cada subasta (para contar depósitos)", "uds."],
+  ["motor.prob_no_venta_pct", "Supuesto: % de subastas que caducan sin venderse (pérdida de depósito)", "%"],
 ];
 
 async function cargarAjustes() {
@@ -486,6 +702,7 @@ $("btn-ajustes").addEventListener("click", async () => {
     if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
     out.className = "small ok"; out.textContent = "Reglas guardadas. Recalculando…";
     await cargarPrecios();
+    await cargarInventario();
     out.textContent = "Reglas guardadas y recomendaciones recalculadas.";
   } catch (e) {
     out.className = "small bad"; out.textContent = e.message;
@@ -508,6 +725,7 @@ async function vigilar() {
         if (firmaVersion !== null && firma !== firmaVersion) {
           await cargar();
           await cargarPrecios();
+          cargarInventario();
         }
         firmaVersion = firma;
       }
@@ -518,6 +736,8 @@ async function vigilar() {
 async function refrescar() {
   await cargar();
   await cargarPrecios();
+  rellenarListaObjetos();
+  cargarInventario();
   cargarAjustes();
 }
 
@@ -525,9 +745,8 @@ async function refrescar() {
 $("sel-mercado").addEventListener("change", async (ev) => {
   mercadoActual = ev.target.value;
   guardado.escribir(mercadoActual);
-  filasTabla = []; firmaVersion = null; pintarTabla();
-  await cargar();
-  await cargarPrecios();
+  filasTabla = []; firmaVersion = null; inventario = null; pintarTabla();
+  await refrescar();
 });
 
 // ---------- acceso ----------

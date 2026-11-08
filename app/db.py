@@ -109,6 +109,32 @@ def save_settings(conn: psycopg.Connection, ajustes: dict) -> dict:
     return conn.execute("select guardar_ajustes(%s::jsonb) as r", (Jsonb(ajustes),)).fetchone()["r"]
 
 
+def price_history(conn: psycopg.Connection, market_key: str, item_id: int, dias: int) -> dict:
+    return conn.execute("select historial_objeto(%s, %s, %s) as r", (market_key, item_id, dias)).fetchone()["r"]
+
+
+def inventory(conn: psycopg.Connection, market_key: str) -> dict:
+    return conn.execute("select inventario_valorado(%s) as r", (market_key,)).fetchone()["r"]
+
+
+def inventory_action(conn: psycopg.Connection, c: dict) -> dict:
+    """Agregar, editar, borrar o importar lotes. La BD valida que todo sea del mismo mercado."""
+    mk = c["mercado"]
+    if c["accion"] == "agregar":
+        sql, args = "select agregar_inventario(%s, %s, %s, %s, %s) as r", \
+            (mk, c["item_id"], c["cantidad"], c.get("coste"), c.get("nota"))
+    elif c["accion"] == "editar":
+        sql, args = "select editar_inventario(%s, %s, %s, %s, %s) as r", \
+            (mk, c["id"], c["cantidad"], c.get("coste"), c.get("nota"))
+    elif c["accion"] == "borrar":
+        sql, args = "select borrar_inventario(%s, %s) as r", (mk, c["id"])
+    else:
+        sql, args = "select importar_inventario(%s, %s::jsonb, %s) as r", \
+            (mk, Jsonb(c["filas"]), c.get("reemplazar") is True)
+    with conn.transaction():
+        return conn.execute(sql, args).fetchone()["r"]
+
+
 def market_version(conn: psycopg.Connection, market_key: str) -> dict | None:
     return conn.execute("select version_mercado(%s) as r", (market_key,)).fetchone()["r"]
 
