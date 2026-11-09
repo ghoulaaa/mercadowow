@@ -75,7 +75,15 @@ El resto son consumibles (viales, pociones, comida), objetos de misión, etc.
    - Colores para subidas, bajadas y estabilidad, y aspecto propio para «Sin historial».
    - Periodo elegible.
    - Al pasar el cursor o enfocar, información del bloque; al pulsar, se abre el detalle.
-4. **W4 · Catálogo e iconos:**
+4. **W4 · Catálogo e iconos** ✅ (2026-11-10; migración 0023):
+   - **Iconos de AHledger admitidos** (`ahledger.com/icons/<FileDataID>.jpg`, objetos nuevos de Forever): se recuperaron 104 iconos. Netlify los permite en la política de seguridad (CSP).
+   - **Objetos sin ficha:** 168 publicados por AHledger como «Item N», sin calidad, clase ni icono, y sin nombre en TSM. Se guardan como «#N» con la marca `sin_ficha` (regla en la tabla, también para el futuro), van al final del orden A–Z y se encuentran por su ID.
+   - **Informe** (`informe_catalogo`):
+     - 6.665 objetos, 6.665 IDs únicos, 0 duplicados y 0 errores de la fuente;
+     - iconos: 6.393 de Blizzard, 104 vía AHledger y 168 sin icono (todos sin ficha);
+     - 5.048 con precio de TSM, 4.396 con ofertas ahora.
+   - **Muestra de 210 objetos contra AHledger:** el nombre y el icono coinciden en los 210. Las imágenes cargan, salvo las del servidor de AHledger, que responde 429 a programas automáticos; a un navegador sí se las sirve.
+   - **Sin hacer:** Blizzard (vinculación, nombres en español y pila), por falta de credenciales.
    - Informe por categoría: duplicados eliminados, errores, iconos y calidades que faltan, y cobertura pendiente.
    - Marcador neutro y caché de iconos.
    - **Opcional, si creas el cliente de Battle.net:** vinculación («No subastable»), nombres en español, tamaño de pila si la API lo da, e iconos de profesiones.

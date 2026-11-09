@@ -79,6 +79,13 @@ export function leerIds(texto) {
   return { ids: [...ids], errores };
 }
 
+/**
+ * Objeto sin ficha en ninguna fuente: la base de datos lo guarda con su ID por nombre («#216483»)
+ * porque la fuente solo da un nombre provisional. Nunca se le inventa un nombre.
+ */
+export const sinFicha = (nombre) => /^#\d{1,9}$/.test(String(nombre ?? ""));
+export const TEXTO_SIN_FICHA = "Sin ficha en la fuente";
+
 /** Número de páginas (al menos 1). */
 export const paginas = (total, porPagina = POR_PAGINA) => Math.max(1, Math.ceil((total || 0) / porPagina));
 

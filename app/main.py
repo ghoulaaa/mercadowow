@@ -329,10 +329,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
 
     @app.get("/api/cobertura")
-    def cobertura():
+    def cobertura(informe: str | None = Query(default=None, max_length=1)):
+        funcion = "informe_catalogo" if informe == "1" else "cobertura_catalogo"
         try:
             with db.connect(settings.database_url) as conn:
-                r = conn.execute("select cobertura_catalogo('forever') as r").fetchone()["r"]
+                r = conn.execute(f"select {funcion}('forever') as r").fetchone()["r"]
         except Exception as exc:
             log.warning("Fallo al leer la cobertura: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)

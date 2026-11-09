@@ -161,6 +161,13 @@ select:disabled { opacity: .75; }
 .cobertura dt { color: var(--muted); }
 .cobertura dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .cobertura .nota { grid-column: 1 / -1; color: var(--muted); font-size: 11px; margin-top: 2px; text-align: left; }
+.cat-informe { margin: 2px 0 6px; }
+.cat-informe > summary { cursor: pointer; }
+.tabla.informe { font-size: 11px; margin-top: 4px; width: 100%; table-layout: fixed; }
+.tabla.informe th, .tabla.informe td { padding: 2px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabla.informe th:first-child, .tabla.informe td:first-child { width: 46%; }
+.tabla.informe th { font-size: 10px; letter-spacing: 0; }
+.objeto-id.sin-ficha, .det-sub.sin-ficha { color: var(--watch); font-style: italic; }
 .form-ids { display: grid; gap: 4px; }
 .form-ids textarea {
   font: inherit; font-size: 12px; padding: 5px 8px; border-radius: 6px; resize: vertical; min-height: 48px;

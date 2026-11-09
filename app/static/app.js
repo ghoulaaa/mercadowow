@@ -8,7 +8,8 @@ import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, pesoBloque, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
-  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_ROL, POR_PAGINA, leerIds, paginas, paramsMercado, segmentosSpark,
+  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, paginas, paramsMercado,
+  segmentosSpark, sinFicha,
 } from "./mercado.js";
 
 // ---------- utilidades ----------
@@ -385,11 +386,13 @@ function pintarTabla() {
     const b = el("button", "objeto");
     b.type = "button"; b.dataset.detalle = x.id;
     const txt = el("span", "objeto-txt");
+    const sf = sinFicha(x.nombre);
     txt.append(el("span", "objeto-nombre" + (x.calidad ? ` q-${x.calidad}` : ""), x.nombre),
-      el("span", "objeto-id", [x.subcategoria || nombreCat(x.categoria), x.nivel ? `nivel ${x.nivel}` : null]
-        .filter(Boolean).join(" · ")));
+      el("span", "objeto-id" + (sf ? " sin-ficha" : ""), sf ? TEXTO_SIN_FICHA
+        : [x.subcategoria || nombreCat(x.categoria), x.nivel ? `nivel ${x.nivel}` : null].filter(Boolean).join(" · ")));
     b.append(iconoNodo(x.icono, x.nombre, x.calidad), txt);
-    b.title = `#${x.id} · ${NOMBRE_CALIDAD[x.calidad] ?? "calidad desconocida"}`;
+    b.title = sf ? `#${x.id} · ni AHledger ni TSM publican su nombre, calidad ni icono`
+      : `#${x.id} · ${NOMBRE_CALIDAD[x.calidad] ?? "calidad desconocida"}`;
     tdObj.append(b);
 
     const tdCant = el("td", "num", x.cantidad == null ? "—" : x.cantidad.toLocaleString("es"));
@@ -649,6 +652,49 @@ async function cargarCobertura() {
 }
 $("grupo-catalogo").addEventListener("toggle", () => {
   if ($("grupo-catalogo").open && !coberturaPedida) { coberturaPedida = true; cargarCobertura(); }
+});
+
+/** Informe del catálogo: por categoría, iconos, precio TSM, duplicados y errores (se pide al desplegarlo). */
+$("cat-informe").addEventListener("toggle", async () => {
+  if (!$("cat-informe").open) return;
+  const cuerpo = $("cat-informe-cuerpo");
+  cuerpo.replaceChildren(el("p", "muted small", "Cargando…"));
+  try {
+    const r = await fetch("/api/cobertura?informe=1", { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    const n = (x) => (x ?? 0).toLocaleString("es");
+    const resumen = el("dl", "cobertura");
+    const fila = (k, v, ayuda) => { const dt = el("dt", "", k); if (ayuda) dt.title = ayuda; resumen.append(dt, el("dd", "", v)); };
+    fila("IDs únicos", n(d.ids_unicos), "Clave por ID y versión del juego: un ID no puede repetirse");
+    fila("Duplicados", n(d.duplicados));
+    fila("Iconos de Blizzard", n(d.iconos.blizzard));
+    fila("Iconos vía AHledger", n(d.iconos.ahledger), "Objetos nuevos de Forever cuyo icono sirve AHledger");
+    fila("Sin icono", n(d.iconos.sin_icono), `${n(d.iconos.sin_icono_con_ficha)} con ficha; el resto, sin ficha en la fuente`);
+    fila("Sin ficha en la fuente", n(d.sin_ficha), "AHledger solo da un nombre provisional y TSM no da nombre");
+    fila("Con precio de TSM", n(d.precios_tsm.vistos), "Objetos que alguna vez han aparecido en el archivo de TSM");
+    fila("Con ofertas ahora", n(d.precios_tsm.con_ofertas_ultimo_escaneo), "Con compra mínima en el último escaneo de TSM");
+    fila("Errores de la fuente", n(d.errores.reduce((s, e) => s + e.n, 0)), d.errores.map((e) => `${e.motivo}: ${e.n}`).join(" · "));
+    fila("Pendientes", n(d.pendientes + d.por_reverificar));
+    const tabla = el("table", "tabla mini informe");
+    const cab = el("tr");
+    for (const [t, c, ayuda] of [["Categoría", ""], ["Total", "num", "Objetos en el catálogo"],
+      ["Sin ic.", "num", "Sin icono"], ["TSM", "num", "Con precio de TSM alguna vez"]]) {
+      const th = el("th", c, t); if (ayuda) th.title = ayuda; cab.append(th);
+    }
+    tabla.append(cab);
+    for (const x of d.por_categoria) {
+      const tr = el("tr");
+      tr.append(el("td", "", nombreCat(x.categoria)), el("td", "num", n(x.total)), el("td", "num", n(x.sin_icono)), el("td", "num", n(x.visto_tsm)));
+      tr.title = `${x.categoria}: ${n(x.icono_blizzard)} iconos de Blizzard, ${n(x.icono_ahledger)} vía AHledger, ` +
+        `${n(x.sin_calidad)} sin calidad, ${n(x.sin_ficha)} sin ficha, ${n(x.ofertas_tsm)} con ofertas en TSM ahora`;
+      tabla.append(tr);
+    }
+    cuerpo.replaceChildren(resumen, tabla,
+      el("p", "muted small", `Última verificación con AHledger: ${fecha(d.ultima_verificacion)}.`));
+  } catch (e) {
+    cuerpo.replaceChildren(el("p", "bad small", "No se pudo cargar el informe: " + e.message));
+  }
 });
 
 $("ids-archivo").addEventListener("change", async () => {
@@ -929,8 +975,11 @@ function cabeceraObjeto(f) {
     try { await navigator.clipboard.writeText(String(f.id)); idBtn.textContent = `#${f.id} ✓`; }
     catch { idBtn.textContent = `#${f.id}`; }
   });
-  t.append(el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), f.subclase]
-    .filter((x) => x && x !== nombreCat(SIN_CATEGORIA)).join(" › "), f.nivel ? `nivel ${f.nivel}` : null].filter(Boolean).join(" · ")), idBtn);
+  t.append(sinFicha(f.nombre)
+    ? el("div", "det-sub sin-ficha", `${TEXTO_SIN_FICHA}: ni AHledger ni TSM publican su nombre, calidad ni icono.`)
+    : el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), f.subclase]
+      .filter((x) => x && x !== nombreCat(SIN_CATEGORIA)).join(" › "), f.nivel ? `nivel ${f.nivel}` : null].filter(Boolean).join(" · ")),
+    idBtn);
   if (f.wowhead_url) {
     const a = el("a", "wowhead", "Wowhead ↗");
     a.href = f.wowhead_url; a.target = "_blank"; a.rel = "noopener"; a.title = "Ver el objeto en Wowhead";
