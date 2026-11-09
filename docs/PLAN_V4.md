@@ -54,7 +54,13 @@ El resto son consumibles (viales, pociones, comida), objetos de misión, etc.
    - Columnas separadas: compra mínima, valor de mercado, `recent`, histórico y venta al NPC.
    - Ficha de métricas (nombre, significado y fuente).
    - Comprobación de una muestra de precios contra el CSV de TSM con el mismo `updatedAt`, y de la conversión 1o = 100p = 10.000c.
-2. **W2 · Materiales y profesiones:**
+2. **W2 · Materiales y profesiones** ✅ (2026-11-09; migración 0021):
+   - **Materiales:** 565 materiales en 13 familias, según la subclase oficial.
+   - **Profesiones:** 12, contando Pesca por sus objetos de receta oficiales.
+   - **Roles por profesión:** material, receta (clase «Recipe» con la subclase de la profesión) y producto, con contadores que respetan la categoría y los filtros.
+   - **Detalle:** «Lo usan» y «Lo fabrican», con recetas y nivel mínimo. Un objeto puede tener varios roles sin repetirse.
+   - **Compatibilidad:** `profesiones` sigue siendo la lista de nombres (para la página anterior) y los contadores van en `profesiones_roles`.
+   - **Iconos de profesiones:** el del material más usado. No hay iconos oficiales sin la API de Blizzard.
    - Relaciones desde las recetas: profesiones que consumen cada material, recetas, cantidad, productos y nivel.
    - En la barra lateral: «Materiales de profesiones» con subfiltro por familia, y profesiones desplegables con «Materiales / Recetas / Productos» y contadores coherentes.
    - Separar materiales, recetas (objetos de clase «Receta») y productos terminados.

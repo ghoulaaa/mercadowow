@@ -359,8 +359,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def mercado(request: Request, mercado: str | None = Query(default=None, max_length=100)):
         p = {k: v[:80] for k, v in request.query_params.items()
              if k in db.PARAMS_MERCADO and v != ""}
-        if p.get("solo_ofertas") not in (None, "true", "false"):
-            return JSONResponse(status_code=400, content={"error": "solo_ofertas debe ser true o false"})
+        for k in ("solo_ofertas", "materiales"):
+            if p.get(k) not in (None, "true", "false"):
+                return JSONResponse(status_code=400, content={"error": f"{k} debe ser true o false"})
         try:
             with db.connect(settings.database_url) as conn:
                 r = db.market_page(conn, mercado or settings.market, p)

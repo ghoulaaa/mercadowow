@@ -22,6 +22,9 @@ export function paramsMercado(f) {
   poner("subcategoria", f.categoria ? f.subcategoria : "");
   poner("calidad", f.calidad);
   poner("profesion", f.profesion);
+  poner("rol", f.profesion ? f.rol : "");          // el rol solo tiene sentido con una profesión
+  if (f.materiales) p.materiales = "true";
+  poner("familia", f.materiales ? f.familia : ""); // la familia filtra dentro de los materiales
   for (const k of ["nivel_min", "nivel_max", "precio_min", "precio_max"]) {
     if (Number.isInteger(f[k]) && f[k] >= 0) poner(k, f[k]);
   }
@@ -31,6 +34,16 @@ export function paramsMercado(f) {
   if (f.pagina > 1) p.pagina = String(f.pagina);
   return p;
 }
+
+/** Familias de materiales (de la clase/subclase oficial del objeto; las calcula el servidor). */
+export const NOMBRE_FAMILIA = {
+  hierbas: "Hierbas", metales: "Metales y piedras", telas: "Telas", cueros: "Cueros",
+  encantamiento: "Encantamiento", elementales: "Elementales", cocina: "Cocina", piezas: "Piezas y componentes",
+  consumibles: "Consumibles", reactivos: "Reactivos", comercio_otros: "Otros materiales", mision: "De misión", otros: "Otros",
+};
+
+/** Rol de un objeto dentro de una profesión. */
+export const NOMBRE_ROL = { material: "Materiales", receta: "Recetas", producto: "Productos" };
 
 export const MAX_IDS = 5000;
 

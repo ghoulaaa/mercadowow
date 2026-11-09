@@ -57,6 +57,14 @@
         <ul id="arbol-cat" class="arbol" aria-label="Categorías"></ul>
       </div>
 
+      <div class="lat-grupo">
+        <span class="lat-tit">Profesiones</span>
+        <label class="check" title="Objetos que aparecen como material en alguna receta">
+          <input id="f-materiales" type="checkbox"> Materiales de profesiones <span id="n-materiales" class="arbol-n"></span></label>
+        <ul id="familias" class="arbol arbol-familias" aria-label="Familias de materiales" hidden></ul>
+        <ul id="arbol-prof" class="arbol" aria-label="Profesiones"></ul>
+      </div>
+
       <div class="lat-grupo filtros-lat">
         <span class="lat-tit">Filtros</span>
         <div class="calidades" id="f-calidad" role="group" aria-label="Calidad"></div>
@@ -71,9 +79,6 @@
           <input id="f-precio-max" placeholder="máx." aria-label="Precio máximo (p. ej. 1o 50p)" title="En oro, plata y cobre: 1o 50p 20c, o en cobre">
         </div>
         <p id="f-precio-error" class="bad small" hidden></p>
-        <label class="fila-sel" title="Objetos que se fabrican o se usan en recetas de esa profesión">
-          <span>Profesión</span>
-          <select id="f-profesion"><option value="">Todas</option></select></label>
         <label class="check" title="Muestra solo los objetos que están a la venta en el último escaneo">
           <input id="f-ofertas" type="checkbox"> Solo con ofertas</label>
         <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>

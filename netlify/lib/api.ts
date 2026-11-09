@@ -515,13 +515,13 @@ export function crearApi(db: Db, o: OpcionesApi) {
       const u = new URL(req.url).searchParams;
       const mercado = u.get("mercado") || o.mercado;
       const p: Record<string, string> = {};
-      for (const k of ["q", "categoria", "subcategoria", "calidad", "profesion", "nivel_min", "nivel_max",
-                       "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina"]) {
+      for (const k of ["q", "categoria", "subcategoria", "calidad", "profesion", "rol", "materiales", "familia",
+                       "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina"]) {
         const v = u.get(k);
         if (v !== null && v !== "") p[k] = v.slice(0, 80);
       }
-      if (p.solo_ofertas !== undefined && !["true", "false"].includes(p.solo_ofertas)) {
-        return json(400, { error: "solo_ofertas debe ser true o false" });
+      for (const k of ["solo_ofertas", "materiales"]) {
+        if (p[k] !== undefined && !["true", "false"].includes(p[k])) return json(400, { error: `${k} debe ser true o false` });
       }
       try {
         return json(200, await llamar(db, "select mercado_pagina($1, $2::text::jsonb) as r", [mercado, JSON.stringify(p)]));

@@ -171,8 +171,8 @@ def main_market(conn: psycopg.Connection) -> str | None:
     return fila["r"] if fila else None
 
 
-PARAMS_MERCADO = ("q", "categoria", "subcategoria", "calidad", "profesion", "nivel_min", "nivel_max",
-                  "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina")
+PARAMS_MERCADO = ("q", "categoria", "subcategoria", "calidad", "profesion", "rol", "materiales", "familia",
+                  "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina")
 
 
 def market_page(conn: psycopg.Connection, market_key: str, params: dict) -> dict:

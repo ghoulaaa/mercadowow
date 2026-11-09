@@ -3,7 +3,7 @@
 export const NOMBRE_PROFESION = {
   Alchemy: "Alquimia", Blacksmithing: "Herrería", Cooking: "Cocina", Enchanting: "Encantamiento",
   Engineering: "Ingeniería", "First Aid": "Primeros auxilios", Herbalism: "Herboristería",
-  Leatherworking: "Peletería", Mining: "Minería", Skinning: "Desuello", Tailoring: "Sastrería",
+  Leatherworking: "Peletería", Mining: "Minería", Skinning: "Desuello", Tailoring: "Sastrería", Fishing: "Pesca",
 };
 
 export const NOMBRE_OBTENCION = { trainer: "instructor", unknown: "desconocida" };

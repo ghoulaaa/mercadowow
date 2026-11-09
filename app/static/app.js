@@ -6,7 +6,9 @@ import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompl
 import { leerRuta } from "./ruta.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
-import { ESTADO, MAX_IDS, POR_PAGINA, leerIds, paginas, paramsMercado, segmentosSpark } from "./mercado.js";
+import {
+  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_ROL, POR_PAGINA, leerIds, paginas, paramsMercado, segmentosSpark,
+} from "./mercado.js";
 
 // ---------- utilidades ----------
 const $ = (id) => document.getElementById(id);
@@ -76,7 +78,8 @@ let objetoActual = null;      // objeto abierto en el detalle
 let rangoHistorial = "7d";
 let firmaVersion = null;
 let rapidoHasta = 0;
-const filtro = { texto: "", categoria: "", subcategoria: "", calidad: "", pagina: 1 };
+const filtro = { texto: "", categoria: "", subcategoria: "", calidad: "", profesion: "", rol: "", familia: "", pagina: 1 };
+const profAbiertas = new Set();   // profesiones desplegadas en la barra lateral
 const abiertas = new Set();   // categorías desplegadas en el árbol
 
 // ---------- vistas ----------
@@ -232,7 +235,8 @@ function leerFiltros() {
   const [orden, dir] = $("f-orden").value.split(":");
   const f = {
     texto: filtro.texto, categoria: filtro.categoria, subcategoria: filtro.subcategoria, calidad: filtro.calidad,
-    profesion: $("f-profesion").value, soloOfertas: $("f-ofertas").checked, orden, dir, pagina: filtro.pagina,
+    profesion: filtro.profesion, rol: filtro.rol, materiales: $("f-materiales").checked, familia: filtro.familia,
+    soloOfertas: $("f-ofertas").checked, orden, dir, pagina: filtro.pagina,
     nivel_min: enteroONull($("f-nivel-min").value), nivel_max: enteroONull($("f-nivel-max").value),
     precio_min: precioFiltro("f-precio-min", errores), precio_max: precioFiltro("f-precio-max", errores),
   };
@@ -396,8 +400,13 @@ function pintarTabla() {
   $("sin-resultados").hidden = !d || total > 0;
   $("sin-resultados").textContent = "Ningún objeto coincide con los filtros.";
   $("contador").textContent = d ? `${total.toLocaleString("es")} objetos` : "";
-  $("titulo-resultados").textContent = filtro.texto ? `«${filtro.texto}»`
-    : filtro.subcategoria ? filtro.subcategoria : filtro.categoria ? nombreCat(filtro.categoria) : "Todos los objetos";
+  // Título: lo que se está viendo, en pocas palabras.
+  const partes = [];
+  if (filtro.profesion) partes.push(nombreProf(filtro.profesion) + (filtro.rol ? ` · ${NOMBRE_ROL[filtro.rol].toLowerCase()}` : ""));
+  if ($("f-materiales").checked) partes.push(filtro.familia ? NOMBRE_FAMILIA[filtro.familia] : "Materiales");
+  if (filtro.subcategoria) partes.push(filtro.subcategoria); else if (filtro.categoria) partes.push(nombreCat(filtro.categoria));
+  if (filtro.texto) partes.push(`«${filtro.texto}»`);
+  $("titulo-resultados").textContent = partes.length ? partes.join(" · ") : "Todos los objetos";
   // Paginador.
   const n = paginas(total, d?.por_pagina ?? POR_PAGINA);
   $("paginador").hidden = !d || n < 2;
@@ -448,7 +457,11 @@ for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"])
   $(id).addEventListener("input", () => { clearTimeout(temporizadorFiltro); temporizadorFiltro = setTimeout(repintar, 300); });
 }
 $("f-ofertas").addEventListener("change", repintar);
-$("f-profesion").addEventListener("change", repintar);
+$("f-materiales").addEventListener("change", () => {
+  if (!$("f-materiales").checked) filtro.familia = "";
+  pintarProfesiones();
+  repintar();
+});
 
 const ORDEN_CALIDAD = ["POOR", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "ARTIFACT", "HEIRLOOM"];
 function pintarCalidades() {
@@ -466,13 +479,74 @@ function pintarCalidades() {
   }
 }
 
+/**
+ * Profesiones (desplegables, con icono y contador) y familias de materiales.
+ * Los contadores vienen del servidor y respetan la categoría y los filtros generales.
+ */
 function pintarProfesiones() {
-  const sel = $("f-profesion"), previa = sel.value;
-  const lista = (pagina?.profesiones ?? []).slice().sort((a, b) => nombreProf(a).localeCompare(nombreProf(b), "es"));
-  sel.replaceChildren(el("option", "", "Todas"), ...lista.map((p) => { const o = el("option", "", nombreProf(p)); o.value = p; return o; }));
-  sel.firstChild.value = "";
-  sel.value = lista.includes(previa) ? previa : "";
-  sel.disabled = lista.length === 0;
+  const d = pagina;
+  // «Materiales de profesiones» y sus familias.
+  $("n-materiales").textContent = d ? d.materiales_total.toLocaleString("es") : "";
+  const ulF = $("familias");
+  ulF.hidden = !$("f-materiales").checked;
+  ulF.replaceChildren(...(d?.familias ?? []).map((f) => {
+    const li = el("li");
+    const b = el("button", "arbol-btn mini");
+    b.type = "button";
+    b.append(el("span", "arbol-txt", NOMBRE_FAMILIA[f.familia] ?? f.familia), el("span", "arbol-n", f.n.toLocaleString("es")));
+    if (filtro.familia === f.familia) b.setAttribute("aria-current", "true");
+    b.addEventListener("click", () => { filtro.familia = filtro.familia === f.familia ? "" : f.familia; pintarProfesiones(); repintar(); });
+    li.append(b);
+    return li;
+  }));
+  // Profesiones.
+  const lista = (d?.profesiones_roles ?? []).slice().sort((a, b) => nombreProf(a.profesion).localeCompare(nombreProf(b.profesion), "es"));
+  const ul = $("arbol-prof");
+  ul.replaceChildren(...lista.map((p) => {
+    const li = el("li");
+    const cab = el("div", "arbol-fila");
+    const b = el("button", "arbol-btn");
+    b.type = "button";
+    b.title = `${p.profesion}: materiales, recetas y productos (de las recetas de AHledger y la clasificación oficial)`;
+    b.append(iconoNodo(p.icono, nombreProf(p.profesion)), el("span", "arbol-txt", nombreProf(p.profesion)),
+      el("span", "arbol-n", p.n.toLocaleString("es")));
+    if (filtro.profesion === p.profesion && !filtro.rol) b.setAttribute("aria-current", "true");
+    b.addEventListener("click", () => elegirProfesion(filtro.profesion === p.profesion && !filtro.rol ? "" : p.profesion, ""));
+    const abierta = profAbiertas.has(p.profesion);
+    const plegar = el("button", "arbol-plegar", abierta ? "▾" : "▸");
+    plegar.type = "button";
+    plegar.setAttribute("aria-expanded", String(abierta));
+    plegar.setAttribute("aria-label", `${abierta ? "Contraer" : "Expandir"} ${nombreProf(p.profesion)}`);
+    plegar.addEventListener("click", () => { abierta ? profAbiertas.delete(p.profesion) : profAbiertas.add(p.profesion); pintarProfesiones(); });
+    cab.append(b, plegar);
+    li.append(cab);
+    if (abierta) {
+      // Alternar entre materiales, recetas y productos de esa profesión.
+      const grupo = el("div", "roles");
+      grupo.setAttribute("role", "group");
+      grupo.setAttribute("aria-label", `Ver de ${nombreProf(p.profesion)}`);
+      for (const rol of ["material", "receta", "producto"]) {
+        const r = el("button", "chip-rol", `${NOMBRE_ROL[rol]} ${p[rol].toLocaleString("es")}`);
+        r.type = "button";
+        r.disabled = p[rol] === 0;
+        const activo = filtro.profesion === p.profesion && filtro.rol === rol;
+        r.setAttribute("aria-pressed", String(activo));
+        // Pulsar el rol activo lo quita y deja la profesión entera.
+        r.addEventListener("click", () => elegirProfesion(p.profesion, activo ? "" : rol));
+        grupo.append(r);
+      }
+      li.append(grupo);
+    }
+    return li;
+  }));
+}
+
+function elegirProfesion(prof, rol) {
+  filtro.profesion = prof; filtro.rol = prof ? rol : "";
+  if (prof) profAbiertas.add(prof);
+  pintarProfesiones();
+  repintar();
+  if (estrecho() && rol) cerrarLateral();
 }
 
 /** Árbol: «Todos los objetos» + categorías reales del catálogo, con icono y contador (respeta los demás filtros). */
@@ -533,10 +607,10 @@ function elegirCategoria(cat, sub) {
 }
 
 $("btn-limpiar").addEventListener("click", () => {
-  Object.assign(filtro, { texto: "", categoria: "", subcategoria: "", calidad: "", pagina: 1 });
+  Object.assign(filtro, { texto: "", categoria: "", subcategoria: "", calidad: "", profesion: "", rol: "", familia: "", pagina: 1 });
   for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
   $("f-ofertas").checked = false;
-  $("f-profesion").value = "";
+  $("f-materiales").checked = false;
   $("f-orden").value = "nombre:asc";
   $("buscador").value = "";
   pintarCalidades();
@@ -745,6 +819,19 @@ function seccionRecetas(id) {
       .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "HTTP " + r.status); return d; })
       .then((d) => {
         const nodos = [];
+        // Relaciones con profesiones (de las recetas y de la clasificación oficial, no de los nombres).
+        const rl = d.relaciones;
+        if (rl) {
+          const prof = (x) => `${nombreProf(x.profesion)} (${x.recetas} ${x.recetas === 1 ? "receta" : "recetas"}` +
+            (x.nivel_min != null ? `, nivel ${x.nivel_min}+` : "") + ")";
+          const resumen = kv([
+            ["Familia", rl.es_material && rl.familia ? NOMBRE_FAMILIA[rl.familia] : null],
+            ["Receta de", rl.receta_de ? nombreProf(rl.receta_de) : null],
+            ["Lo usan", rl.consumen.length ? rl.consumen.map(prof).join(" · ") : null],
+            ["Lo fabrican", rl.producen.length ? rl.producen.map(prof).join(" · ") : null],
+          ]);
+          if (resumen.children.length) nodos.push(resumen);
+        }
         for (const r of d.fabricacion) {
           nodos.push(el("h4", "", `Se fabrica: ${r.nombre} · ${nombreProf(r.profesion)}${r.nivel != null ? " " + r.nivel : ""}`));
           const ul = el("ul", "det-lista");
