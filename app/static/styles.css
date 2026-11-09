@@ -304,6 +304,52 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
   animation: girar .8s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) { .resultados.cargando .res-cab::after { animation: none; } }
+/* ---------- W3 · vista Lista / Mapa ---------- */
+.vistas { display: inline-flex; border: 1px solid var(--metal); border-radius: 6px; overflow: hidden; margin-left: auto; }
+.res-cab .vistas + .orden { margin-left: 8px; }
+.btn-vista { font: inherit; font-size: 12px; padding: 3px 12px; cursor: pointer; background: var(--panel-2); color: var(--muted); border: 0; }
+.btn-vista[aria-pressed="true"] { background: linear-gradient(180deg, #f0cf78, #c99a3a); color: #1b1408; font-weight: 700; }
+
+/* Escala divergente: verde = sube, rojo = baja, gris = estable. Texto claro ≥ 4,5:1 en todos los pasos. */
+:root {
+  --m-sube-1: #1f4a33; --m-sube-2: #256b42; --m-sube-3: #28774a;
+  --m-igual: #383835;
+  --m-baja-1: #5a2a25; --m-baja-2: #8a352c; --m-baja-3: #bb4537;
+  --m-texto: #f4efe4;
+}
+.mapa { position: relative; }
+.mapa.cargando #mapa-familias { opacity: .5; transition: opacity .15s .15s; }
+.mapa-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 2px 0 8px; }
+.mapa-leyenda { display: flex; flex-wrap: wrap; gap: 3px 10px; list-style: none; margin: 0; padding: 0; font-size: 11px; color: var(--muted); }
+.mapa-leyenda li { display: inline-flex; align-items: center; gap: 4px; }
+.m-muestra { display: inline-block; width: 14px; height: 12px; border-radius: 2px; }
+.m-familia { margin-bottom: 10px; }
+.m-fam-tit { font-size: 13px; margin: 0 0 3px; color: var(--metal-claro); }
+.m-area { position: relative; width: 100%; }
+.m-franja { margin-top: 2px; }
+.m-bloque {
+  position: absolute; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; padding: 2px; border: 0; border-radius: 3px; cursor: pointer; color: var(--m-texto);
+  font: inherit; font-size: 11px; line-height: 1.15; text-align: center;
+}
+.m-bloque:hover { outline: 2px solid var(--gold); outline-offset: -2px; z-index: 2; }
+.m-bloque:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; z-index: 3; }
+.m-bloque .icono { flex: 0 0 22px; width: 22px; height: 22px; box-shadow: 0 0 0 1px #000; }
+.m-nombre { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.m-var { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-sube-1 { background: var(--m-sube-1); } .t-sube-2 { background: var(--m-sube-2); } .t-sube-3 { background: var(--m-sube-3); }
+.t-baja-1 { background: var(--m-baja-1); } .t-baja-2 { background: var(--m-baja-2); } .t-baja-3 { background: var(--m-baja-3); }
+.t-igual { background: var(--m-igual); }
+/* Sin historial comparable: rayado (no es «0 %»). Sin ofertas / sin datos: hueco con borde discontinuo. */
+.t-sin { background: repeating-linear-gradient(45deg, #2b2823 0 4px, #1e1c18 4px 8px); }
+.t-nodato { background: #14120e; box-shadow: inset 0 0 0 1px #4a4237; color: var(--muted); }
+.m-bloque.t-nodato { border: 1px dashed #4a4237; }
+.mapa-tip {
+  position: absolute; z-index: 20; max-width: 300px; pointer-events: none; padding: 6px 9px; font-size: 12px;
+  background: var(--panel-3); border: 1px solid var(--metal); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .6);
+}
+@media (forced-colors: active) { .m-bloque { border: 1px solid CanvasText; } }
+
 .paginador { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; }
 .var.igual { color: var(--muted); }
 .moneda .o { color: var(--gold); }

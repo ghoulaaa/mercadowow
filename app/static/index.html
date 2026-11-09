@@ -138,6 +138,11 @@
         <div class="res-cab">
           <h1 id="titulo-resultados">Todos los objetos</h1>
           <span id="contador" class="muted small" aria-live="polite"></span>
+          <div class="vistas" role="group" aria-label="Vista">
+            <button type="button" class="btn-vista" data-modo="lista" aria-pressed="true">Lista</button>
+            <button type="button" class="btn-vista" data-modo="mapa" aria-pressed="false"
+                    title="Mapa de los materiales de profesiones, agrupados por familia">Mapa</button>
+          </div>
           <label class="orden"><span class="sr-only">Ordenar por</span>
             <select id="f-orden">
               <option value="nombre:asc">Nombre A–Z</option>
@@ -148,7 +153,31 @@
               <option value="var24:asc">Variación ↓ (baja más)</option>
             </select></label>
         </div>
-        <div class="tabla-wrap">
+        <section id="mapa" class="mapa" aria-label="Mapa de materiales" hidden>
+          <div class="mapa-cab">
+            <div class="periodos" role="group" aria-label="Periodo de comparación" id="mapa-periodos">
+              <button type="button" class="btn-periodo" data-periodo="24h" aria-pressed="true">24 h</button>
+              <button type="button" class="btn-periodo" data-periodo="3d" aria-pressed="false">3 d</button>
+              <button type="button" class="btn-periodo" data-periodo="7d" aria-pressed="false">7 d</button>
+            </div>
+            <ul class="mapa-leyenda" aria-label="Leyenda">
+              <li><span class="m-muestra t-baja-3"></span>▼ 15 %+</li>
+              <li><span class="m-muestra t-baja-2"></span>▼ 5–15 %</li>
+              <li><span class="m-muestra t-baja-1"></span>▼ 1–5 %</li>
+              <li><span class="m-muestra t-igual"></span>±1 %</li>
+              <li><span class="m-muestra t-sube-1"></span>▲ 1–5 %</li>
+              <li><span class="m-muestra t-sube-2"></span>▲ 5–15 %</li>
+              <li><span class="m-muestra t-sube-3"></span>▲ 15 %+</li>
+              <li><span class="m-muestra t-sin"></span>Sin historial</li>
+              <li><span class="m-muestra t-nodato"></span>Sin ofertas / sin datos</li>
+            </ul>
+            <span id="mapa-tamano" class="muted small"></span>
+          </div>
+          <div id="mapa-familias"></div>
+          <div id="mapa-tip" class="mapa-tip" role="tooltip" hidden></div>
+        </section>
+
+        <div class="tabla-wrap" id="vista-lista">
           <table class="tabla tabla-mercado">
             <thead>
               <tr>

@@ -65,7 +65,12 @@ El resto son consumibles (viales, pociones, comida), objetos de misión, etc.
    - En la barra lateral: «Materiales de profesiones» con subfiltro por familia, y profesiones desplegables con «Materiales / Recetas / Productos» y contadores coherentes.
    - Separar materiales, recetas (objetos de clase «Receta») y productos terminados.
    - Las herramientas (martillo, etc.) no vienen en los datos de recetas: se indicará como límite.
-3. **W3 · Mapa de materiales:**
+3. **W3 · Mapa de materiales** ✅ (2026-11-09; migración 0022 y `treemap.js`):
+   - **Contenido:** 580 materiales en 13 familias, con la distribución «squarified».
+   - **Variación:** solo compra mínima contra compra mínima del mismo mercado, con tolerancia de 6, 12 o 24 h según el periodo. En 24 h hay 366 materiales con variación; en 3 y 7 días todavía ninguno («Sin historial», rayado).
+   - **Tamaño:** uniforme con TSM; la cantidad publicada con AHledger, y entonces los materiales sin ofertas van en una franja aparte.
+   - **Colores:** divergentes verde, gris y rojo, con el texto medido a 4,5:1 o más en cada paso. Flecha y valor siempre visibles, en formato compacto si el bloque es estrecho.
+   - **Interacción:** tooltip al pasar el cursor o al enfocar, y el detalle se abre al pulsar.
    - Selector «Lista / Mapa» dentro de Mercado: treemap por familias, con icono, nombre abreviado y variación con signo.
    - Colores para subidas, bajadas y estabilidad, y aspecto propio para «Sin historial».
    - Periodo elegible.

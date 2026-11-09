@@ -508,6 +508,27 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Mapa de materiales (W3): variación por periodo, agrupada por familia. */
+    async mapa(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const p: Record<string, string> = {};
+      for (const k of ["periodo", "profesion", "familia", "calidad", "solo_ofertas"]) {
+        const v = u.get(k);
+        if (v !== null && v !== "") p[k] = v.slice(0, 40);
+      }
+      if (p.solo_ofertas !== undefined && !["true", "false"].includes(p.solo_ofertas)) {
+        return json(400, { error: "solo_ofertas debe ser true o false" });
+      }
+      try {
+        return json(200, await llamar(db, "select mapa_materiales($1, $2::text::jsonb) as r", [mercado, JSON.stringify(p)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Tabla del Mercado paginada sobre todo el catálogo (V2): filtros, orden y página en la base de datos. */
     async mercado(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

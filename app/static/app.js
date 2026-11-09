@@ -5,6 +5,7 @@ import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
 import { leerRuta } from "./ruta.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
+import { abreviar, pesoBloque, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_ROL, POR_PAGINA, leerIds, paginas, paramsMercado, segmentosSpark,
@@ -413,6 +414,10 @@ function pintarTabla() {
   $("pag-txt").textContent = `Página ${filtro.pagina.toLocaleString("es")} de ${n.toLocaleString("es")}`;
   $("pag-ant").disabled = filtro.pagina <= 1;
   $("pag-sig").disabled = filtro.pagina >= n;
+  if (vista === "mapa") {   // la tabla se mantiene al día (contadores), pero no se ve
+    $("paginador").hidden = true; $("sin-resultados").hidden = true;
+    if (mapaDatos) $("contador").textContent = contadorMapa(mapaDatos);
+  }
   // Cabeceras ordenables: refleja el orden actual.
   const [clave, dir] = $("f-orden").value.split(":");
   for (const th of document.querySelectorAll(".tabla-mercado th")) {
@@ -421,8 +426,8 @@ function pintarTabla() {
   }
 }
 
-/** Cualquier cambio de filtro u orden vuelve a la página 1. */
-function repintar() { filtro.pagina = 1; cargarPagina(); }
+/** Cualquier cambio de filtro u orden vuelve a la página 1 (y rehace el mapa si está a la vista). */
+function repintar() { filtro.pagina = 1; cargarPagina(); if (vista === "mapa") cargarMapa(); }
 
 $("tbody").addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-detalle]") ?? ev.target.closest("tr[data-id]");
@@ -673,6 +678,179 @@ $("form-ids").addEventListener("submit", async (ev) => {
     msg.textContent = "No se pudieron añadir: " + e.message;
   }
 });
+
+// ---------- vista «Mapa»: treemap de materiales por familia ----------
+let vista = local.leer("mw_vista", "lista") === "mapa" ? "mapa" : "lista";
+let periodoMapa = "24h";
+let mapaDatos = null;
+let mapaN = 0;
+const PERIODO_TXT = { "24h": "24 h", "3d": "3 días", "7d": "7 días" };
+
+function ponerVista(v) {
+  vista = v;
+  local.escribir("mw_vista", v);
+  for (const b of document.querySelectorAll(".btn-vista")) b.setAttribute("aria-pressed", String(b.dataset.modo === v));
+  $("mapa").hidden = v !== "mapa";
+  $("vista-lista").hidden = v === "mapa";
+  document.querySelector(".res-cab .orden").hidden = v === "mapa";
+  if (v === "mapa") { $("paginador").hidden = true; $("sin-resultados").hidden = true; cargarMapa(); }
+  else pintarTabla();
+}
+for (const b of document.querySelectorAll(".btn-vista")) b.addEventListener("click", () => ponerVista(b.dataset.modo));
+for (const b of document.querySelectorAll("#mapa-periodos [data-periodo]")) {
+  b.addEventListener("click", () => {
+    periodoMapa = b.dataset.periodo;
+    for (const x of document.querySelectorAll("#mapa-periodos [data-periodo]")) x.setAttribute("aria-pressed", String(x === b));
+    cargarMapa();
+  });
+}
+
+async function cargarMapa() {
+  if (!ultimo?.mercado?.clave) return;
+  const n = ++mapaN;
+  const q = new URLSearchParams({ mercado: ultimo.mercado.clave, periodo: periodoMapa });
+  if (filtro.profesion) q.set("profesion", filtro.profesion);
+  if ($("f-materiales").checked && filtro.familia) q.set("familia", filtro.familia);
+  if (filtro.calidad) q.set("calidad", filtro.calidad);
+  if ($("f-ofertas").checked) q.set("solo_ofertas", "true");
+  $("mapa").classList.add("cargando");
+  try {
+    const r = await fetch("/api/mapa?" + q, { cache: "no-store" });
+    const d = await r.json();
+    if (n !== mapaN) return;
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    mapaDatos = d;
+    pintarMapa();
+  } catch (e) {
+    if (n === mapaN) avisar("No se pudo cargar el mapa: " + e.message, "bad");
+  } finally {
+    if (n === mapaN) $("mapa").classList.remove("cargando");
+  }
+}
+
+const contadorMapa = (d) =>
+  `${d.total.toLocaleString("es")} materiales · ${d.con_variacion.toLocaleString("es")} con variación en ${PERIODO_TXT[d.periodo]}`;
+
+/** Texto completo de un bloque (tooltip y lector de pantalla). */
+function textoBloque(o, d) {
+  const partes = [o.nombre];
+  if (o.estado === "con_ofertas") partes.push(`Compra mínima ${formatearMoneda(o.precio)}`);
+  else partes.push(ESTADO[o.estado]);
+  if (o.variacion != null) {
+    partes.push(`${textoVariacion(o.variacion)} en ${PERIODO_TXT[d.periodo]} (antes ${formatearMoneda(o.precio_ref)}, ${fecha(o.hora_ref)})`);
+  } else if (o.estado === "con_ofertas") {
+    partes.push(`Sin historial comparable de hace ${PERIODO_TXT[d.periodo]}`);
+  }
+  if (d.tamano === "cantidad" && o.cantidad != null) partes.push(`${o.cantidad.toLocaleString("es")} uds. publicadas`);
+  if (o.hora) partes.push(`Dato del ${fecha(o.hora)} (${hace(o.hora)})`);
+  return partes.join(" · ");
+}
+
+function bloqueMapa(o, d, r) {
+  const b = el("button", "m-bloque t-" + (o.estado === "con_ofertas" ? tonoVariacion(o.variacion) : "nodato"));
+  b.type = "button";
+  b.style.left = `${r.x}px`; b.style.top = `${r.y}px`;
+  b.style.width = `${Math.max(0, r.w - 2)}px`; b.style.height = `${Math.max(0, r.h - 2)}px`;   // 2 px de separación
+  const texto = textoBloque(o, d);
+  b.setAttribute("aria-label", texto);
+  b.dataset.tip = texto;
+  b.dataset.id = o.id;
+  // Contenido según el espacio: icono, nombre abreviado y variación con signo.
+  if (r.w >= 30 && r.h >= 28) b.append(iconoNodo(o.icono, o.nombre, o.calidad));
+  else if (o.variacion != null) b.append(el("span", "m-var", o.variacion > 0 ? "▲" : o.variacion < 0 ? "▼" : "▬"));
+  if (r.w >= 64 && r.h >= 44) b.append(el("span", "m-nombre", abreviar(o.nombre, Math.floor((r.w - 8) / 6.2))));
+  // Variación con flecha y signo (el color nunca va solo). En bloques estrechos, en formato compacto.
+  if (r.w >= 40 && r.h >= 36) {
+    const flecha = o.variacion > 0 ? "▲" : o.variacion < 0 ? "▼" : "▬";
+    const corta = r.w < 72;
+    const v = o.variacion != null
+      ? `${flecha} ${corta ? `${o.variacion > 0 ? "+" : o.variacion < 0 ? "−" : ""}${Math.abs(Math.round(o.variacion))} %` : textoVariacion(o.variacion)}`
+      : o.estado === "con_ofertas" ? "s/h" : o.estado === "sin_ofertas" ? "sin of." : "s/d";
+    b.append(el("span", "m-var", v));
+  }
+  return b;
+}
+
+function pintarMapa() {
+  const d = mapaDatos;
+  if (!d) return;
+  const cont = $("mapa-familias");
+  const ancho = Math.max(240, cont.clientWidth || 600);
+  $("mapa-tamano").textContent = d.tamano === "cantidad"
+    ? "Tamaño: unidades publicadas en el último escaneo"
+    : "Tamaño: igual para todos (esta fuente no publica cantidades)";
+  $("mapa-tamano").title = d.tamano === "cantidad" ? "Los materiales sin ofertas van en una franja aparte" : "";
+  $("contador").textContent = contadorMapa(d);
+  $("titulo-resultados").textContent = "Mapa de materiales" +
+    (filtro.profesion ? ` · ${nombreProf(filtro.profesion)}` : "") +
+    ($("f-materiales").checked && filtro.familia ? ` · ${NOMBRE_FAMILIA[filtro.familia]}` : "");
+  // Altura repartida por familias según su peso. Con tamaño uniforme, cada bloque mide al menos
+  // ~60×60 px en escritorio (~40×40 en el móvil) para que quepan icono, nombre y variación.
+  const pesos = d.familias.map((f) => f.objetos.reduce((s, o) => s + pesoBloque(o, d.tamano), 0));
+  const total = pesos.reduce((s, p) => s + p, 0) || 1;
+  const bloques = d.familias.reduce((s, f) => s + f.objetos.length, 0);
+  const areaBloque = ancho < 560 ? 2500 : 3600;
+  const altoTotal = Math.max(520, Math.round(window.innerHeight * 1.2), Math.ceil((bloques * areaBloque) / ancho));
+  const nodos = [];
+  d.familias.forEach((f, k) => {
+    const sec = el("section", "m-familia");
+    sec.append(el("h3", "m-fam-tit", `${NOMBRE_FAMILIA[f.familia] ?? f.familia} · ${f.objetos.length}`));
+    const conPeso = f.objetos.filter((o) => pesoBloque(o, d.tamano) > 0);
+    const sinPeso = f.objetos.filter((o) => pesoBloque(o, d.tamano) === 0);
+    if (conPeso.length) {
+      const alto = Math.max(48, Math.round((pesos[k] / total) * altoTotal));
+      const area = el("div", "m-area");
+      area.style.height = `${alto}px`;
+      const rects = squarify(conPeso.map((o) => ({ peso: pesoBloque(o, d.tamano) })), 0, 0, ancho, alto);
+      for (const r of rects) area.append(bloqueMapa(conPeso[r.i], d, r));
+      sec.append(area);
+    }
+    if (sinPeso.length) {   // solo en modo «cantidad»: sin ofertas → franja uniforme aparte
+      const franja = el("div", "m-area m-franja");
+      const lado = 34, porFila = Math.max(1, Math.floor(ancho / lado));
+      franja.style.height = `${Math.ceil(sinPeso.length / porFila) * lado}px`;
+      sinPeso.forEach((o, i) => franja.append(bloqueMapa(o, d, { x: (i % porFila) * lado, y: Math.floor(i / porFila) * lado, w: lado, h: lado })));
+      sec.append(franja);
+    }
+    nodos.push(sec);
+  });
+  if (!nodos.length) nodos.push(el("p", "muted vacio", "Ningún material coincide con los filtros."));
+  cont.replaceChildren(...nodos);
+}
+
+// Tooltip compartido (ratón y foco) y apertura del detalle.
+function mostrarTip(b, x, y) {
+  const tip = $("mapa-tip");
+  tip.textContent = b.dataset.tip;
+  tip.hidden = false;
+  const caja = $("mapa").getBoundingClientRect();
+  const t = tip.getBoundingClientRect();
+  let left = x - caja.left + 12, top = y - caja.top + 14;
+  if (left + t.width > caja.width) left = Math.max(0, x - caja.left - t.width - 12);
+  tip.style.left = `${left}px`; tip.style.top = `${top}px`;
+}
+$("mapa-familias").addEventListener("pointermove", (ev) => {
+  const b = ev.target.closest(".m-bloque");
+  if (b) mostrarTip(b, ev.clientX, ev.clientY); else $("mapa-tip").hidden = true;
+});
+$("mapa-familias").addEventListener("pointerleave", () => { $("mapa-tip").hidden = true; });
+$("mapa-familias").addEventListener("focusin", (ev) => {
+  const b = ev.target.closest(".m-bloque");
+  if (!b) return;
+  const r = b.getBoundingClientRect();
+  mostrarTip(b, r.left + r.width / 2, r.bottom);
+});
+$("mapa-familias").addEventListener("focusout", () => { $("mapa-tip").hidden = true; });
+$("mapa-familias").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".m-bloque");
+  if (b) location.hash = `#/objeto/${b.dataset.id}`;
+});
+let temporizadorMapa = null;
+new ResizeObserver(() => {
+  if (vista !== "mapa") return;
+  clearTimeout(temporizadorMapa);
+  temporizadorMapa = setTimeout(pintarMapa, 120);
+}).observe($("mapa"));
 
 // ---------- barra lateral en el móvil ----------
 const estrecho = () => window.matchMedia("(max-width: 900px)").matches;
@@ -1152,6 +1330,7 @@ async function vigilar() {
         if ((firmaVersion !== null && firma !== firmaVersion) || volvio) {
           await cargar();
           await cargarPagina({ silencioso: true });
+          if (vista === "mapa") cargarMapa();
           if (objetoActual != null) abrirObjeto(objetoActual, { silencioso: true });
         }
         firmaVersion = firma;
@@ -1182,6 +1361,7 @@ async function refrescar() {
   if (!(await cargar())) return;
   aplicarRuta();          // un objeto pedido en la dirección se abre sin esperar a la tabla
   await cargarPagina();
+  if (vista === "mapa") cargarMapa();
   cargarCobertura();      // contador del panel «Catálogo» (sin bloquear la tabla)
 }
 
@@ -1213,5 +1393,6 @@ $("btn-salir").addEventListener("click", async () => {
   cargar();
 });
 
+ponerVista(vista);   // la vista elegida (Lista o Mapa) se recuerda en este navegador
 refrescar();
 vigilar();

@@ -355,6 +355,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("IDs pedidos para el catálogo: %s", len(ids))
         return r
 
+    @app.get("/api/mapa")
+    def mapa(request: Request, mercado: str | None = Query(default=None, max_length=100)):
+        p = {k: v[:40] for k, v in request.query_params.items()
+             if k in ("periodo", "profesion", "familia", "calidad", "solo_ofertas") and v != ""}
+        if p.get("solo_ofertas") not in (None, "true", "false"):
+            return JSONResponse(status_code=400, content={"error": "solo_ofertas debe ser true o false"})
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select mapa_materiales(%s, %s) as r", (mercado or settings.market, Jsonb(p))).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al leer el mapa: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
     @app.get("/api/mercado")
     def mercado(request: Request, mercado: str | None = Query(default=None, max_length=100)):
         p = {k: v[:80] for k, v in request.query_params.items()
