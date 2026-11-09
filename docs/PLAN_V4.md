@@ -87,6 +87,6 @@ El resto son consumibles (viales, pociones, comida), objetos de misión, etc.
    - Informe por categoría: duplicados eliminados, errores, iconos y calidades que faltan, y cobertura pendiente.
    - Marcador neutro y caché de iconos.
    - **Opcional, si creas el cliente de Battle.net:** vinculación («No subastable»), nombres en español, tamaño de pila si la API lo da, e iconos de profesiones.
-5. **W5 · Verificación y resumen de entrega:**
+5. **W5 · Verificación y resumen de entrega** ✅ (2026-11-10): ver [ENTREGA_V4.md](ENTREGA_V4.md).
    - Cobertura de catálogo y familias, IDs únicos, relaciones con varias profesiones y filtros.
    - Muestra de precios contra TSM, actualización horaria sin duplicados y variaciones del mapa.
