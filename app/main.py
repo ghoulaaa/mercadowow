@@ -89,6 +89,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pendientes = db.pending_migrations(conn)
                 datos = mercados = None
                 if not pendientes:
+                    # Sin mercado pedido: el principal guardado en la base de datos (TSM desde 0020).
+                    if not mercado:
+                        clave = db.main_market(conn) or clave
                     datos = db.market_status(conn, clave)
                     mercados = db.list_markets(conn)
         except Exception as exc:  # sin conexión: el panel lo muestra en vez de romperse

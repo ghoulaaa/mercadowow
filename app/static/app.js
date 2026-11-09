@@ -358,9 +358,10 @@ function celdaPrecio(x) {
   } else {
     td.append(el("span", "estado-txt " + x.estado, ESTADO[x.estado]));
     td.title = x.estado === "sin_ofertas"
-      ? `No está en el último escaneo. Visto por última vez ${fecha(x.visto)}` +
-        (x.ultimo_precio != null ? ` a ${formatearMoneda(x.ultimo_precio)}` : "")
-      : "Nunca se ha visto a la venta en este mercado";
+      ? "Ningún anuncio en el último escaneo." +
+        (x.ultimo_precio != null ? ` Última compra mínima vista: ${formatearMoneda(x.ultimo_precio)} (${fecha(x.visto)}).` : "") +
+        (x.valor_mercado != null ? ` Valor de mercado de la fuente: ${formatearMoneda(x.valor_mercado)}.` : "")
+      : "Nunca se ha visto en este mercado";
   }
   return td;
 }
@@ -808,36 +809,42 @@ function cifra(etiqueta, valor, ayuda, cls = "") {
 }
 
 /** Bloque de precios: lo que se sabe, identificado claramente y sin inventar nada. */
+/** Columna de la base de datos → campo de la ficha (cada métrica por separado, nunca sustituida por otra). */
+const CAMPO_METRICA = { min_buyout: "precio", market_value: "valor_mercado", recent: "reciente", historical: "historico",
+  median: "mediana", quantity: "cantidad", sales_per_day: "ventas_dia" };
+
 function bloquePrecios(f) {
   const p = f.mercado, x = f.extremos_30d;
-  const fuente = ultimo?.mercado?.proveedor === "TSM" ? "valor histórico de TSM" : "mediana de 30 días que publica la fuente";
   const grid = el("div", "det-precios");
+  const prov = (f.proveedor ?? "").toUpperCase();
+  const origen = p ? `${prov} · escaneo del ${fecha(p.observado ?? p.hora)}` +
+    (p.importado ? ` · importado el ${fecha(p.importado)}` : "") : "";
   if (f.estado === "sin_datos" || !p) {
-    grid.append(cifra("Precio actual", el("span", "estado-txt sin_datos", ESTADO.sin_datos),
-      "Nunca se ha visto a la venta en este mercado", "principal"));
-    return grid;
+    grid.append(cifra("Compra mínima", el("span", "estado-txt sin_datos", ESTADO.sin_datos),
+      "Nunca se ha visto en este mercado", "principal"));
+  } else if (f.estado === "sin_ofertas") {
+    const u = f.ultima_compra_minima;
+    grid.append(cifra("Compra mínima", el("span", "estado-txt sin_ofertas", ESTADO.sin_ofertas),
+      `Ningún anuncio en el último escaneo (${fecha(f.escaneo)})` +
+        (u ? `. Última compra mínima vista: ${formatearMoneda(u.valor)} (${fecha(u.hora)})` : ""), "principal"));
   }
-  if (f.estado === "sin_ofertas") {
-    grid.append(cifra("Precio actual", el("span", "estado-txt sin_ofertas", ESTADO.sin_ofertas),
-      `No está en el último escaneo (${fecha(f.escaneo)})`, "principal"),
-      cifra("Último visto", monedaNodo(p.precio ?? p.valor_mercado), `Compra mínima del ${fecha(p.hora)}`));
-  } else {
-    grid.append(cifra("Precio actual", monedaNodo(p.precio ?? p.valor_mercado),
-      `Compra inmediata mínima del escaneo de ${fecha(p.hora)}`, "principal"),
-      cifra("Cantidad", p.cantidad == null ? "—" : p.cantidad.toLocaleString("es"),
-        p.cantidad == null ? "La fuente no publica cantidades" : "Unidades publicadas en el último escaneo"));
+  // Cada métrica que publica la fuente, con su nombre y su significado (de la tabla «metricas»).
+  for (const m of f.metricas ?? []) {
+    const v = p?.[CAMPO_METRICA[m.columna]];
+    if (m.columna === "min_buyout" && f.estado !== "con_ofertas") continue;   // ya está arriba
+    if (v == null && m.columna !== "min_buyout") continue;
+    const valor = m.columna === "quantity" ? v.toLocaleString("es")
+      : m.columna === "sales_per_day" ? v.toLocaleString("es", { maximumFractionDigits: v >= 10 ? 0 : 1 })
+      : monedaNodo(v);
+    grid.append(cifra(m.nombre, valor, `${m.significado} (${m.clave_fuente} · ${origen})`,
+      m.columna === "min_buyout" ? "principal" : ""));
   }
-  grid.append(
-    cifra("Mínimo 30 d", x ? monedaNodo(x.minimo) : "—",
-      x ? `Compra mínima más baja observada: ${fecha(x.minimo_hora)} (${x.observaciones} escaneos guardados)` : "Sin escaneos guardados en 30 días"),
-    cifra("Mediana histórica", p.historico == null ? "—" : monedaNodo(p.historico),
-      p.historico == null ? "La fuente no la publica" : `Referencia: ${fuente}`));
-  if (p.mediana != null && f.estado === "con_ofertas") {
-    grid.append(cifra("Mediana actual", monedaNodo(p.mediana), "Mediana de los anuncios del último escaneo"));
+  if (x) {
+    grid.append(cifra("Mínimo 30 d", monedaNodo(x.minimo),
+      `Compra mínima más baja guardada en 30 días: ${fecha(x.minimo_hora)} (${x.observaciones} escaneos)`));
   }
-  if (p.ventas_dia != null) {
-    grid.append(cifra("Ventas/día", p.ventas_dia.toLocaleString("es", { maximumFractionDigits: p.ventas_dia >= 10 ? 0 : 1 }),
-      "Estimación de AHledger: un escaneo no distingue una venta de una cancelación"));
+  if (f.venta_npc != null) {
+    grid.append(cifra("Venta al NPC", monedaNodo(f.venta_npc), "Lo que paga un vendedor del juego (dato del catálogo, no de subasta)"));
   }
   return grid;
 }

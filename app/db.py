@@ -165,6 +165,12 @@ def categories(conn: psycopg.Connection, market_key: str) -> list[dict]:
     return conn.execute("select categorias_mercado(%s) as r", (market_key,)).fetchone()["r"]
 
 
+def main_market(conn: psycopg.Connection) -> str | None:
+    """Mercado principal guardado en la base de datos (TSM desde 0020), o None."""
+    fila = conn.execute("select mercado_principal() as r").fetchone()
+    return fila["r"] if fila else None
+
+
 PARAMS_MERCADO = ("q", "categoria", "subcategoria", "calidad", "profesion", "nivel_min", "nivel_max",
                   "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina")
 

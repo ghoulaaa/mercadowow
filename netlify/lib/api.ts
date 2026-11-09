@@ -209,16 +209,21 @@ export function crearApi(db: Db, o: OpcionesApi) {
     async estado(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();
       if (!autenticado(req)) return json(401, { error: "no_autenticado" });
-      // Por defecto, el mercado real configurado. Se puede pedir otro (demo, importación) por ?mercado=.
-      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+      // Por defecto, el mercado principal guardado en la base de datos (TSM desde 0020); si no hay,
+      // el de la configuración. Se puede pedir otro (AHledger, demo, importación) por ?mercado=.
+      let mercado = new URL(req.url).searchParams.get("mercado") || "";
       try {
+        // Sin la migración 0020 la función no existe: se usa el mercado de la configuración.
+        const principal = (await db.consulta("select mercado_principal() as m", [])
+          .then((f) => f[0]?.m as string | null).catch(() => null)) || o.mercado;
+        if (!mercado) mercado = principal;
         const r = await llamar(db, "select estado_mercado($1) as r", [mercado]);
         if (!r) return json(404, { error: `Mercado ${mercado} no registrado` });
         const mercados = await llamar(db, "select listar_mercados() as r", []);
         return json(200, {
           ...r,
           mercados,
-          mercado_principal: o.mercado,
+          mercado_principal: principal,
           autenticado: true,
           base_de_datos: { proveedor: "Supabase", proyecto: o.proyecto, migraciones_pendientes: [] },
         });

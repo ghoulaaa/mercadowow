@@ -136,8 +136,8 @@
           <label class="orden"><span class="sr-only">Ordenar por</span>
             <select id="f-orden">
               <option value="nombre:asc">Nombre A–Z</option>
-              <option value="precio:asc">Precio ↑</option>
-              <option value="precio:desc">Precio ↓</option>
+              <option value="precio:asc">Compra mínima ↑</option>
+              <option value="precio:desc">Compra mínima ↓</option>
               <option value="cantidad:desc">Cantidad ↓</option>
               <option value="var24:desc">Variación ↑ (sube más)</option>
               <option value="var24:asc">Variación ↓ (baja más)</option>
@@ -148,7 +148,7 @@
             <thead>
               <tr>
                 <th scope="col" aria-sort="none"><button type="button" class="th-orden" data-orden="nombre">Objeto</button></th>
-                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra inmediata mínima del último escaneo">Precio</button></th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra inmediata mínima por unidad en el último escaneo">Compra mínima</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Cantidad</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Frente a la observación de hace 24 h">24 h</button></th>
                 <th scope="col" class="c-spark" title="Compra mínima más baja de cada tramo de 6 h, últimos 7 días">7 días</th>

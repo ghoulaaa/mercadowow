@@ -101,13 +101,16 @@ export function leerArchivoTsm(texto: string): ArchivoTsm {
       throw new ErrorFormato(`Línea ${linea}: updatedAt distinto (${iso} ≠ ${updatedAt})`);
     }
     total++;
+    // TSM escribe 0 cuando no hay dato (p. ej. minBuyout = 0: ningún anuncio en ese escaneo).
+    // Ninguna subasta cuesta 0 cobres: se guarda como null («sin dato»), nunca como precio 0.
+    const sinCero = (n: number | null) => (n === 0 ? null : n);
     porItem.set(itemId, {
       item_id: itemId,
       name: r[1],
-      market_value: cobre(r[2], "marketValue", linea),
-      min_buyout: cobre(r[3], "minBuyout", linea),
-      recent: cobre(r[4], "recent", linea),
-      historical: cobre(r[5], "historical", linea),
+      market_value: sinCero(cobre(r[2], "marketValue", linea)),
+      min_buyout: sinCero(cobre(r[3], "minBuyout", linea)),
+      recent: sinCero(cobre(r[4], "recent", linea)),
+      historical: sinCero(cobre(r[5], "historical", linea)),
     });
   }
 
