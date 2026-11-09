@@ -70,7 +70,16 @@ motor, el historial y las recetas **se conservan**.
    - Importación verificable por CSV.
    - Recuento de cobertura por fuente.
    - **Opcional, si creas el cliente de Battle.net:** probar la búsqueda de `static-forever-us`. Si permite recorrer el catálogo, traer todos los IDs, los nombres en español y la vinculación, informando de cuántos da 404.
-5. **V5 · Estados y repaso final:**
+5. **V5 · Estados y repaso final** ✅ (2026-11-09):
+   - **Caída simulada** deteniendo el servidor local: el indicador pasa a «Sin conexión», con un único aviso y conservando la tabla y el detalle. Al volver el servidor se recupera en 13 s con el aviso «Conexión recuperada»; el detalle se refresca sin cerrar los apartados desplegados.
+   - **Carga:** la tabla se atenúa con aria-busy y un indicador giratorio mientras llega la página siguiente. Una respuesta de error ya no se descarta en silencio.
+   - **Criterios de entrega comprobados:**
+     - una sola sección («Mercado»);
+     - controles en la barra lateral;
+     - objeto sin ofertas encontrado por el buscador y por la tabla;
+     - sin párrafos explicativos ni «tiempo real»;
+     - sin desbordes a 375 px.
+   - **Iconos:** son los que AHledger asigna a cada ID con `game=forever`, servidos desde el CDN de Blizzard por la ruta `classic1x`.
    - Esqueletos de carga y aviso breve sin conexión, conservando el último dato.
    - Diferenciar la hora del dato de la hora de la consulta y evitar peticiones duplicadas.
    - Comprobación completa en PC y móvil con la lista de criterios de entrega.

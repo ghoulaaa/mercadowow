@@ -42,7 +42,7 @@ function iconoNodo(url, nombre, calidad, grande = false) {
   if (url) {
     // Icono oficial (CDN de Blizzard). Si no carga, queda la inicial como marcador neutro.
     const img = document.createElement("img");
-    img.src = url; img.alt = ""; img.loading = "lazy"; img.decoding = "async";
+    img.src = url; img.alt = ""; img.loading = grande ? "eager" : "lazy"; img.decoding = "async";
     img.addEventListener("error", () => img.remove());
     ic.append(img);
   }
@@ -158,7 +158,7 @@ async function cargar() {
   if (r?.status === 404 && mercadoActual) { mercadoActual = null; return cargar(); }
   if (!r?.ok || !s) {
     // Sin conexión: se conserva lo que ya se ve y se avisa brevemente.
-    if (ultimo) { avisar("Sin conexión con el servidor: se muestran los últimos datos recibidos.", "bad"); return false; }
+    if (ultimo) { marcarConexion(false, r ? "Sin conexión con la base de datos" : "Sin conexión con el servidor"); return false; }
     mostrar("mercado");
     $("estado-dato").textContent = "Sin conexión";
     $("estado-dato").className = "estado-dato bad";
@@ -189,11 +189,12 @@ function pintarEstadoDato() {
   const e = $("estado-dato");
   const viejo = a.hora_dato_original && (Date.now() - new Date(a.hora_dato_original)) > 8 * 3600e3;
   const fallos = a.fallos_seguidos > 0;
-  e.replaceChildren(el("span", "", `Datos: ${hace(a.hora_dato_original)}`));
+  e.replaceChildren(el("span", "", `${sinConexion ? "Sin conexión · " : ""}Datos: ${hace(a.hora_dato_original)}`));
   if (m.automatico && a.ultima_consulta_ok) e.append(el("span", "consulta", ` · consulta: ${hace(a.ultima_consulta_ok)}`));
   if (fallos) e.append(el("span", "", " · ⚠"));
-  e.className = "estado-dato" + (viejo && !m.ficticio ? " viejo" : "") + (fallos ? " bad" : "");
+  e.className = "estado-dato" + (viejo && !m.ficticio ? " viejo" : "") + (fallos || sinConexion ? " bad" : "");
   e.title = [
+    sinConexion ? "Sin conexión: lo que ves son los últimos datos recibidos; se reintenta cada 15 s." : null,
     `Mercado: ${m.nombre}`,
     `Escaneo original: ${fecha(a.hora_dato_original)}`,
     m.automatico ? `Última consulta correcta: ${fecha(a.ultima_consulta_ok)}` : "Sin consulta automática",
@@ -249,21 +250,27 @@ async function cargarPagina({ silencioso = false } = {}) {
   const n = ++peticionN;
   controlador?.abort();
   controlador = new AbortController();
-  if (!silencioso) esqueleto();
+  // Primera carga: filas grises. Después: la tabla actual se atenúa mientras llega la nueva.
+  if (!silencioso) { if (pagina) cargando(true); else esqueleto(); }
   const q = new URLSearchParams({ mercado: clave, ...paramsMercado(leerFiltros()) });
   let r, d;
   try {
     r = await fetch("/api/mercado?" + q, { cache: "no-store", signal: controlador.signal });
-    d = await r.json();
+    d = await r.json().catch(() => ({}));
   } catch (e) {
     if (e.name === "AbortError" || n !== peticionN) return;
+    cargando(false);
     pintarTabla();   // se queda con la última página buena
-    avisar("No se pudieron cargar los objetos: se conservan los últimos.", "bad");
+    marcarConexion(false, "Sin conexión con el servidor");
     return;
   }
-  if (n !== peticionN || d.mercado !== clave) return;
+  if (n !== peticionN) return;
+  cargando(false);
   if (r.status === 401) { await cargar(); return; }
+  if (r.status >= 500) { pintarTabla(); marcarConexion(false, "Sin conexión con la base de datos"); return; }
   if (!r.ok) { pintarTabla(); avisar(d.error || "Error " + r.status, "bad"); return; }
+  if (d.mercado !== clave) return;     // respuesta de otro mercado: se descarta
+  marcarConexion(true);
   pagina = d;
   // Si la página pedida ya no existe (menos resultados), vuelve a la última.
   const ult = paginas(d.total, d.por_pagina);
@@ -273,6 +280,12 @@ async function cargarPagina({ silencioso = false } = {}) {
   pintarArbol();
   pintarTabla();
   pintarPie();
+}
+
+/** Indicador discreto: tabla atenuada y aria-busy (los lectores de pantalla saben que se actualiza). */
+function cargando(si) {
+  $("vista-mercado").setAttribute("aria-busy", String(si));
+  $("vista-mercado").classList.toggle("cargando", si);
 }
 
 /** Filas grises mientras llegan los datos. */
@@ -616,6 +629,7 @@ function abrirPanel() {
 }
 function cerrarDetalle() {
   objetoActual = null;
+  objetoN++;   // una carga del detalle que aún estuviera en curso ya no se pinta
   $("panel-ficha").hidden = true;
   $("velo-detalle").hidden = true;
   document.body.classList.remove("con-detalle");
@@ -854,29 +868,48 @@ async function bloqueRecomendacion(id) {
   } catch { return null; }
 }
 
-async function abrirObjeto(id) {
+let objetoN = 0;   // cada apertura tiene su número: una respuesta de una apertura anterior se descarta
+/**
+ * Abre (o refresca) el detalle de un objeto.
+ * silencioso: refresco por datos nuevos; no muestra esqueleto, no mueve el foco y conserva los
+ * apartados desplegados y la posición de desplazamiento del panel.
+ */
+async function abrirObjeto(id, { silencioso = false } = {}) {
   if (!ultimo) return;
+  const n = ++objetoN;
   objetoActual = id;
-  const filaPagina = pagina?.filas.find((x) => x.id === id);
-  $("det-titulo").textContent = filaPagina?.nombre ?? `#${id}`;
-  $("det-titulo").className = filaPagina?.calidad ? `q-${filaPagina.calidad}` : "";
   const cuerpo = $("det-cuerpo");
-  cuerpo.replaceChildren(el("div", "esq-grafico"));
-  abrirPanel();
-  $("det-titulo").focus({ preventScroll: true });
+  const abiertos = silencioso ? new Set([...cuerpo.querySelectorAll("details[open] > summary")].map((s) => s.textContent)) : null;
+  const scroll = $("panel-ficha").scrollTop;
+  if (!silencioso) {
+    const filaPagina = pagina?.filas.find((x) => x.id === id);
+    $("det-titulo").textContent = filaPagina?.nombre ?? `#${id}`;
+    $("det-titulo").className = filaPagina?.calidad ? `q-${filaPagina.calidad}` : "";
+    cuerpo.replaceChildren(el("div", "esq-grafico"));
+    abrirPanel();
+    $("det-titulo").focus({ preventScroll: true });
+  }
   try {
     const r = await fetch(`/api/objeto?mercado=${urlMercado()}&id=${id}`, { cache: "no-store" });
     const f = await r.json();
     if (!r.ok) throw new Error(f.error || "HTTP " + r.status);
-    if (objetoActual !== id) return;
+    if (n !== objetoN) return;
+    const rec = f.estado === "sin_datos" ? null : await bloqueRecomendacion(id);
+    if (n !== objetoN) return;
     $("det-titulo").textContent = f.nombre;
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
-    const rec = f.estado === "sin_datos" ? null : await bloqueRecomendacion(id);
-    if (objetoActual !== id) return;
     cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f), rec,
       f.estado === "sin_datos" ? null : seccionGrafico(id), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
+    if (abiertos) {
+      for (const d of cuerpo.querySelectorAll("details")) {
+        if (abiertos.has(d.querySelector(":scope > summary")?.textContent)) d.open = true;
+      }
+      $("panel-ficha").scrollTop = scroll;
+    }
   } catch (e) {
-    if (objetoActual === id) cuerpo.replaceChildren(el("p", "bad", "No se pudo cargar el objeto: " + e.message));
+    if (n !== objetoN) return;
+    if (silencioso) return;   // un refresco fallido no borra lo que ya se ve
+    cuerpo.replaceChildren(el("p", "bad", "No se pudo cargar el objeto: " + e.message));
   }
 }
 
@@ -1012,24 +1045,44 @@ $("btn-actualizar").addEventListener("click", async () => {
 // Cada 30 s (o cada 5 s justo después de «Actualizar») se consulta una huella mínima del mercado;
 // si cambió, se recargan el estado y la página visible sin recargar la web ni cerrar el objeto abierto.
 async function vigilar() {
+  clearTimeout(temporizadorVigilar);
   if (document.visibilityState === "visible" && ultimo?.mercado?.clave && $("vista-login").hidden) {
     try {
       const r = await fetch("/api/version?mercado=" + urlMercado(), { cache: "no-store" });
       if (r.status === 401) await cargar();
-      else if (r.ok) {
+      else if (!r.ok) marcarConexion(false, "Sin conexión con la base de datos");
+      else {
         const firma = JSON.stringify(await r.json());
-        if (firmaVersion !== null && firma !== firmaVersion) {
+        const volvio = sinConexion;
+        marcarConexion(true);
+        if ((firmaVersion !== null && firma !== firmaVersion) || volvio) {
           await cargar();
           await cargarPagina({ silencioso: true });
-          if (objetoActual != null) abrirObjeto(objetoActual);
+          if (objetoActual != null) abrirObjeto(objetoActual, { silencioso: true });
         }
         firmaVersion = firma;
       }
-    } catch { /* sin red: se reintenta en la próxima vuelta */ }
+    } catch {
+      marcarConexion(false, "Sin conexión con el servidor");
+    }
   }
   pintarEstadoDato();   // «hace N min» avanza aunque no haya datos nuevos
-  setTimeout(vigilar, Date.now() < rapidoHasta ? 5000 : 30000);
+  // Sin conexión se reintenta antes; tras «Actualizar», cada 5 s durante 3 min; si no, cada 30 s.
+  temporizadorVigilar = setTimeout(vigilar, sinConexion ? 15000 : Date.now() < rapidoHasta ? 5000 : 30000);
 }
+let temporizadorVigilar = null;
+
+// ---------- conexión: un único aviso al perderla y otro al recuperarla; los datos se conservan ----------
+let sinConexion = false;
+function marcarConexion(ok, motivo = "Sin conexión") {
+  if (ok !== sinConexion) return;          // sin cambios: no se repite el aviso
+  sinConexion = !ok;
+  if (sinConexion) avisar(`${motivo}: se muestran los últimos datos recibidos.`, "bad");
+  else avisar("Conexión recuperada.");
+  pintarEstadoDato();
+}
+window.addEventListener("offline", () => marcarConexion(false, "Sin conexión a internet"));
+window.addEventListener("online", () => { if (sinConexion) vigilar(); });
 
 async function refrescar() {
   if (!(await cargar())) return;

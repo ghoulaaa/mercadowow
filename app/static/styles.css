@@ -288,6 +288,12 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
 .estado-txt.sin_datos { opacity: .8; }
 .tabla tr.sin-oferta .objeto-nombre { opacity: .8; }
 .tabla tr.sin-oferta .icono { filter: saturate(.6); }
+.resultados.cargando .tabla-mercado tbody { opacity: .45; transition: opacity .15s .15s; }
+.resultados.cargando .res-cab::after {
+  content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--metal); border-top-color: var(--gold);
+  animation: girar .8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .resultados.cargando .res-cab::after { animation: none; } }
 .paginador { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; }
 .var.igual { color: var(--muted); }
 .moneda .o { color: var(--gold); }
