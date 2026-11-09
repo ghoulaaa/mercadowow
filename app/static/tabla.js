@@ -38,6 +38,15 @@ export const NOMBRE_CALIDAD = {
   ARTIFACT: "Artefacto", HEIRLOOM: "Reliquia",
 };
 
+/** Nombres de las clases de objeto como aparecen en el cliente del juego en español. Son etiquetas de la
+ *  interfaz (12 clases), no traducciones de objetos: los objetos conservan su nombre inglés. */
+export const NOMBRE_CATEGORIA = {
+  Weapon: "Armas", Armor: "Armadura", Container: "Recipientes", Consumable: "Consumibles",
+  "Trade Goods": "Objetos comerciales", Recipe: "Recetas", Quest: "Objetos de misión", Miscellaneous: "Miscelánea",
+  Projectile: "Proyectiles", Quiver: "Carcajes", Reagent: "Componentes", Key: "Llaves", Gem: "Gemas",
+  [SIN_CATEGORIA]: "Sin clasificar",
+};
+
 export function categorias(filas) {
   const set = new Set(filas.map((f) => f.categoria));
   return [...set].sort((a, b) =>
@@ -70,6 +79,7 @@ export const NOMBRE_REC = { VENDER: "Vender", GUARDAR: "Guardar", OBSERVACION: "
 const CLAVES = {
   nombre: (x) => x.nombre,
   precio: (x) => x.precio_ref,
+  cantidad: (x) => x.cantidad,
   historico: (x) => x.historico,
   var24: (x) => x.var24,
   var7: (x) => x.var7,

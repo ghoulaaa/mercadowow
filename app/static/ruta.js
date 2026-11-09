@@ -1,15 +1,12 @@
-// Rutas de la aplicación (#/seccion o #/objeto/ID). Sin DOM, para probarlas en Node.
+// Rutas de la aplicación. Desde V3 hay una sola vista, el Mercado: «#/» o «#/objeto/ID» (objeto abierto).
+// Sin DOM, para probarlas en Node.
 
-export const VISTAS = ["inicio", "basedatos", "mercado", "historial", "profesiones", "rentabilidad",
-  "favoritos", "inventario", "oportunidades", "fuentes"];
-
-/** «#/objeto/7082» → {vista: "objeto", id: 7082}. Una ruta desconocida → inicio. */
+/** «#/objeto/7082» → {vista: "objeto", id: 7082}. Los enlaces antiguos a un objeto (historial, rentabilidad)
+ *  abren ese objeto; cualquier otra ruta → el Mercado. */
 export function leerRuta(hash) {
-  const partes = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  const [vista, arg] = partes;
-  if ((vista === "objeto" || vista === "historial" || vista === "rentabilidad") && /^\d{1,9}$/.test(arg ?? "")) {
-    return { vista, id: Number(arg) };
+  const [vista, arg] = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (["objeto", "historial", "rentabilidad"].includes(vista) && /^\d{1,9}$/.test(arg ?? "")) {
+    return { vista: "objeto", id: Number(arg) };
   }
-  if (vista === "objeto") return { vista: "mercado", id: null };
-  return { vista: VISTAS.includes(vista) ? vista : "inicio", id: null };
+  return { vista: "mercado", id: null };
 }

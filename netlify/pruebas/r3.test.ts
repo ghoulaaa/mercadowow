@@ -83,12 +83,14 @@ describe("autocompletado por teclado", () => {
 describe("rutas", () => {
   for (const [hash, esperado] of [
     ["#/objeto/7082", { vista: "objeto", id: 7082 }],
-    ["#/historial/2589", { vista: "historial", id: 2589 }],
-    ["#/historial", { vista: "historial", id: null }],
-    ["#/inventario", { vista: "inventario", id: null }],
+    // Enlaces antiguos (V3: una sola vista): un objeto se abre; una sección retirada → Mercado.
+    ["#/historial/2589", { vista: "objeto", id: 2589 }],
+    ["#/rentabilidad/2589", { vista: "objeto", id: 2589 }],
+    ["#/historial", { vista: "mercado", id: null }],
+    ["#/inventario", { vista: "mercado", id: null }],
     ["#/objeto/abc", { vista: "mercado", id: null }],
-    ["#/no-existe", { vista: "inicio", id: null }],
-    ["", { vista: "inicio", id: null }],
+    ["#/no-existe", { vista: "mercado", id: null }],
+    ["", { vista: "mercado", id: null }],
   ] as const) {
     test(`${hash || "(vacío)"}`, () => assert.deepEqual(leerRuta(hash), esperado));
   }

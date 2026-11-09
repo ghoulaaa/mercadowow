@@ -441,8 +441,17 @@ def test_paginas_nuevas_se_sirven(cliente):
         r = cliente.get(archivo)
         assert r.status_code == 200 and "javascript" in r.headers["content-type"]
     html = cliente.get("/").text
-    for id_ in ('id="buscador"', 'role="combobox"', 'data-vista="mercado"', 'id="panel-ficha"', 'class="accesos"'):
+    for id_ in ('id="buscador"', 'role="combobox"', 'id="lateral"', 'id="arbol-cat"', 'id="panel-ficha"', 'id="tbody"'):
         assert id_ in html
+
+
+def test_una_sola_vista_de_mercado(cliente):
+    """V3: sin pestañas superiores ni secciones retiradas en la página."""
+    html = cliente.get("/").text
+    for retirado in ('id="nav-secciones"', 'class="accesos"', 'data-vista=', 'id="form-calc"', 'id="inv-tbody"',
+                     'href="#/inventario"', 'href="#/rentabilidad"', "Actualización solicitada"):
+        assert retirado not in html
+    assert html.count("<nav") == 1 and 'aria-current="page"' in html
 
 
 @pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])
@@ -460,9 +469,8 @@ def test_profesiones_se_sirve(cliente):
 
 
 def test_calculadora_se_sirve(cliente):
+    # La calculadora ya no está en la página (V3), pero su módulo se conserva.
     assert "javascript" in cliente.get("/rentabilidad.js").headers["content-type"]
-    html = cliente.get("/").text
-    assert 'id="form-calc"' in html and 'id="tasas-tbody"' in html
 
 
 def test_build_status_sin_datos():

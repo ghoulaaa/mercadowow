@@ -11,711 +11,153 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <a class="saltar" href="#contenido">Saltar al contenido</a>
+  <a class="saltar" href="#buscador">Saltar al buscador</a>
 
-  <header class="cabecera">
-    <div class="cab-fila">
-      <div class="brand">
+  <!-- Iconos (trazos propios, sin marcas). -->
+  <svg width="0" height="0" class="sr-only" aria-hidden="true">
+    <symbol id="i-mercado" viewBox="0 0 24 24"><path d="M4 9h16l-1.5-5h-13zM5 9v11h14V9M9 20v-6h6v6" /></symbol>
+    <symbol id="i-recargar" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></symbol>
+    <symbol id="i-cerrar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
+    <symbol id="i-filtro" viewBox="0 0 24 24"><path d="M4 5h16l-6 8v6l-4-2v-4z" /></symbol>
+    <symbol id="i-salir" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></symbol>
+  </svg>
+
+  <div class="app" id="app">
+    <!-- ===================== BARRA LATERAL ===================== -->
+    <aside class="lateral" id="lateral" aria-label="Mercado y filtros">
+      <div class="lat-cab">
         <span class="coin" aria-hidden="true"></span>
-        <h1>Casa de Subastas <span class="brand-sub">— WoW Forever</span></h1>
+        <span class="marca">Casa de Subastas<small>WoW Forever</small></span>
+        <button id="btn-cerrar-lateral" type="button" class="btn-icono solo-movil" aria-label="Cerrar filtros">
+          <svg><use href="#i-cerrar" /></svg>
+        </button>
       </div>
-      <div class="top-actions">
-        <label class="sr-only" for="sel-mercado">Mercado</label>
-        <select id="sel-mercado" class="pill-select" hidden></select>
-        <span id="market" class="pill">cargando…</span>
-        <button id="btn-salir" type="button" class="btn btn-small" hidden>Salir</button>
+
+      <nav class="lat-nav" aria-label="Sección">
+        <a href="#/" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
+      </nav>
+
+      <div class="lat-grupo" id="grupo-mercado">
+        <span class="lat-tit">Mercado</span>
+        <div class="sel-mercado">
+          <label><span class="sr-only">Región</span>
+            <select id="sel-region" title="Región"></select></label>
+          <label><span class="sr-only">Tipo de reino</span>
+            <select id="sel-modo" title="Tipo de reino"></select></label>
+          <label><span class="sr-only">Facción</span>
+            <select id="sel-faccion" title="Facción"></select></label>
+        </div>
+        <label class="fila-sel"><span>Fuente</span>
+          <select id="sel-fuente" title="Proveedor de los precios"></select></label>
       </div>
-    </div>
 
-    <div class="cab-fila cab-busqueda" id="zona-busqueda" hidden>
-      <div class="combo">
-        <label class="sr-only" for="buscador">Buscar objeto por nombre o ID</label>
-        <input id="buscador" class="buscador" type="text" autocomplete="off" spellcheck="false"
-               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugerencias"
-               aria-describedby="ayuda-buscador" placeholder="Busca un objeto por nombre (en inglés) o por ID…">
-        <ul id="sugerencias" class="sugerencias" role="listbox" aria-label="Sugerencias" hidden></ul>
-        <p id="ayuda-buscador" class="ayuda">Tab o ↑↓ para recorrer · Enter para seleccionar · Esc para cerrar</p>
-        <p id="anuncio" class="sr-only" aria-live="polite"></p>
+      <div class="lat-grupo">
+        <span class="lat-tit">Categorías</span>
+        <ul id="arbol-cat" class="arbol" aria-label="Categorías"></ul>
       </div>
-      <button id="btn-buscar" type="button" class="btn btn-rojo">Buscar</button>
-      <button id="btn-restablecer" type="button" class="btn btn-piedra">Restablecer</button>
-      <button id="btn-actualizar" type="button" class="btn btn-rojo" hidden>Actualizar</button>
-    </div>
 
-    <dl class="cab-estado" id="cab-estado" hidden>
-      <div><dt>Conexión</dt><dd id="hdr-conexion">—</dd></div>
-      <div><dt>Dato original</dt><dd id="hdr-dato">—</dd></div>
-      <div><dt>Última consulta</dt><dd id="hdr-consulta">—</dd></div>
-      <div><dt>Próxima</dt><dd id="hdr-proxima">—</dd></div>
-    </dl>
-    <p id="aviso-boton" class="muted small aviso-cab" hidden></p>
+      <div class="lat-grupo filtros-lat">
+        <span class="lat-tit">Filtros</span>
+        <div class="calidades" id="f-calidad" role="group" aria-label="Calidad"></div>
+        <span class="lab">Nivel</span>
+        <div class="rango">
+          <input id="f-nivel-min" type="number" min="0" max="100" placeholder="mín." aria-label="Nivel mínimo">
+          <input id="f-nivel-max" type="number" min="0" max="100" placeholder="máx." aria-label="Nivel máximo">
+        </div>
+        <span class="lab">Precio unitario</span>
+        <div class="rango">
+          <input id="f-precio-min" placeholder="mín." aria-label="Precio mínimo (p. ej. 1o 50p)" title="En oro, plata y cobre: 1o 50p 20c, o en cobre">
+          <input id="f-precio-max" placeholder="máx." aria-label="Precio máximo (p. ej. 1o 50p)" title="En oro, plata y cobre: 1o 50p 20c, o en cobre">
+        </div>
+        <p id="f-precio-error" class="bad small" hidden></p>
+        <label class="check" title="Oculta los objetos que no aparecen en el último escaneo">
+          <input id="f-ausentes" type="checkbox" checked> Solo en el último escaneo</label>
+        <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>
+      </div>
 
-    <nav class="secciones" id="nav-secciones" aria-label="Secciones" hidden>
-      <a href="#/inicio" data-ruta="inicio">Inicio</a>
-      <a href="#/basedatos" data-ruta="basedatos">Base de datos</a>
-      <a href="#/mercado" data-ruta="mercado">Mercado</a>
-      <a href="#/historial" data-ruta="historial">Historial</a>
-      <a href="#/profesiones" data-ruta="profesiones">Profesiones</a>
-      <a href="#/rentabilidad" data-ruta="rentabilidad">Rentabilidad</a>
-      <a href="#/favoritos" data-ruta="favoritos">Favoritos</a>
-      <a href="#/inventario" data-ruta="inventario">Mi inventario</a>
-      <a href="#/oportunidades" data-ruta="oportunidades">Oportunidades</a>
-      <a href="#/fuentes" data-ruta="fuentes">Fuentes y metodología</a>
-    </nav>
-  </header>
+      <button id="btn-salir" type="button" class="btn-salir" hidden>
+        <svg aria-hidden="true"><use href="#i-salir" /></svg>Salir</button>
+    </aside>
+    <div class="velo" id="velo-lateral" hidden></div>
 
-  <div id="banda-demo" class="banda-demo" role="alert" hidden>
-    DATOS FICTICIOS · mercado de demostración · no los uses para decidir nada
+    <!-- ===================== CENTRO ===================== -->
+    <main class="centro" id="contenido">
+      <div class="barra" id="barra">
+        <button id="btn-lateral" type="button" class="btn-icono solo-movil" aria-label="Mostrar filtros"
+                aria-controls="lateral" aria-expanded="false"><svg><use href="#i-filtro" /></svg></button>
+        <div class="combo">
+          <label class="sr-only" for="buscador">Buscar objeto por nombre o ID</label>
+          <input id="buscador" class="buscador" type="text" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugerencias"
+                 aria-describedby="ayuda-buscador" placeholder="Buscar objeto o ID…">
+          <ul id="sugerencias" class="sugerencias" role="listbox" aria-label="Sugerencias" hidden></ul>
+          <span id="ayuda-buscador" class="sr-only">Tab o flechas para recorrer las sugerencias, Enter para abrir, Escape para cerrar.</span>
+          <p id="anuncio" class="sr-only" aria-live="polite"></p>
+        </div>
+        <span id="estado-dato" class="estado-dato" tabindex="0">—</span>
+        <button id="btn-actualizar" type="button" class="btn-icono" aria-label="Pedir actualización" title="Pedir actualización" hidden>
+          <svg><use href="#i-recargar" /></svg></button>
+      </div>
+
+      <div id="banda-demo" class="banda-demo" role="alert" hidden>DATOS FICTICIOS · mercado de demostración</div>
+      <p id="aviso" class="aviso" role="status" hidden></p>
+
+      <section id="vista-login" class="login" hidden>
+        <h2>Acceso</h2>
+        <form id="form-login">
+          <label for="clave">Contraseña</label>
+          <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+          <button type="submit" class="btn btn-rojo">Entrar</button>
+          <p id="error-login" class="bad small" hidden></p>
+        </form>
+      </section>
+
+      <section id="vista-mercado" class="resultados" aria-labelledby="titulo-resultados" hidden>
+        <div class="res-cab">
+          <h1 id="titulo-resultados">Todos los objetos</h1>
+          <span id="contador" class="muted small"></span>
+          <label class="orden"><span class="sr-only">Ordenar por</span>
+            <select id="f-orden">
+              <option value="nombre:asc">Nombre A–Z</option>
+              <option value="precio:asc">Precio ↑</option>
+              <option value="precio:desc">Precio ↓</option>
+              <option value="cantidad:desc">Cantidad ↓</option>
+              <option value="var24:desc">Variación ↑ (sube más)</option>
+              <option value="var24:asc">Variación ↓ (baja más)</option>
+            </select></label>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla tabla-mercado">
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="none"><button type="button" class="th-orden" data-orden="nombre">Objeto</button></th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra inmediata mínima del último escaneo">Precio</button></th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Cantidad</button></th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Frente a la observación de hace 24 h">24 h</button></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <p id="sin-resultados" class="muted vacio" hidden>Ningún objeto coincide con los filtros.</p>
+        <button id="btn-mas" type="button" class="btn btn-piedra" hidden>Mostrar más</button>
+      </section>
+
+      <footer class="pie" id="pie"></footer>
+    </main>
+
+    <!-- ===================== DETALLE ===================== -->
+    <aside class="detalle" id="panel-ficha" aria-labelledby="det-titulo" hidden>
+      <div class="det-cab">
+        <h2 id="det-titulo" tabindex="-1">Objeto</h2>
+        <button id="det-cerrar" type="button" class="btn-icono" aria-label="Cerrar el detalle">
+          <svg><use href="#i-cerrar" /></svg></button>
+      </div>
+      <div id="det-cuerpo"></div>
+    </aside>
+    <div class="velo" id="velo-detalle" hidden></div>
   </div>
-
-  <main class="wrap" id="contenido" tabindex="-1">
-    <section id="vista-login" class="card login" hidden>
-      <h2>Acceso</h2>
-      <p class="muted">Esta página es privada. Escribe la contraseña configurada en Netlify (CLAVE_ACCESO).</p>
-      <form id="form-login">
-        <label for="clave">Contraseña</label>
-        <input id="clave" name="clave" type="password" autocomplete="current-password" required>
-        <button type="submit" class="btn btn-rojo">Entrar</button>
-        <p id="error-login" class="bad small" hidden></p>
-      </form>
-    </section>
-
-    <div id="vista-panel">
-      <!-- ===================== INICIO ===================== -->
-      <section class="vista" data-vista="inicio">
-        <section class="card hello">
-          <h2 id="titulo">Conectando…</h2>
-          <p id="subtitulo" class="muted"></p>
-        </section>
-
-        <section class="resumen" aria-label="Resumen">
-          <button type="button" class="tile tile-btn" id="tile-vender" data-rec="VENDER">
-            <span class="tile-k">Oportunidades de venta</span>
-            <span id="tile-vender-v" class="tile-v rec-vender">—</span>
-            <span id="tile-vender-n" class="tile-n">Pulsa para verlas</span>
-          </button>
-          <button type="button" class="tile tile-btn" id="tile-guardar" data-rec="GUARDAR">
-            <span class="tile-k">Para guardar</span>
-            <span id="tile-guardar-v" class="tile-v rec-guardar">—</span>
-            <span id="tile-guardar-n" class="tile-n">Pulsa para verlas</span>
-          </button>
-          <div class="tile">
-            <span class="tile-k">Alertas</span>
-            <span id="tile-alertas" class="tile-v">—</span>
-            <span id="tile-alertas-n" class="tile-n"></span>
-          </div>
-          <div class="tile">
-            <span class="tile-k">Dato del mercado</span>
-            <span id="tile-dato" class="tile-v">—</span>
-            <span id="tile-dato-n" class="tile-n"></span>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="card-head"><h3>Estado del mercado</h3></div>
-          <dl id="status" class="kv"><dt>Servidor</dt><dd>…</dd></dl>
-        </section>
-
-        <section class="card">
-          <h3>Registro de consultas</h3>
-          <ul id="registro" class="log"><li class="muted">—</li></ul>
-        </section>
-
-        <p class="notice">
-          La consulta horaria la hace Supabase en la nube: sigue funcionando aunque cierres esta página o apagues el PC.
-        </p>
-      </section>
-
-      <!-- ===================== BASE DE DATOS ===================== -->
-      <section class="vista" data-vista="basedatos" hidden>
-        <section class="card" id="card-catalogo">
-          <div class="card-head">
-            <h3>Catálogo de objetos</h3>
-            <span id="cat-estado" class="muted small"></span>
-          </div>
-          <label class="sr-only" for="cat-q">Buscar en el catálogo por nombre o ID</label>
-          <input id="cat-q" class="buscador" type="search" autocomplete="off"
-                 placeholder="Busca por nombre (en inglés) o por ID, p. ej. «essence» o 7082">
-          <ul id="cat-resultados" class="cat-lista" aria-live="polite"></ul>
-          <div id="cat-ficha" hidden></div>
-          <p class="muted small nota">
-            Datos del objeto de AHledger (que salen de los datos de Blizzard). Nombres en inglés mientras no haya
-            traducción verificada. Si buscas un ID que aún no está en el catálogo, se pide a AHledger y se añade.
-          </p>
-        </section>
-      </section>
-
-      <!-- ===================== MERCADO (3 columnas) ===================== -->
-      <section class="vista tres-columnas" data-vista="mercado" hidden>
-        <aside class="col-filtros card" aria-label="Categorías y filtros">
-          <details class="filtros-movil" open>
-            <summary><h3 class="inline">Categorías y filtros</h3></summary>
-            <ul id="arbol-cat" class="arbol" aria-label="Categorías"></ul>
-            <div class="filtros-col">
-              <label for="f-categoria">Categoría</label>
-              <select id="f-categoria"><option value="">Todas las categorías</option></select>
-              <label for="f-subcategoria">Subcategoría</label>
-              <select id="f-subcategoria" disabled><option value="">Todas las subcategorías</option></select>
-              <label for="f-calidad">Calidad</label>
-              <select id="f-calidad">
-                <option value="">Todas las calidades</option>
-                <option value="POOR">Pobre (gris)</option>
-                <option value="COMMON">Común (blanco)</option>
-                <option value="UNCOMMON">Poco común (verde)</option>
-                <option value="RARE">Raro (azul)</option>
-                <option value="EPIC">Épico (morado)</option>
-                <option value="LEGENDARY">Legendario (naranja)</option>
-              </select>
-              <label for="f-recomendacion">Recomendación</label>
-              <select id="f-recomendacion">
-                <option value="">Todas</option>
-                <option value="VENDER">Vender</option>
-                <option value="GUARDAR">Guardar</option>
-                <option value="OBSERVACION">En observación</option>
-              </select>
-              <span class="lab">Nivel del objeto</span>
-              <div class="rango">
-                <input id="f-nivel-min" type="number" min="0" max="100" placeholder="mín." aria-label="Nivel mínimo">
-                <input id="f-nivel-max" type="number" min="0" max="100" placeholder="máx." aria-label="Nivel máximo">
-              </div>
-              <span class="lab">Precio unitario</span>
-              <div class="rango">
-                <input id="f-precio-min" placeholder="mín. (1o 50p)" aria-label="Precio mínimo">
-                <input id="f-precio-max" placeholder="máx." aria-label="Precio máximo">
-              </div>
-              <p id="f-precio-error" class="bad small" hidden></p>
-              <label class="check"><input id="f-favoritos" type="checkbox"> Solo favoritos</label>
-              <label class="check"><input id="f-ausentes" type="checkbox" checked> Solo disponibles en el último escaneo</label>
-            </div>
-          </details>
-        </aside>
-
-        <section class="col-resultados card" id="card-tabla">
-          <div class="card-head">
-            <h3 id="titulo-resultados">Mercado</h3>
-            <span id="contador" class="muted small"></span>
-          </div>
-          <div class="filtros">
-            <input id="f-texto" type="search" placeholder="Filtrar por nombre o ID…" aria-label="Filtrar resultados">
-            <select id="f-orden" aria-label="Ordenar por">
-              <option value="nombre:asc">Nombre (A–Z)</option>
-              <option value="precio:asc">Precio (menor a mayor)</option>
-              <option value="precio:desc">Precio (mayor a menor)</option>
-              <option value="nivel:desc">Nivel (mayor)</option>
-              <option value="neto:desc">Ingreso neto estimado (mayor)</option>
-              <option value="dif30:desc">Sobre la mediana de 30 días (más)</option>
-              <option value="dif30:asc">Bajo la mediana de 30 días (más)</option>
-              <option value="puntos:desc">Confianza (mayor)</option>
-              <option value="vs_hist:desc">Precio vs histórico (más caro)</option>
-              <option value="vs_hist:asc">Precio vs histórico (más barato)</option>
-              <option value="var24:desc">Variación 24 h (sube)</option>
-              <option value="var24:asc">Variación 24 h (baja)</option>
-              <option value="var7:desc">Variación 7 días (sube)</option>
-              <option value="var7:asc">Variación 7 días (baja)</option>
-            </select>
-          </div>
-          <div class="tabla-wrap">
-            <table class="tabla tabla-mercado">
-              <thead>
-                <tr>
-                  <th scope="col"><span class="sr-only">Favorito</span></th>
-                  <th scope="col">Objeto</th>
-                  <th scope="col" class="num">Precio unitario</th>
-                  <th scope="col" class="num" title="Referencia histórica de la fuente: valor histórico de TSM o mediana de 30 días de AHledger">Ref. histórica</th>
-                  <th scope="col" class="num">24 h</th>
-                  <th scope="col" class="num">7 días</th>
-                  <th scope="col" class="num" title="Unidades publicadas en el último escaneo (si la fuente lo publica)">Oferta</th>
-                  <th scope="col">Recomendación</th>
-                  <th scope="col">Confianza</th>
-                </tr>
-              </thead>
-              <tbody id="tbody"></tbody>
-            </table>
-          </div>
-          <p id="sin-resultados" class="muted" hidden>Ningún objeto coincide con los filtros.</p>
-          <button id="btn-mas" type="button" class="btn btn-piedra" hidden>Mostrar más</button>
-          <div id="atribucion-tabla"></div>
-          <p class="muted small nota">
-            Precio unitario = compra inmediata mínima del último escaneo (no se muestran anuncios individuales: ninguna
-            fuente autorizada los publica). Las variaciones usan observaciones guardadas por esta app («—» = sin
-            historial suficiente). La confianza es un <strong>índice de calidad de los datos</strong>, no una probabilidad.
-          </p>
-        </section>
-
-        <aside class="col-ficha card" id="panel-ficha" aria-labelledby="det-titulo">
-          <div class="det-cab">
-            <h2 id="det-titulo">Ficha del objeto</h2>
-            <button id="det-cerrar" type="button" class="btn btn-small btn-piedra" hidden>← Volver a la lista</button>
-          </div>
-          <div id="det-cuerpo">
-            <p class="muted">Elige un objeto de la lista o búscalo arriba para ver su ficha, su mercado, su historial y la recomendación.</p>
-          </div>
-        </aside>
-      </section>
-
-      <!-- ===================== HISTORIAL ===================== -->
-      <section class="vista" data-vista="historial" hidden>
-        <section class="card">
-          <div class="card-head">
-            <h3 id="hist-titulo">Historial de precios</h3>
-            <div class="periodos" role="group" aria-label="Periodo" id="periodos">
-              <button type="button" class="btn btn-small btn-piedra" data-rango="24h" aria-pressed="false">24 h</button>
-              <button type="button" class="btn btn-small btn-piedra" data-rango="7d" aria-pressed="true">7 días</button>
-              <button type="button" class="btn btn-small btn-piedra" data-rango="30d" aria-pressed="false">30 días</button>
-              <button type="button" class="btn btn-small btn-piedra" data-rango="90d" aria-pressed="false">90 días</button>
-            </div>
-          </div>
-          <p id="hist-ayuda" class="muted">Elige un objeto (buscador de arriba o lista del mercado) para ver su historial.</p>
-          <dl id="hist-resumen" class="stats"></dl>
-          <div id="hist-grafico"></div>
-          <p id="hist-nota" class="muted small"></p>
-          <div id="hist-atribucion"></div>
-        </section>
-      </section>
-
-      <!-- ===================== PROFESIONES (R5) ===================== -->
-      <section class="vista prof-grid" data-vista="profesiones" hidden>
-        <section class="card" id="card-recetas">
-          <div class="card-head">
-            <h3>Profesiones y recetas</h3>
-            <span id="rec-contador" class="muted small"></span>
-          </div>
-          <div class="filtros filtros-recetas">
-            <select id="rec-profesion" aria-label="Profesión"></select>
-            <select id="rec-base" aria-label="Precio usado">
-              <option value="mediana">Precio: mediana del escaneo</option>
-              <option value="minimo">Precio: compra mínima</option>
-            </select>
-            <input id="rec-texto" type="search" placeholder="Receta, resultado, reactivo o ID…" aria-label="Filtrar recetas">
-            <select id="rec-orden" aria-label="Ordenar por">
-              <option value="margen:desc">Margen por fabricación (mayor)</option>
-              <option value="margen_pct:desc">Margen % (mayor)</option>
-              <option value="ganancia_dia:desc">Ganancia al día estimada (mayor)</option>
-              <option value="ventas:desc">Ventas al día del resultado (más)</option>
-              <option value="coste:asc">Coste de materiales (menor)</option>
-              <option value="nivel:asc">Nivel de habilidad (menor)</option>
-              <option value="nivel:desc">Nivel de habilidad (mayor)</option>
-              <option value="nombre:asc">Nombre (A–Z)</option>
-            </select>
-          </div>
-          <div class="filtros filtros-recetas">
-            <span class="lab">Habilidad</span>
-            <input id="rec-nivel-min" type="number" min="0" max="450" placeholder="mín." aria-label="Habilidad mínima">
-            <input id="rec-nivel-max" type="number" min="0" max="450" placeholder="máx." aria-label="Habilidad máxima">
-            <label class="check"><input id="rec-completas" type="checkbox" checked> Solo con coste completo</label>
-            <label class="check"><input id="rec-rentables" type="checkbox"> Solo con margen positivo</label>
-            <label class="check"><input id="rec-ventas" type="checkbox"> Solo si el resultado se vende</label>
-          </div>
-          <div class="tabla-wrap">
-            <table class="tabla tabla-recetas">
-              <thead>
-                <tr>
-                  <th scope="col">Receta (resultado)</th>
-                  <th scope="col" class="num">Habilidad</th>
-                  <th scope="col" class="num">Coste materiales</th>
-                  <th scope="col" class="num" title="Precio del resultado × unidades que da, menos la comisión">Valor neto</th>
-                  <th scope="col" class="num">Margen</th>
-                  <th scope="col" class="num">Margen %</th>
-                  <th scope="col" class="num" title="Ventas estimadas por día del resultado (estimación de AHledger)">Ventas/día</th>
-                </tr>
-              </thead>
-              <tbody id="rec-tbody"></tbody>
-            </table>
-          </div>
-          <p id="rec-vacio" class="muted" hidden></p>
-          <button id="rec-mas" type="button" class="btn btn-piedra" hidden>Mostrar más</button>
-          <p id="rec-nota" class="muted small nota"></p>
-          <div id="rec-atribucion"></div>
-        </section>
-
-        <aside class="card" id="card-receta" aria-labelledby="rec-titulo">
-          <h3 id="rec-titulo">Receta</h3>
-          <div id="rec-detalle">
-            <p class="muted">Elige una receta de la lista para ver sus materiales, el coste de cada uno y la comparación
-              con el valor del objeto fabricado.</p>
-          </div>
-        </aside>
-      </section>
-
-      <!-- ===================== RENTABILIDAD (R4) ===================== -->
-      <section class="vista" data-vista="rentabilidad" hidden>
-        <section class="card" id="card-calculadora">
-          <div class="card-head">
-            <h3>Calculadora de rentabilidad</h3>
-            <span id="calc-regla" class="muted small"></span>
-          </div>
-          <form id="form-calc" class="form-grid calc" autocomplete="off">
-            <label for="calc-objeto">Objeto <span class="muted">(opcional)</span></label>
-            <div class="fila-acciones sin-margen">
-              <input id="calc-objeto" list="lista-objetos" placeholder="Nombre o ID: rellena precio y venta al NPC">
-              <button id="calc-cargar" type="button" class="btn btn-small btn-piedra">Cargar datos</button>
-            </div>
-
-            <label for="calc-precio">Precio de venta</label>
-            <div class="fila-acciones sin-margen">
-              <input id="calc-precio" placeholder="p. ej. 1o 20p o 12000" required>
-              <select id="calc-modo-precio" aria-label="El precio es">
-                <option value="unitario">por unidad</option>
-                <option value="total">total del lote</option>
-              </select>
-            </div>
-
-            <label for="calc-cantidad">Cantidad</label>
-            <input id="calc-cantidad" type="number" min="1" step="1" value="1" required>
-
-            <label for="calc-por-subasta">Unidades por subasta</label>
-            <input id="calc-por-subasta" type="number" min="1" step="1" value="20" required>
-
-            <label for="calc-coste">Coste de adquisición <span class="muted">(opcional)</span></label>
-            <div class="fila-acciones sin-margen">
-              <input id="calc-coste" placeholder="vacío = desconocido">
-              <select id="calc-modo-coste" aria-label="El coste es">
-                <option value="unitario">por unidad</option>
-                <option value="total">total</option>
-              </select>
-            </div>
-
-            <label for="calc-casa">Casa de subastas</label>
-            <select id="calc-casa">
-              <option value="faccion">De facción (Horda)</option>
-              <option value="neutral">Neutral</option>
-            </select>
-
-            <label for="calc-duracion">Duración</label>
-            <select id="calc-duracion"></select>
-
-            <label for="calc-npc">Valor de venta al NPC <span class="muted">(por unidad)</span></label>
-            <input id="calc-npc" placeholder="se rellena con el objeto; vacío = desconocido">
-
-            <label for="calc-fallidas">Publicaciones fallidas anteriores</label>
-            <input id="calc-fallidas" type="number" min="0" step="1" value="0">
-
-            <label for="calc-perdidos">Depósitos perdidos reales <span class="muted">(opcional)</span></label>
-            <input id="calc-perdidos" placeholder="si los sabes; si no, se estiman con las fallidas">
-          </form>
-          <ul id="calc-errores" class="log bad small" hidden></ul>
-          <dl id="calc-resultado" class="kv calc-res"></dl>
-          <ul id="calc-supuestos" class="det-lista riesgos small"></ul>
-          <p class="muted small nota">
-            Fórmulas: <strong>ingreso neto = precio de venta − comisión</strong>;
-            <strong>beneficio = ingreso neto − coste de adquisición − depósitos perdidos antes</strong>.
-            El depósito de la subasta que se vende se devuelve: no cuenta como pérdida. Todo se calcula en cobres
-            enteros, subasta por subasta, con el redondeo de la regla elegida.
-          </p>
-        </section>
-
-        <section class="card" id="card-comparador">
-          <div class="card-head">
-            <h3>Comparador de objetos</h3>
-            <span id="cmp-contador" class="muted small"></span>
-          </div>
-          <form id="form-cmp" class="fila-acciones" autocomplete="off">
-            <input id="cmp-objeto" list="lista-objetos" placeholder="Nombre o ID del objeto" aria-label="Objeto para comparar">
-            <button type="submit" class="btn btn-small btn-rojo">Añadir</button>
-            <button id="cmp-vaciar" type="button" class="btn btn-small btn-piedra">Vaciar</button>
-          </form>
-          <p id="cmp-msg" class="small bad" hidden></p>
-          <div class="tabla-wrap">
-            <table class="tabla mini tabla-cmp">
-              <thead>
-                <tr>
-                  <th scope="col">Objeto</th>
-                  <th scope="col" class="num">Compra mínima</th>
-                  <th scope="col" class="num">Mediana</th>
-                  <th scope="col" class="num">Mediana 30 días</th>
-                  <th scope="col" class="num">Oferta</th>
-                  <th scope="col" class="num" title="Estimación de AHledger">Ventas/día</th>
-                  <th scope="col" class="num">Neto por unidad</th>
-                  <th scope="col" class="num" title="Receta más barata con todos los precios conocidos">Coste de fabricarlo</th>
-                  <th scope="col" class="num" title="Neto por unidad menos coste de fabricarla">Margen fabricando</th>
-                  <th scope="col"><span class="sr-only">Quitar</span></th>
-                </tr>
-              </thead>
-              <tbody id="cmp-tbody"></tbody>
-            </table>
-          </div>
-          <p class="muted small nota">
-            Precios del último escaneo del mercado elegido. «Neto por unidad» = compra mínima menos la comisión de la
-            casa de facción. El coste de fabricación usa la mediana de cada material; «—» = no se fabrica con ninguna
-            receta conocida, o falta el precio de algún material.
-          </p>
-        </section>
-
-        <section class="card" id="card-tasas">
-          <h3>Reglas de comisión y depósito</h3>
-          <p class="muted small">
-            Blizzard no publica estas reglas para Forever. Son valores <strong>por verificar</strong>: compruébalos en el
-            juego (el correo de una venta trae la comisión; al publicar se ve el depósito) y márcalos como verificados.
-            La comisión y el depósito mínimo valen para todas las duraciones del mismo tipo de casa; los de la casa de
-            facción también los usan el inventario y las recomendaciones.
-          </p>
-          <div class="tabla-wrap">
-            <table class="tabla mini tabla-tasas">
-              <thead><tr><th>Casa</th><th>Duración</th><th class="num">Comisión %</th><th class="num">Depósito % del NPC</th>
-                <th class="num">Mínimo (cobre)</th><th>Verificado</th><th>Vigente desde · fuente</th><th></th></tr></thead>
-              <tbody id="tasas-tbody"></tbody>
-            </table>
-          </div>
-          <p id="tasas-msg" class="small" hidden></p>
-        </section>
-      </section>
-
-      <!-- ===================== INVENTARIO Y VENTAS ===================== -->
-      <section class="vista" data-vista="inventario" hidden>
-        <section class="card" id="card-inventario">
-          <div class="card-head">
-            <h3>Mi inventario</h3>
-            <span id="inv-contador" class="muted small"></span>
-          </div>
-          <div class="resumen resumen-inv">
-            <div class="tile"><span class="tile-k">Valor neto estimado</span><span id="inv-neto" class="tile-v">—</span>
-              <span class="tile-n">Si vendieras todo al precio actual, tras comisión y pérdida esperada de depósitos</span></div>
-            <div class="tile"><span class="tile-k">Beneficio (solo lotes con coste)</span><span id="inv-benef" class="tile-v">—</span>
-              <span id="inv-benef-n" class="tile-n"></span></div>
-            <div class="tile"><span class="tile-k">Para vender / guardar</span><span id="inv-recs" class="tile-v">—</span>
-              <span class="tile-n">Según la recomendación actual de cada objeto</span></div>
-          </div>
-          <div class="tabla-wrap">
-            <table class="tabla">
-              <thead>
-                <tr>
-                  <th scope="col">Objeto</th>
-                  <th scope="col" class="num">Cantidad</th>
-                  <th scope="col" class="num">Coste unit.</th>
-                  <th scope="col" class="num">Precio actual</th>
-                  <th scope="col" class="num">Neto estimado</th>
-                  <th scope="col" class="num">Beneficio</th>
-                  <th scope="col" class="num">Margen</th>
-                  <th scope="col">Recomendación</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody id="inv-tbody"></tbody>
-            </table>
-          </div>
-          <p id="inv-vacio" class="muted" hidden>Todavía no has añadido objetos a tu inventario.</p>
-
-          <details class="inv-form" id="inv-agregar">
-            <summary>Añadir un objeto</summary>
-            <form id="form-inv" class="form-grid">
-              <label for="inv-objeto">Objeto</label>
-              <input id="inv-objeto" list="lista-objetos" placeholder="Escribe el nombre o el ID" autocomplete="off" required>
-              <label for="inv-cantidad">Cantidad</label>
-              <input id="inv-cantidad" type="number" min="1" step="1" required>
-              <label for="inv-coste">Coste por unidad <span class="muted">(opcional)</span></label>
-              <input id="inv-coste" placeholder="p. ej. 12o 34p 56c — vacío = desconocido">
-              <span></span>
-              <button type="submit" class="btn btn-rojo">Añadir</button>
-            </form>
-            <datalist id="lista-objetos"></datalist>
-            <p id="inv-msg" class="small" hidden></p>
-          </details>
-
-          <details class="inv-form">
-            <summary>Importar inventario desde CSV</summary>
-            <p class="muted small">
-              Columnas: <code>itemId</code> o <code>nombre</code>, <code>cantidad</code> y, opcional, <code>coste</code>
-              (por unidad, en cobre o <code>12o 34p 56c</code>). Coste vacío = desconocido: ese lote no tendrá beneficio.
-            </p>
-            <div class="fila-acciones">
-              <input id="inv-archivo" type="file" accept=".csv,text/csv">
-              <label class="check"><input id="inv-reemplazar" type="checkbox"> Reemplazar todo el inventario</label>
-              <button id="inv-importar" type="button" class="btn btn-rojo" disabled>Importar</button>
-            </div>
-            <ul id="inv-errores" class="log bad small" hidden></ul>
-            <p id="inv-imp-msg" class="small" hidden></p>
-          </details>
-
-          <p id="inv-supuestos" class="muted small nota"></p>
-        </section>
-
-        <section class="card" id="card-ventas">
-          <div class="card-head">
-            <h3>Ventas y aciertos</h3>
-            <span id="ven-contador" class="muted small"></span>
-          </div>
-          <div class="resumen resumen-inv">
-            <div class="tile"><span class="tile-k">Ingresos netos de tus ventas</span><span id="ven-neto" class="tile-v">—</span>
-              <span id="ven-neto-n" class="tile-n"></span></div>
-            <div class="tile"><span class="tile-k">Beneficio realizado (solo con coste)</span><span id="ven-benef" class="tile-v">—</span>
-              <span id="ven-benef-n" class="tile-n"></span></div>
-            <div class="tile"><span class="tile-k">¿Acertó el motor? (7 días)</span><span id="ven-acierto" class="tile-v">—</span>
-              <span id="ven-acierto-n" class="tile-n"></span></div>
-          </div>
-
-          <details class="inv-form" id="ven-registrar">
-            <summary>Registrar una venta</summary>
-            <form id="form-venta" class="form-grid">
-              <label for="ven-objeto">Objeto</label>
-              <input id="ven-objeto" list="lista-objetos" placeholder="Escribe el nombre o el ID" autocomplete="off" required>
-              <label for="ven-cantidad">Cantidad vendida</label>
-              <input id="ven-cantidad" type="number" min="1" step="1" required>
-              <label for="ven-precio">Precio por unidad</label>
-              <input id="ven-precio" placeholder="p. ej. 1o 20p" required>
-              <label for="ven-fecha">Fecha y hora de la venta</label>
-              <input id="ven-fecha" type="datetime-local" required>
-              <label for="ven-lote">Lote del inventario <span class="muted">(opcional)</span></label>
-              <select id="ven-lote"><option value="">— ninguno —</option></select>
-              <span></span>
-              <label class="check"><input id="ven-descontar" type="checkbox" checked> Descontar las unidades de ese lote</label>
-              <label for="ven-comision">Comisión pagada <span class="muted">(opcional; vacío = se estima)</span></label>
-              <input id="ven-comision" placeholder="la del correo de la casa de subastas">
-              <label for="ven-deposito">Depósitos perdidos <span class="muted">(opcional)</span></label>
-              <input id="ven-deposito" placeholder="si tuviste que volver a publicar">
-              <span></span>
-              <button type="submit" class="btn btn-rojo">Registrar venta</button>
-            </form>
-            <p id="ven-msg" class="small" hidden></p>
-          </details>
-
-          <div class="tabla-wrap">
-            <table class="tabla">
-              <thead>
-                <tr>
-                  <th scope="col">Fecha</th>
-                  <th scope="col">Objeto</th>
-                  <th scope="col" class="num">Cant.</th>
-                  <th scope="col" class="num">Precio</th>
-                  <th scope="col" class="num">Neto</th>
-                  <th scope="col" class="num">Beneficio</th>
-                  <th scope="col" class="num" title="Tu precio frente al precio de mercado observado en ese momento">vs mercado</th>
-                  <th scope="col" class="num" title="Cuánto cambió el precio 7 días después de tu venta">7 días después</th>
-                  <th scope="col">Recomendación ese día</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody id="ven-tbody"></tbody>
-            </table>
-          </div>
-          <p id="ven-vacio" class="muted" hidden>Todavía no has registrado ventas.</p>
-
-          <details class="inv-form" id="ven-evaluacion">
-            <summary>¿Acertaron las recomendaciones?</summary>
-            <p class="muted small">
-              Cada día se guarda qué objetos estaban en VENDER o GUARDAR y a qué precio. Pasados 7 y 14 días se
-              compara con el precio observado entonces. <strong>VENDER acierta</strong> si después el precio era igual o
-              más bajo (vender en ese momento fue mejor que esperar). <strong>GUARDAR acierta</strong> si después era más
-              alto. Se cuentan casos objeto-día, y se comparan precios de anuncios, no ventas confirmadas.
-            </p>
-            <div class="tabla-wrap">
-              <table class="tabla mini">
-                <thead><tr><th>Horizonte</th><th>Recomendación</th><th class="num">Casos</th><th class="num">Aciertos</th>
-                  <th class="num">Tasa</th><th class="num">Cambio medio</th><th class="num">Pendientes</th></tr></thead>
-                <tbody id="eval-tbody"></tbody>
-              </table>
-            </div>
-            <p id="eval-nota" class="muted small"></p>
-            <ul id="eval-ultimos" class="log small"></ul>
-          </details>
-        </section>
-      </section>
-
-      <!-- ===================== OPORTUNIDADES ===================== -->
-      <section class="vista" data-vista="oportunidades" hidden>
-        <section class="card">
-          <h3>Oportunidades</h3>
-          <p class="muted small">
-            Objetos priorizados con el motor de reglas: primero los que tienes en tu inventario y después el resto, por
-            confianza. No es una garantía de subida ni de venta.
-          </p>
-          <div class="op-columnas">
-            <div>
-              <h4 class="rec-vender">Para vender</h4>
-              <ol id="op-vender" class="op-lista"></ol>
-            </div>
-            <div>
-              <h4 class="rec-guardar">Para guardar</h4>
-              <ol id="op-guardar" class="op-lista"></ol>
-            </div>
-          </div>
-        </section>
-      </section>
-
-      <!-- ===================== FUENTES Y METODOLOGÍA ===================== -->
-      <section class="vista" data-vista="fuentes" hidden>
-        <section class="card">
-          <h3>Fuentes y metodología</h3>
-          <ul class="fuentes">
-            <li><strong>Precios (principal):</strong> <a href="https://ahledger.com/developers" target="_blank" rel="noopener">API pública de AHledger</a>,
-              alimentada por escaneos que hacen jugadores con su addon. Da compra mínima, mediana, unidades publicadas,
-              medianas de 7, 30 y 90 días y una <em>estimación</em> de ventas por día (un escaneo no distingue una venta
-              de una cancelación). Exige citar «Prices from AHledger».</li>
-            <li><strong>Precios (secundaria):</strong> <a href="https://tradeskillmaster.com/public-data" target="_blank" rel="noopener">archivo público de TSM</a>:
-              compra mínima, valor de mercado y valor histórico, sin cantidades. Es un mercado aparte: nunca se mezcla.</li>
-            <li><strong>Catálogo:</strong> AHledger <code>/v1/items</code> (datos de Blizzard): nombre, calidad, clase y
-              subclase, nivel, venta al NPC e icono oficial. Descripción, pila y obtención no están disponibles desde
-              fuentes autorizadas: se enlaza a Wowhead.</li>
-            <li><strong>Actualización:</strong> Supabase comprueba cada 5 minutos si toca consultar (normalmente cada
-              60 min). Si la fuente no cambió (304), no se guarda nada nuevo. La hora del dato es la del escaneo original.</li>
-            <li><strong>Recomendaciones:</strong> reglas fijas y editables (abajo), sin IA. Solo usan el historial propio.</li>
-            <li><strong>Comisión y depósito:</strong> valores asumidos (5 % en la casa de facción), sin confirmación oficial
-              de Blizzard para Forever. Compruébalos en el juego.</li>
-            <li><strong>No se muestra:</strong> anuncios individuales con vendedor o tiempo restante (ninguna fuente
-              autorizada los publica), botín, zonas ni misiones (sin fuente autorizada).</li>
-          </ul>
-        </section>
-
-        <section class="card" id="card-reglas">
-          <details>
-            <summary><h3 class="inline">Reglas del motor (editables)</h3></summary>
-            <p class="muted small">
-              Las recomendaciones salen de estas reglas, sin IA. Cambiarlas recalcula todo al momento.
-              <strong>Vender</strong>: precio sobre las medianas de 7 y 30 días, mantenido en varias observaciones.
-              <strong>Guardar</strong>: precio bajo la mediana de 30 días <em>y</em> caídas anteriores que se recuperaron,
-              sin una tendencia bajista previa. Un precio bajo por sí solo no basta.
-              <strong>En observación</strong>: historial corto, datos antiguos, precios extremos o señales contradictorias.
-            </p>
-            <form id="form-ajustes" class="ajustes"></form>
-            <div class="fila-acciones">
-              <button id="btn-ajustes" type="button" class="btn btn-rojo">Guardar reglas</button>
-              <span id="resultado-ajustes" class="small" hidden></span>
-            </div>
-          </details>
-        </section>
-
-        <section id="card-importar" class="card" hidden>
-          <h3>Importar precios desde CSV</h3>
-          <p class="muted small">
-            Plan B si las fuentes automáticas no están disponibles. Columnas aceptadas: <code>itemId</code>, <code>name</code>,
-            <code>minBuyout</code> o <code>precio</code>, <code>marketValue</code> (opcional) y
-            <code>updatedAt</code> o <code>fecha</code>. Precios en cobre (<code>123456</code>) o como
-            <code>12o 34p 56c</code>. Si hay un solo error, no se importa nada.
-          </p>
-          <div class="form-grid">
-            <label for="archivo-csv">Archivo</label>
-            <input id="archivo-csv" type="file" accept=".csv,text/csv">
-            <label for="hora-manual">Hora del dato <span class="muted">(solo si el archivo no la trae)</span></label>
-            <input id="hora-manual" type="datetime-local">
-          </div>
-          <div id="resumen-csv" class="small" hidden></div>
-          <ul id="errores-csv" class="log bad small" hidden></ul>
-          <button id="btn-importar" type="button" class="btn btn-rojo" disabled>Importar</button>
-          <p id="resultado-importar" class="small" hidden></p>
-        </section>
-
-        <section id="card-demo" class="card" hidden>
-          <h3>Datos de demostración</h3>
-          <p class="muted small">
-            Genera precios <strong>inventados</strong> para probar la aplicación: 16 objetos marcados
-            <code>[FICTICIO]</code> con perfiles distintos. Solo afecta al mercado de demostración.
-          </p>
-          <div class="fila-acciones">
-            <label for="dias-demo">Días</label>
-            <input id="dias-demo" type="number" min="1" max="60" value="30">
-            <button id="btn-demo" type="button" class="btn btn-rojo">Regenerar datos ficticios</button>
-          </div>
-          <p id="resultado-demo" class="small" hidden></p>
-        </section>
-      </section>
-    </div>
-  </main>
-
-  <nav class="accesos" id="accesos" aria-label="Accesos rápidos" hidden>
-    <a href="#/mercado" data-ruta="mercado">Mercado</a>
-    <a href="#/inventario" data-ruta="inventario">Mi inventario</a>
-    <a href="#/oportunidades" data-ruta="oportunidades">Oportunidades</a>
-    <a href="#/historial" data-ruta="historial">Historial</a>
-  </nav>
 
   <script type="module" src="app.js"></script>
 </body>
