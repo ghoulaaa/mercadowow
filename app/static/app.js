@@ -725,28 +725,50 @@ function seccionPropiedades(f) {
   return sec;
 }
 
-/** Bloque de precios: lo que se sabe del último escaneo, sin inventar nada. */
+/** Una cifra del bloque de precios: etiqueta corta + valor (+ ayuda al pasar el cursor). */
+function cifra(etiqueta, valor, ayuda, cls = "") {
+  const d = el("div", "cifra " + cls);
+  d.append(el("span", "cifra-k", etiqueta));
+  const v = el("span", "cifra-v");
+  if (valor instanceof Node) v.append(valor); else v.textContent = valor;
+  d.append(v);
+  if (ayuda) { d.title = ayuda; d.tabIndex = 0; }
+  return d;
+}
+
+/** Bloque de precios: lo que se sabe, identificado claramente y sin inventar nada. */
 function bloquePrecios(f) {
-  const p = f.mercado;
+  const p = f.mercado, x = f.extremos_30d;
+  const fuente = ultimo?.mercado?.proveedor === "TSM" ? "valor histórico de TSM" : "mediana de 30 días que publica la fuente";
+  const grid = el("div", "det-precios");
   if (f.estado === "sin_datos" || !p) {
-    return kv([["Precio actual", el("span", "estado-txt sin_datos", ESTADO.sin_datos)],
-      ["", "Nunca se ha visto a la venta en este mercado."]]);
+    grid.append(cifra("Precio actual", el("span", "estado-txt sin_datos", ESTADO.sin_datos),
+      "Nunca se ha visto a la venta en este mercado", "principal"));
+    return grid;
   }
   if (f.estado === "sin_ofertas") {
-    return kv([
-      ["Precio actual", el("span", "estado-txt sin_ofertas", ESTADO.sin_ofertas)],
-      ["Último visto", `${fecha(p.hora)} · compra mínima ${formatearMoneda(p.precio ?? p.valor_mercado)}`],
-      ["Mediana 30 días", p.historico == null ? null : monedaNodo(p.historico)],
-    ]);
+    grid.append(cifra("Precio actual", el("span", "estado-txt sin_ofertas", ESTADO.sin_ofertas),
+      `No está en el último escaneo (${fecha(f.escaneo)})`, "principal"),
+      cifra("Último visto", monedaNodo(p.precio ?? p.valor_mercado), `Compra mínima del ${fecha(p.hora)}`));
+  } else {
+    grid.append(cifra("Precio actual", monedaNodo(p.precio ?? p.valor_mercado),
+      `Compra inmediata mínima del escaneo de ${fecha(p.hora)}`, "principal"),
+      cifra("Cantidad", p.cantidad == null ? "—" : p.cantidad.toLocaleString("es"),
+        p.cantidad == null ? "La fuente no publica cantidades" : "Unidades publicadas en el último escaneo"));
   }
-  return kv([
-    ["Precio actual", monedaNodo(p.precio ?? p.valor_mercado), "grande"],
-    ["Mediana del escaneo", p.mediana == null ? null : monedaNodo(p.mediana)],
-    ["Mediana 30 días", p.historico == null ? null : monedaNodo(p.historico)],
-    ["Cantidad", p.cantidad == null ? null : `${p.cantidad.toLocaleString("es")} uds.`],
-    ["Ventas/día (estim.)", p.ventas_dia == null ? null : p.ventas_dia.toLocaleString("es")],
-    ["Escaneo", fecha(p.hora)],
-  ]);
+  grid.append(
+    cifra("Mínimo 30 d", x ? monedaNodo(x.minimo) : "—",
+      x ? `Compra mínima más baja observada: ${fecha(x.minimo_hora)} (${x.observaciones} escaneos guardados)` : "Sin escaneos guardados en 30 días"),
+    cifra("Mediana histórica", p.historico == null ? "—" : monedaNodo(p.historico),
+      p.historico == null ? "La fuente no la publica" : `Referencia: ${fuente}`));
+  if (p.mediana != null && f.estado === "con_ofertas") {
+    grid.append(cifra("Mediana actual", monedaNodo(p.mediana), "Mediana de los anuncios del último escaneo"));
+  }
+  if (p.ventas_dia != null) {
+    grid.append(cifra("Ventas/día", p.ventas_dia.toLocaleString("es", { maximumFractionDigits: p.ventas_dia >= 10 ? 0 : 1 }),
+      "Estimación de AHledger: un escaneo no distingue una venta de una cancelación"));
+  }
+  return grid;
 }
 
 async function bloqueRecomendacion(id) {
@@ -757,8 +779,11 @@ async function bloqueRecomendacion(id) {
     const l = d.lectura;
     const rec = el("div", "det-rec");
     if (d.ficticio) rec.append(el("span", "banda-mini", "DATOS FICTICIOS"));
-    rec.append(el("span", "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[l.rec] || ""),
+    // Sin evidencia (historial corto, dato antiguo…) no hay etiqueta: no se recomienda nada.
+    if (l.evidencia === false) rec.append(el("span", "etiqueta sin-evidencia", "Sin datos suficientes"));
+    else rec.append(el("span", "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[l.rec] || ""),
       NOMBRE_REC[l.rec]));
+    rec.lastChild.title = l.resumen ?? "";
     const motivo = seccion("Ver motivo");
     motivo.classList.add("motivo");
     const ul = el("ul", "det-lista");

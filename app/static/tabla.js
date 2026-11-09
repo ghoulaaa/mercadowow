@@ -74,7 +74,8 @@ export function filtrar(filas, f = {}) {
     (!f.ocultarAusentes || !x.ausente));
 }
 
-export const NOMBRE_REC = { VENDER: "Vender", GUARDAR: "Guardar", OBSERVACION: "En observación" };
+// OBSERVACION es el código interno del motor; en la página se llama «Esperar» (desde V3).
+export const NOMBRE_REC = { VENDER: "Vender", GUARDAR: "Guardar", OBSERVACION: "Esperar" };
 
 const CLAVES = {
   nombre: (x) => x.nombre,

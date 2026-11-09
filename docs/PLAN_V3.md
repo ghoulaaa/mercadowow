@@ -49,7 +49,12 @@ motor, el historial y las recetas **se conservan**.
    - Columnas: icono y nombre por calidad, precio mínimo, cantidad, variación con flecha y minigráfico.
    - Orden por nombre, precio, cantidad y variación.
    - Estados «Sin ofertas» y «Sin datos».
-3. **V3 · Detalle compacto y buscador:**
+3. **V3 · Detalle compacto y buscador** ✅ (2026-11-09; migración 0018):
+   - **«Esperar» en vez de «En observación»:** el código interno sigue siendo OBSERVACION; solo cambia el nombre en la página.
+   - **Etiqueta solo con evidencia:** el campo `evidencia` vale false con historial corto, sin precios, fuera del último escaneo, precio extremo o dato antiguo. En esos casos la página muestra «Sin datos suficientes».
+     - Hoy les pasa a todos los objetos de AHledger porque solo hay ~1,6 días de historial; el motor pide 7 días y 10 observaciones.
+   - **Ficha:** muestra el mínimo y el máximo de 30 días observados.
+   - **Buscador:** comprobado con teclado («linen»: 10 sugerencias; la 11.ª pulsación de Tab sale al siguiente control, y Escape no toca el texto).
    - Icono grande, calidad, ID copiable, tipo y nivel.
    - Precio actual, mínimo y mediana, cantidad, y gráfico de 24 h, 7 d, 30 d y 90 d con los huecos marcados.
    - Etiqueta «Vender», «Guardar» o «Esperar» («EN OBSERVACIÓN» pasa a llamarse «Esperar») y «Ver motivo» desplegable.
