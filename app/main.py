@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import psycopg
 from psycopg.types.json import Jsonb
-from fastapi import Body, FastAPI, Query
+from fastapi import Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -324,6 +324,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception as exc:
             log.warning("Fallo al leer categorías: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
+
+    @app.get("/api/mercado")
+    def mercado(request: Request, mercado: str | None = Query(default=None, max_length=100)):
+        p = {k: v[:80] for k, v in request.query_params.items()
+             if k in db.PARAMS_MERCADO and v != ""}
+        if p.get("solo_ofertas") not in (None, "true", "false"):
+            return JSONResponse(status_code=400, content={"error": "solo_ofertas debe ser true o false"})
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = db.market_page(conn, mercado or settings.market, p)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al leer la página del mercado: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
 
     @app.get("/api/recetas")
     def recetas(mercado: str | None = Query(default=None, max_length=100),

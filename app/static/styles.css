@@ -266,6 +266,15 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
 .objeto-nombre { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objeto-id { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .var .flecha { font-size: 10px; }
+.tabla .c-spark { width: 80px; padding-left: 12px; }
+.c-spark svg { display: block; overflow: visible; }
+.c-spark polyline { fill: none; stroke: var(--metal-claro); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.c-spark circle { fill: var(--metal-claro); }
+.estado-txt { font-size: 12px; color: var(--muted); font-style: italic; }
+.estado-txt.sin_datos { opacity: .8; }
+.tabla tr.sin-oferta .objeto-nombre { opacity: .8; }
+.tabla tr.sin-oferta .icono { filter: saturate(.6); }
+.paginador { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; }
 .var.igual { color: var(--muted); }
 .moneda .o { color: var(--gold); }
 .moneda .p { color: var(--silver); }
@@ -409,8 +418,9 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
 @media (max-width: 560px) {
   .detalle { width: 100vw; border-left: 0; }
   .estado-dato { padding: 3px 6px; font-size: 11px; }
-  /* Tabla de 3 columnas: la cantidad está en el detalle. */
-  .tabla-mercado th:nth-child(3), .tabla-mercado td:nth-child(3) { display: none; }
+  /* Tabla de 3 columnas: la cantidad y el minigráfico están en el detalle. */
+  .tabla-mercado th:nth-child(3), .tabla-mercado td:nth-child(3),
+  .tabla-mercado th:nth-child(5), .tabla-mercado td:nth-child(5) { display: none; }
   .tabla td { padding: 4px 4px; }
   .icono { flex-basis: 28px; width: 28px; height: 28px; }
   .res-cab { flex-wrap: wrap; row-gap: 4px; }

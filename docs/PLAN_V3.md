@@ -39,7 +39,10 @@ motor, el historial y las recetas **se conservan**.
    - En el centro, el buscador y la tabla; el detalle a la derecha, o superpuesto en el móvil y fácil de cerrar.
    - Fuera las pestañas superiores, las secciones retiradas, los textos sobrantes y el aviso fijo «Actualización solicitada».
    - Indicador compacto «Datos: hace N min» y botón de actualizar con icono.
-2. **V2 · Catálogo en la tabla:**
+2. **V2 · Catálogo en la tabla** ✅ (2026-11-09; migración 0017 `mercado_pagina`, `/api/mercado` y `mercado.js`):
+   - **Velocidad:** cada página tarda 0,3–0,5 s en la base de datos y pesa ~58 KB (antes, 3 MB y ~9 s).
+   - **Cobertura:** 5.042 objetos, de ellos 4.350 con ofertas. «Sin datos» solo aparece si nunca se vio en ese mercado; «No subastable» no se muestra porque ninguna fuente actual lo prueba.
+   - **Ficha (`ficha_objeto`):** ahora incluye el estado y la hora del escaneo, así que el detalle ya no depende de la tabla.
    - La tabla recorre **todo el catálogo**, con y sin ofertas, paginada en el servidor.
    - Árbol de categorías generado de los datos de Forever («Todos los objetos», categorías y subcategorías desplegables, con icono y contador).
    - Filtros de calidad (colores con nombre), nivel, precio, profesión relacionada y «Solo con ofertas» (desactivado al empezar), más «Limpiar filtros».

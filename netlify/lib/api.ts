@@ -484,6 +484,28 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Tabla del Mercado paginada sobre todo el catálogo (V2): filtros, orden y página en la base de datos. */
+    async mercado(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const p: Record<string, string> = {};
+      for (const k of ["q", "categoria", "subcategoria", "calidad", "profesion", "nivel_min", "nivel_max",
+                       "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina"]) {
+        const v = u.get(k);
+        if (v !== null && v !== "") p[k] = v.slice(0, 80);
+      }
+      if (p.solo_ofertas !== undefined && !["true", "false"].includes(p.solo_ofertas)) {
+        return json(400, { error: "solo_ofertas debe ser true o false" });
+      }
+      try {
+        return json(200, await llamar(db, "select mercado_pagina($1, $2::text::jsonb) as r", [mercado, JSON.stringify(p)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Recetas (R5): ?profesion=X → lista con coste; ?objeto=ID → fabricación y usos; nada → profesiones. */
     async recetas(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

@@ -79,11 +79,11 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:16] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:17] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
                            "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
-                           "0015_recetas.sql", "0016_recetas_cron.sql"]
+                           "0015_recetas.sql", "0016_recetas_cron.sql", "0017_mercado_pagina.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -451,7 +451,8 @@ def test_una_sola_vista_de_mercado(cliente):
     for retirado in ('id="nav-secciones"', 'class="accesos"', 'data-vista=', 'id="form-calc"', 'id="inv-tbody"',
                      'href="#/inventario"', 'href="#/rentabilidad"', "Actualización solicitada"):
         assert retirado not in html
-    assert html.count("<nav") == 1 and 'aria-current="page"' in html
+    seccion = html.split('class="lat-nav"', 1)[1].split("</nav>", 1)[0]
+    assert html.count('aria-label="Sección"') == 1 and seccion.count("<a ") == 1 and 'aria-current="page"' in seccion
 
 
 @pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])
@@ -462,6 +463,14 @@ def test_tasas_valida(cliente, cuerpo):
 @pytest.mark.parametrize("q", ["?base=media", "?objeto=0", "?objeto=abc", "?profesion=" + "x" * 41])
 def test_recetas_valida(cliente, q):
     assert cliente.get("/api/recetas" + q).status_code == 422
+
+
+def test_mercado_valida(cliente):
+    assert cliente.get("/api/mercado", params={"solo_ofertas": "quizas"}).status_code == 400
+
+
+def test_mercado_js_se_sirve(cliente):
+    assert "javascript" in cliente.get("/mercado.js").headers["content-type"]
 
 
 def test_profesiones_se_sirve(cliente):

@@ -165,6 +165,15 @@ def categories(conn: psycopg.Connection, market_key: str) -> list[dict]:
     return conn.execute("select categorias_mercado(%s) as r", (market_key,)).fetchone()["r"]
 
 
+PARAMS_MERCADO = ("q", "categoria", "subcategoria", "calidad", "profesion", "nivel_min", "nivel_max",
+                  "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina")
+
+
+def market_page(conn: psycopg.Connection, market_key: str, params: dict) -> dict:
+    """Una página de la tabla del Mercado sobre todo el catálogo (filtros, orden y paginación en SQL)."""
+    return conn.execute("select mercado_pagina(%s, %s) as r", (market_key, Jsonb(params))).fetchone()["r"]
+
+
 def recipes(conn: psycopg.Connection, market_key: str, *, profesion: str | None = None,
             objeto: int | None = None, base: str = "mediana"):
     """Profesiones (sin filtros), recetas de una profesión con su coste, o fabricación/usos de un objeto."""

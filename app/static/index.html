@@ -71,8 +71,11 @@
           <input id="f-precio-max" placeholder="máx." aria-label="Precio máximo (p. ej. 1o 50p)" title="En oro, plata y cobre: 1o 50p 20c, o en cobre">
         </div>
         <p id="f-precio-error" class="bad small" hidden></p>
-        <label class="check" title="Oculta los objetos que no aparecen en el último escaneo">
-          <input id="f-ausentes" type="checkbox" checked> Solo en el último escaneo</label>
+        <label class="fila-sel" title="Objetos que se fabrican o se usan en recetas de esa profesión">
+          <span>Profesión</span>
+          <select id="f-profesion"><option value="">Todas</option></select></label>
+        <label class="check" title="Muestra solo los objetos que están a la venta en el último escaneo">
+          <input id="f-ofertas" type="checkbox"> Solo con ofertas</label>
         <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>
       </div>
 
@@ -135,13 +138,18 @@
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra inmediata mínima del último escaneo">Precio</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Cantidad</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Frente a la observación de hace 24 h">24 h</button></th>
+                <th scope="col" class="c-spark" title="Compra mínima más baja de cada tramo de 6 h, últimos 7 días">7 días</th>
               </tr>
             </thead>
             <tbody id="tbody"></tbody>
           </table>
         </div>
         <p id="sin-resultados" class="muted vacio" hidden>Ningún objeto coincide con los filtros.</p>
-        <button id="btn-mas" type="button" class="btn btn-piedra" hidden>Mostrar más</button>
+        <nav class="paginador" id="paginador" aria-label="Páginas" hidden>
+          <button id="pag-ant" type="button" class="btn btn-piedra btn-small">‹ Anterior</button>
+          <span id="pag-txt" class="muted small" aria-live="polite"></span>
+          <button id="pag-sig" type="button" class="btn btn-piedra btn-small">Siguiente ›</button>
+        </nav>
       </section>
 
       <footer class="pie" id="pie"></footer>
