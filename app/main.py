@@ -325,6 +325,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("Fallo al leer categorías: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
 
+    @app.get("/api/recetas")
+    def recetas(mercado: str | None = Query(default=None, max_length=100),
+                profesion: str | None = Query(default=None, max_length=40),
+                objeto: int | None = Query(default=None, gt=0),
+                base: str = Query(default="mediana", pattern="^(mediana|minimo)$")):
+        clave = mercado or settings.market
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = db.recipes(conn, clave, profesion=profesion, objeto=objeto, base=base)
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al leer recetas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
     @app.get("/api/tasas")
     def tasas_leer():
         try:

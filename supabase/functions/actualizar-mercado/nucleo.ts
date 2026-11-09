@@ -418,3 +418,106 @@ export async function completarCatalogo(db: Db, o: { fetch: typeof fetch; ahora?
     await db.consulta("select soltar_turno_catalogo()", []);
   }
 }
+
+// ---------------------------------------------------------------------
+// Recetas (R5): /v1/crafting/{mercado}?profession=…&all=true, una profesión por petición,
+// una vez al día. Se guarda la lista COMPLETA de cada profesión o nada.
+
+export const PROFESIONES = ["Alchemy", "Blacksmithing", "Cooking", "Enchanting", "Engineering", "First Aid",
+  "Herbalism", "Leatherworking", "Mining", "Skinning", "Tailoring"] as const;
+export const LIMITE_RECETAS = 2000;
+
+export interface Receta {
+  spell_id: number; nombre: string; nivel_requerido: number | null; obtencion: string | null;
+  resultado_id: number; resultado_nombre: string; resultado_calidad: string | null;
+  cantidad_min: number; cantidad_max: number;
+  reactivos: { item_id: number; nombre: string; cantidad: number }[];
+}
+
+const entero = (x: unknown, min: number) => Number.isInteger(x) && (x as number) >= min ? x as number : null;
+const texto = (x: unknown) => typeof x === "string" && x.trim() ? x.trim() : null;
+
+/** URL de recetas a partir de la de la tabla de precios del mercado AHledger. */
+export function urlRecetas(urlTabla: string, profesion: string): string {
+  const base = urlTabla.replace("/v1/pricetable/", "/v1/crafting/");
+  if (base === urlTabla) throw new ErrorFormato("La URL del mercado no es de la tabla de precios de AHledger");
+  return `${base}?profession=${encodeURIComponent(profesion)}&all=true&limit=${LIMITE_RECETAS}`;
+}
+
+/** Valida la respuesta y la convierte. Recetas incompletas en la fuente se descartan (y se cuentan). */
+export function leerRecetasAhledger(j: any, profesion: string, mercadoEsperado: string): { recetas: Receta[]; descartadas: number } {
+  if (!j || typeof j !== "object" || !Array.isArray(j.recipes)) throw new ErrorFormato("Respuesta de recetas sin lista «recipes»");
+  if (j.market !== mercadoEsperado) throw new ErrorFormato(`Recetas de otro mercado (${j.market}); se esperaba ${mercadoEsperado}`);
+  if (String(j.filters?.profession ?? "").toLowerCase() !== profesion.toLowerCase()) {
+    throw new ErrorFormato(`Recetas de otra profesión (${j.filters?.profession})`);
+  }
+  // Si llegan tantas como el límite, la lista puede estar cortada: guardarla borraría recetas reales.
+  if (j.recipes.length >= Number(j.filters?.limit ?? LIMITE_RECETAS)) {
+    throw new ErrorFormato(`La lista de ${profesion} puede estar incompleta (${j.recipes.length} = límite)`);
+  }
+  const recetas: Receta[] = [];
+  let descartadas = 0;
+  for (const x of j.recipes) {
+    const rec = x?.recipe, res = x?.result;
+    const spell = entero(rec?.spellId, 1), nombre = texto(rec?.name), resId = entero(res?.id, 1);
+    const qMin = entero(res?.qtyMin, 1), qMax = entero(res?.qtyMax, 1);
+    const reactivos = Array.isArray(x?.reagents) ? x.reagents.map((g: any) => ({
+      item_id: entero(g?.id, 1), nombre: texto(g?.name), cantidad: entero(g?.qty, 1),
+    })) : [];
+    const valido = spell && nombre && resId && qMin && qMax && qMax >= qMin && reactivos.length > 0
+      && reactivos.every((g: any) => g.item_id && g.nombre && g.cantidad)
+      && String(rec?.profession ?? "").toLowerCase() === profesion.toLowerCase();
+    if (!valido) { descartadas++; continue; }
+    recetas.push({
+      spell_id: spell, nombre, nivel_requerido: entero(rec.skillRequired, 0), obtencion: texto(rec.acquisition),
+      resultado_id: resId, resultado_nombre: texto(res.name) ?? nombre, resultado_calidad: texto(res.quality),
+      cantidad_min: qMin, cantidad_max: qMax, reactivos,
+    });
+  }
+  return { recetas, descartadas };
+}
+
+export async function actualizarRecetas(db: Db, o: { fetch: typeof fetch; ahora?: () => Date;
+                                                    userAgent?: string }) {
+  const ahora = o.ahora ?? (() => new Date());
+  const t = () => ahora().toISOString();
+  const turno = (await db.consulta("select tomar_turno_recetas(300, $1::timestamptz) as r", [t()]))[0]?.r;
+  if (!turno) return { estado: "omitido", motivo: "en_curso" };
+  try {
+    const pendientes = ((await db.consulta("select recetas_pendientes('forever', $1::timestamptz) as r", [t()]))[0]?.r
+      ?? []) as string[];
+    if (!pendientes.length) return { estado: "ok", motivo: "al_dia", guardadas: {} };
+    const m = (await db.consulta(
+      "select source_url from markets where provider = 'ahledger' and game_type = 'forever' and not is_demo order by key limit 1",
+      []))[0];
+    if (!m?.source_url) return { estado: "omitido", motivo: "sin_mercado_ahledger" };
+    const urlTabla = String(m.source_url);
+    const slug = urlTabla.split("/").pop()!;
+    const guardadas: Record<string, number> = {};
+    const errores: Record<string, string> = {};
+    let parado: string | null = null;
+    for (const p of pendientes) {
+      const url = urlRecetas(urlTabla, p);
+      let r: Response;
+      try {
+        r = await o.fetch(url, { headers: { "User-Agent": o.userAgent ?? "mercadowow/0.1 (uso personal)", Accept: "application/json" },
+                                 signal: AbortSignal.timeout(30_000) });
+      } catch (e) { parado = `Error de conexión: ${(e as Error).message ?? e}`; break; }
+      if (r.status === 429 || r.status >= 500) { await r.body?.cancel(); parado = `HTTP ${r.status}`; break; }
+      if (r.status !== 200) { await r.body?.cancel(); errores[p] = `HTTP ${r.status}`; continue; }
+      try {
+        const { recetas, descartadas } = leerRecetasAhledger(await r.json(), p, slug);
+        if (!recetas.length) { errores[p] = "AHledger no devolvió recetas válidas"; continue; }
+        guardadas[p] = Number((await db.consulta(
+          "select guardar_recetas('forever', $1, $2::text::jsonb, $3, $4::timestamptz) as r",
+          [p, JSON.stringify(recetas), url, t()]))[0]?.r);
+        if (descartadas) errores[p] = `${descartadas} recetas incompletas en la fuente, no guardadas`;
+      } catch (e) {
+        errores[p] = e instanceof ErrorFormato ? e.message : `Error: ${(e as Error).message ?? e}`;
+      }
+    }
+    return { estado: "ok", guardadas, errores, parado };
+  } finally {
+    await db.consulta("select soltar_turno_recetas()", []);
+  }
+}

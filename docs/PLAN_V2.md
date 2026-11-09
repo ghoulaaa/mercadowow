@@ -150,7 +150,11 @@ Cumple el punto 17 de la especificación: buscar un objeto real → abrir su fic
 
 ## 7. Después del MVP (sin recortar el alcance final)
 
-- **R5 · Profesiones:** recetas, comparador de objetos y coste de fabricación (incompleto si falta el precio de algún reactivo).
+- **R5 · Profesiones** ✅ (2026-11-08): recetas, comparador de objetos y coste de fabricación (incompleto si falta el precio de algún reactivo).
+  - Tablas `recipes`, `recipe_materials` y `recipe_sync` (0015). 2.227 recetas de 11 profesiones (7.651 reactivos, 1,6 MB), descargadas de AHledger `/v1/crafting` con `all=true&limit=2000`; con el límite por defecto (500), Peletería salía cortada. Si una lista llega con tantas recetas como el límite, se rechaza para no borrar recetas reales.
+  - Se renuevan una vez al día: pg_cron cada hora en el minuto 17 (0016) → Edge Function `{"tarea":"recetas"}`.
+  - El coste se calcula al leer con los precios del ÚLTIMO escaneo (mediana o compra mínima). La comisión es la de la casa de facción, con redondeo a cobre entero. Comprobado contra AHledger: los 195 costes de Alquimia coinciden; el neto difiere solo en fracciones de cobre o por la diferencia de escaneo.
+  - Ficha del objeto: «Se fabrica con» y «Se usa en». Comparador de hasta 8 objetos en Rentabilidad. «Calcular venta» pasa el coste de fabricación por unidad a la calculadora.
 - **R6 · Alertas, Oportunidades y liquidez en el motor:** se introduce la etiqueta ESPERAR.
 - **R7 · Fuentes y metodología,** desencantamiento y estructura del mercado.
 - **Los antiguos hitos 8–10:** retención y copias de seguridad, Blizzard opcional (español, pila, descripción) y medición final de consumo.

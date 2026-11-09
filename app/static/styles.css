@@ -611,6 +611,7 @@ h2, h3, h4 { color: var(--gold); }
   .cabecera { position: static; }
   .accesos a { padding: 8px 6px; font-size: 13px; }
 }
+@media (max-width: 340px) { .accesos { flex-wrap: wrap; } .accesos a { padding: 6px 4px; font-size: 12px; } }
 
 /* ---------- R4 · calculadora ---------- */
 .calc { grid-template-columns: max-content minmax(0, 1fr); }
@@ -624,3 +625,28 @@ h2, h3, h4 { color: var(--gold); }
   border: 1px solid var(--border); background: var(--panel-2); color: var(--text); text-align: right; }
 @media (max-width: 560px) { .calc { grid-template-columns: 1fr; } .fila-acciones.sin-margen { flex-wrap: wrap; } }
 .calc-res { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel-2); }
+
+/* ---------- R5: profesiones, recetas y comparador ---------- */
+.prof-grid:not([hidden]) { display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 42fr); gap: 14px; align-items: start; }
+#card-receta { position: sticky; top: 170px; max-height: calc(100vh - 190px); overflow: auto; }
+@media (max-width: 1100px) {
+  .prof-grid:not([hidden]) { grid-template-columns: minmax(0, 1fr); }
+  #card-receta { position: static; max-height: none; }
+}
+.filtros-recetas { flex-wrap: wrap; align-items: center; }
+.filtros-recetas input[type="number"] { width: 76px; }
+.link-objeto { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0;
+  font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+.link-objeto:hover span, .link-objeto:focus-visible span { text-decoration: underline; }
+.link-objeto:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 4px; }
+.celda-objeto { min-width: 200px; }
+.tabla-recetas td, .tabla-cmp td { font-variant-numeric: tabular-nums; }
+.tabla-recetas tr.activa td { background: rgba(232, 192, 96, .08); }
+.tabla-recetas tr.activa td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+.chip-incompleta { display: inline-block; margin-left: 8px; font-size: 11px; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); }
+#rec-detalle .tabla.mini td .link-objeto { font-size: 13px; }
+#rec-detalle .destacado { color: var(--gold); font-weight: 650; }
+#rec-detalle .destacado.sube { color: var(--sell); }
+#rec-detalle .destacado.baja { color: var(--danger); }
+.det-sec h4 { margin: 10px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }

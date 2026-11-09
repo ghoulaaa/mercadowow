@@ -79,10 +79,11 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:14] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:16] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
-                           "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql"]
+                           "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
+                           "0015_recetas.sql", "0016_recetas_cron.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -447,6 +448,15 @@ def test_paginas_nuevas_se_sirven(cliente):
 @pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])
 def test_tasas_valida(cliente, cuerpo):
     assert cliente.post("/api/tasas", json=cuerpo).status_code == 400
+
+
+@pytest.mark.parametrize("q", ["?base=media", "?objeto=0", "?objeto=abc", "?profesion=" + "x" * 41])
+def test_recetas_valida(cliente, q):
+    assert cliente.get("/api/recetas" + q).status_code == 422
+
+
+def test_profesiones_se_sirve(cliente):
+    assert "javascript" in cliente.get("/recetas.js").headers["content-type"]
 
 
 def test_calculadora_se_sirve(cliente):

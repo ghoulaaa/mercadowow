@@ -484,6 +484,31 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Recetas (R5): ?profesion=X → lista con coste; ?objeto=ID → fabricación y usos; nada → profesiones. */
+    async recetas(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const base = u.get("base") || "mediana";
+      if (!["mediana", "minimo"].includes(base)) return json(400, { error: "base debe ser mediana o minimo" });
+      const profesion = u.get("profesion");
+      const objeto = u.get("objeto");
+      try {
+        if (objeto !== null) {
+          const id = Number(objeto);
+          if (!Number.isInteger(id) || id <= 0) return json(400, { error: "objeto no válido" });
+          return json(200, await llamar(db, "select recetas_objeto($1, $2::integer, $3) as r", [mercado, id, base]));
+        }
+        if (profesion !== null) {
+          return json(200, await llamar(db, "select recetas_profesion($1, $2, $3) as r", [mercado, profesion.slice(0, 40), base]));
+        }
+        return json(200, await llamar(db, "select profesiones_recetas($1) as r", [mercado]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Reglas de comisión y depósito (auction_fee_rules): leer y editar. */
     async tasas(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

@@ -165,6 +165,18 @@ def categories(conn: psycopg.Connection, market_key: str) -> list[dict]:
     return conn.execute("select categorias_mercado(%s) as r", (market_key,)).fetchone()["r"]
 
 
+def recipes(conn: psycopg.Connection, market_key: str, *, profesion: str | None = None,
+            objeto: int | None = None, base: str = "mediana"):
+    """Profesiones (sin filtros), recetas de una profesión con su coste, o fabricación/usos de un objeto."""
+    if objeto is not None:
+        sql, args = "select recetas_objeto(%s, %s, %s) as r", (market_key, objeto, base)
+    elif profesion is not None:
+        sql, args = "select recetas_profesion(%s, %s, %s) as r", (market_key, profesion, base)
+    else:
+        sql, args = "select profesiones_recetas(%s) as r", (market_key,)
+    return conn.execute(sql, args).fetchone()["r"]
+
+
 def add_to_catalog(conn: psycopg.Connection, market_key: str, item_id: int, http_get) -> bool:
     """Alta por ID: pide el objeto a AHledger y lo guarda en el catálogo. Solo mercados reales."""
     m = conn.execute("select game_type, is_demo from markets where key = %s", (market_key,)).fetchone()

@@ -274,14 +274,67 @@
       </section>
 
       <!-- ===================== PROFESIONES (R5) ===================== -->
-      <section class="vista" data-vista="profesiones" hidden>
-        <section class="card">
-          <h3>Profesiones y recetas</h3>
-          <p class="muted">
-            Llega en la entrega R5: recetas reales de AHledger con sus reactivos y cantidades, coste de fabricación y
-            comparación con el valor del objeto fabricado. Mientras tanto, la ficha de cada objeto enlaza a Wowhead.
-          </p>
+      <section class="vista prof-grid" data-vista="profesiones" hidden>
+        <section class="card" id="card-recetas">
+          <div class="card-head">
+            <h3>Profesiones y recetas</h3>
+            <span id="rec-contador" class="muted small"></span>
+          </div>
+          <div class="filtros filtros-recetas">
+            <select id="rec-profesion" aria-label="Profesión"></select>
+            <select id="rec-base" aria-label="Precio usado">
+              <option value="mediana">Precio: mediana del escaneo</option>
+              <option value="minimo">Precio: compra mínima</option>
+            </select>
+            <input id="rec-texto" type="search" placeholder="Receta, resultado, reactivo o ID…" aria-label="Filtrar recetas">
+            <select id="rec-orden" aria-label="Ordenar por">
+              <option value="margen:desc">Margen por fabricación (mayor)</option>
+              <option value="margen_pct:desc">Margen % (mayor)</option>
+              <option value="ganancia_dia:desc">Ganancia al día estimada (mayor)</option>
+              <option value="ventas:desc">Ventas al día del resultado (más)</option>
+              <option value="coste:asc">Coste de materiales (menor)</option>
+              <option value="nivel:asc">Nivel de habilidad (menor)</option>
+              <option value="nivel:desc">Nivel de habilidad (mayor)</option>
+              <option value="nombre:asc">Nombre (A–Z)</option>
+            </select>
+          </div>
+          <div class="filtros filtros-recetas">
+            <span class="lab">Habilidad</span>
+            <input id="rec-nivel-min" type="number" min="0" max="450" placeholder="mín." aria-label="Habilidad mínima">
+            <input id="rec-nivel-max" type="number" min="0" max="450" placeholder="máx." aria-label="Habilidad máxima">
+            <label class="check"><input id="rec-completas" type="checkbox" checked> Solo con coste completo</label>
+            <label class="check"><input id="rec-rentables" type="checkbox"> Solo con margen positivo</label>
+            <label class="check"><input id="rec-ventas" type="checkbox"> Solo si el resultado se vende</label>
+          </div>
+          <div class="tabla-wrap">
+            <table class="tabla tabla-recetas">
+              <thead>
+                <tr>
+                  <th scope="col">Receta (resultado)</th>
+                  <th scope="col" class="num">Habilidad</th>
+                  <th scope="col" class="num">Coste materiales</th>
+                  <th scope="col" class="num" title="Precio del resultado × unidades que da, menos la comisión">Valor neto</th>
+                  <th scope="col" class="num">Margen</th>
+                  <th scope="col" class="num">Margen %</th>
+                  <th scope="col" class="num" title="Ventas estimadas por día del resultado (estimación de AHledger)">Ventas/día</th>
+                </tr>
+              </thead>
+              <tbody id="rec-tbody"></tbody>
+            </table>
+          </div>
+          <p id="rec-vacio" class="muted" hidden></p>
+          <button id="rec-mas" type="button" class="btn btn-piedra" hidden>Mostrar más</button>
+          <p id="rec-nota" class="muted small nota"></p>
+          <div id="rec-atribucion"></div>
         </section>
+
+        <aside class="card" id="card-receta" aria-labelledby="rec-titulo">
+          <h3 id="rec-titulo">Receta</h3>
+          <div id="rec-detalle">
+            <p class="muted">Elige una receta de la lista para ver sus materiales, el coste de cada uno y la comparación
+              con el valor del objeto fabricado.</p>
+          </div>
+        </aside>
       </section>
 
       <!-- ===================== RENTABILIDAD (R4) ===================== -->
@@ -348,6 +401,43 @@
             <strong>beneficio = ingreso neto − coste de adquisición − depósitos perdidos antes</strong>.
             El depósito de la subasta que se vende se devuelve: no cuenta como pérdida. Todo se calcula en cobres
             enteros, subasta por subasta, con el redondeo de la regla elegida.
+          </p>
+        </section>
+
+        <section class="card" id="card-comparador">
+          <div class="card-head">
+            <h3>Comparador de objetos</h3>
+            <span id="cmp-contador" class="muted small"></span>
+          </div>
+          <form id="form-cmp" class="fila-acciones" autocomplete="off">
+            <input id="cmp-objeto" list="lista-objetos" placeholder="Nombre o ID del objeto" aria-label="Objeto para comparar">
+            <button type="submit" class="btn btn-small btn-rojo">Añadir</button>
+            <button id="cmp-vaciar" type="button" class="btn btn-small btn-piedra">Vaciar</button>
+          </form>
+          <p id="cmp-msg" class="small bad" hidden></p>
+          <div class="tabla-wrap">
+            <table class="tabla mini tabla-cmp">
+              <thead>
+                <tr>
+                  <th scope="col">Objeto</th>
+                  <th scope="col" class="num">Compra mínima</th>
+                  <th scope="col" class="num">Mediana</th>
+                  <th scope="col" class="num">Mediana 30 días</th>
+                  <th scope="col" class="num">Oferta</th>
+                  <th scope="col" class="num" title="Estimación de AHledger">Ventas/día</th>
+                  <th scope="col" class="num">Neto por unidad</th>
+                  <th scope="col" class="num" title="Receta más barata con todos los precios conocidos">Coste de fabricarlo</th>
+                  <th scope="col" class="num" title="Neto por unidad menos coste de fabricarla">Margen fabricando</th>
+                  <th scope="col"><span class="sr-only">Quitar</span></th>
+                </tr>
+              </thead>
+              <tbody id="cmp-tbody"></tbody>
+            </table>
+          </div>
+          <p class="muted small nota">
+            Precios del último escaneo del mercado elegido. «Neto por unidad» = compra mínima menos la comisión de la
+            casa de facción. El coste de fabricación usa la mediana de cada material; «—» = no se fabrica con ninguna
+            receta conocida, o falta el precio de algún material.
           </p>
         </section>
 

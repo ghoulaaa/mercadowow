@@ -5,6 +5,10 @@ import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompl
 import { leerRuta } from "./ruta.js";
 import { calcular } from "./rentabilidad.js";
 import {
+  MAX_COMPARAR, NOMBRE_OBTENCION, NOMBRE_PROFESION, anadirComparar, costeUnidad, filtrarRecetas, mejorReceta,
+  ordenarRecetas, pesosReactivos,
+} from "./recetas.js";
+import {
   NOMBRE_CALIDAD, NOMBRE_REC, categorias, filtrar, formatearPct, ordenar, prepararFilas, subcategorias,
 } from "./tabla.js";
 
@@ -634,6 +638,7 @@ async function abrirDetalle(id) {
   graf.id = "det-grafico";
   secGraf.append(cabeceraHistorial(graf, id), graf);
   nodos.push(secGraf);
+  if (!d.ficticio) nodos.push(seccionRecetas(id));
   if (l.antiguo && d.recomendacion_motor !== "OBSERVACION") {
     nodos.push(el("p", "bad small", `Con datos recientes el motor diría «${NOMBRE_REC[d.recomendacion_motor]}», pero el último escaneo tiene ${l.horas_dato} h.`));
   }
@@ -1178,6 +1183,8 @@ function aplicarRuta() {
   if (r.vista === "historial") { if (r.id) objetoActual = r.id; pintarHistorial(); }
   if (r.vista === "oportunidades") pintarOportunidades();
   if (r.vista === "rentabilidad" && r.id && r.id !== calcObjetoId) cargarObjetoCalc(r.id);
+  if (r.vista === "rentabilidad") pintarComparador();
+  if (r.vista === "profesiones") abrirProfesiones();
 }
 window.addEventListener("hashchange", aplicarRuta);
 
@@ -1214,7 +1221,7 @@ async function abrirObjeto(id) {
     sec.append(cabeceraHistorial(graf, id), graf);
     $("det-cuerpo").replaceChildren(
       el("p", "small", "Sin precio en este mercado en el último escaneo guardado: no hay recomendación."),
-      accionesObjeto(id, null), fichaNodo(f, false), sec);
+      accionesObjeto(id, null), fichaNodo(f, false), sec, seccionRecetas(id));
     const cita = atribucion();
     if (cita) $("det-cuerpo").append(cita);
     cargarHistorialEn(graf, id, rangoHistorial).catch((e) => graf.replaceChildren(el("p", "bad small", e.message)));
@@ -1663,7 +1670,7 @@ async function cargarObjetoCalc(id) {
   $("calc-npc").value = ventaNpc == null ? "" : formatearMoneda(ventaNpc);
   if (precio != null) { $("calc-precio").value = formatearMoneda(precio); $("calc-modo-precio").value = "unitario"; }
   if (loteParaCalculo && loteParaCalculo.item_id === id) {
-    $("calc-cantidad").value = loteParaCalculo.cantidad;
+    if (loteParaCalculo.cantidad != null) $("calc-cantidad").value = loteParaCalculo.cantidad;
     $("calc-coste").value = loteParaCalculo.coste_unitario == null ? "" : formatearMoneda(loteParaCalculo.coste_unitario);
     $("calc-modo-coste").value = "unitario";
     loteParaCalculo = null;
@@ -1744,6 +1751,404 @@ $("tasas-tbody").addEventListener("click", async (ev) => {
   }
 });
 
+// =====================================================================
+// R5 · Profesiones y recetas, recetas en la ficha y comparador
+// =====================================================================
+const REC_POR_PAGINA = 150;
+let profesiones = null;      // [{profesion, recetas, sincronizado_en}] del mercado actual
+let datosRecetas = null;     // respuesta de /api/recetas?profesion=
+let recetaAbierta = null;    // spell de la receta mostrada a la derecha
+let recetasN = 0;
+let recVisibles = REC_POR_PAGINA;
+const local = {
+  leer(k, def) { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch { return def; } },
+  escribir(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento: no pasa nada */ } },
+};
+const nombreProf = (p) => NOMBRE_PROFESION[p] ?? p;
+const pct = (x) => x == null ? "—" : formatearPct(100 * x);
+const urlMercado = () => encodeURIComponent(ultimo.mercado.clave);
+
+async function cargarProfesiones() {
+  if (!ultimo?.mercado?.clave) return false;
+  try {
+    const r = await fetch(`/api/recetas?mercado=${urlMercado()}`, { cache: "no-store" });
+    if (!r.ok) return false;
+    profesiones = await r.json();
+  } catch { return false; }
+  const sel = $("rec-profesion");
+  const previa = local.leer("mw_profesion", sel.value || "Alchemy");
+  sel.replaceChildren();
+  for (const p of profesiones) {
+    const op = el("option", "", `${nombreProf(p.profesion)} (${p.recetas.toLocaleString("es")})`);
+    op.value = p.profesion;
+    sel.append(op);
+  }
+  sel.value = profesiones.some((p) => p.profesion === previa) ? previa : profesiones[0]?.profesion ?? "";
+  return true;
+}
+
+async function cargarRecetas() {
+  const prof = $("rec-profesion").value;
+  if (!prof || !ultimo?.mercado?.clave) return;
+  const n = ++recetasN;
+  const vacio = $("rec-vacio");
+  vacio.hidden = false; vacio.className = "muted"; vacio.textContent = "Cargando recetas…";
+  $("rec-tbody").replaceChildren(); $("rec-mas").hidden = true;
+  try {
+    const r = await fetch(`/api/recetas?mercado=${urlMercado()}&profesion=${encodeURIComponent(prof)}&base=${$("rec-base").value}`,
+      { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    if (n !== recetasN) return;
+    datosRecetas = d;
+    pintarRecetas();
+    if (recetaAbierta && d.recetas.some((x) => x.spell === recetaAbierta)) pintarReceta(recetaAbierta);
+    else if (recetaAbierta) { recetaAbierta = null; pintarReceta(null); }
+  } catch (e) {
+    if (n !== recetasN) return;
+    vacio.className = "bad"; vacio.textContent = "No se pudieron cargar las recetas: " + e.message;
+  }
+}
+
+function filtrosRecetas() {
+  const num = (id) => { const v = $(id).value.trim(); return v === "" ? null : Number(v); };
+  return { texto: $("rec-texto").value, soloCompletas: $("rec-completas").checked, soloRentables: $("rec-rentables").checked,
+           soloConVentas: $("rec-ventas").checked, nivelMin: num("rec-nivel-min"), nivelMax: num("rec-nivel-max") };
+}
+
+function tdMoneda(cobre, cls = "") {
+  return el("td", "num " + cls, cobre == null ? "—" : formatearMoneda(cobre));
+}
+
+function pintarRecetas() {
+  const d = datosRecetas;
+  if (!d) return;
+  const todas = d.recetas;
+  const lista = ordenarRecetas(filtrarRecetas(todas, filtrosRecetas()), $("rec-orden").value);
+  const tb = $("rec-tbody");
+  tb.replaceChildren();
+  for (const r of lista.slice(0, recVisibles)) {
+    const tr = el("tr");
+    if (r.spell === recetaAbierta) tr.classList.add("activa");
+    const td = el("td", "celda-objeto");
+    const b = el("button", "link-objeto");
+    b.type = "button"; b.dataset.receta = r.spell;
+    b.append(iconoNodo(r.resultado.icono, r.resultado.nombre),
+      el("span", r.resultado.calidad ? `q-${r.resultado.calidad}` : "", r.nombre));
+    td.append(b);
+    if (!r.completa) td.append(el("span", "chip-incompleta", "incompleta"));
+    const margenCls = r.margen == null ? "" : r.margen >= 0 ? "sube" : "baja";
+    tr.append(td, el("td", "num", r.nivel ?? "—"), tdMoneda(r.coste ?? null), tdMoneda(r.neto),
+      tdMoneda(r.margen, margenCls), el("td", "num " + margenCls, pct(r.margen_pct)),
+      el("td", "num", r.resultado.ventas_dia == null ? "—" : r.resultado.ventas_dia.toLocaleString("es")));
+    if (!r.completa) tr.cells[2].title = "Falta el precio de: " + r.faltan.join(", ");
+    tb.append(tr);
+  }
+  $("rec-contador").textContent = `${lista.length.toLocaleString("es")} de ${todas.length.toLocaleString("es")} recetas`;
+  const vacio = $("rec-vacio");
+  vacio.className = "muted";
+  vacio.hidden = lista.length > 0;
+  vacio.textContent = !todas.length
+    ? (d.sincronizado_en ? "AHledger no lista recetas de esta profesión." : "Todavía no se han descargado las recetas de esta profesión (se hace una vez al día).")
+    : "Ninguna receta coincide con los filtros." + ($("rec-completas").checked ? " Prueba a desmarcar «Solo con coste completo»." : "");
+  $("rec-mas").hidden = lista.length <= recVisibles;
+  $("rec-nota").textContent =
+    `Precios del escaneo de ${fecha(d.hora_precios)} (${d.base === "minimo" ? "compra mínima" : "mediana"} de cada objeto). ` +
+    `Valor neto = precio del resultado × unidades que da − comisión de la casa de facción (${String(d.comision_pct).replace(".", ",")} %). ` +
+    `Margen = valor neto − coste de materiales; «incompleta» = falta el precio de algún material y no se calcula. ` +
+    `Los materiales que venden los NPC (viales, hilos…) pueden costar menos que en la subasta: aquí se usa siempre el precio de subasta. ` +
+    `Ventas/día es una estimación de AHledger. Recetas de AHledger` +
+    (d.sincronizado_en ? `, descargadas ${fecha(d.sincronizado_en)}; se renuevan una vez al día.` : ".");
+  const cita = $("rec-atribucion");
+  cita.replaceChildren();
+  const a = el("a", "", d.atribucion.texto);
+  a.href = d.atribucion.url; a.target = "_blank"; a.rel = "noopener";
+  const p = el("p", "atribucion small"); p.append(a); cita.append(p);
+}
+
+function pintarReceta(spell) {
+  const cont = $("rec-detalle");
+  const r = datosRecetas?.recetas.find((x) => x.spell === spell);
+  for (const tr of $("rec-tbody").querySelectorAll("tr")) {
+    tr.classList.toggle("activa", tr.querySelector(`[data-receta="${spell}"]`) != null);
+  }
+  if (!r) {
+    $("rec-titulo").textContent = "Receta"; $("rec-titulo").className = "";
+    cont.replaceChildren(el("p", "muted", "Elige una receta de la lista para ver sus materiales y su coste."));
+    return;
+  }
+  $("rec-titulo").textContent = r.nombre;
+  $("rec-titulo").className = r.resultado.calidad ? `q-${r.resultado.calidad}` : "";
+  const nodos = [el("p", "muted small", [nombreProf(r.profesion), r.nivel != null ? `habilidad ${r.nivel}` : null,
+    r.obtencion ? `se aprende: ${NOMBRE_OBTENCION[r.obtencion] ?? r.obtencion}` : null].filter(Boolean).join(" · "))];
+
+  const res = r.resultado;
+  const cab = el("div", "cat-ficha-cab");
+  const t = el("div");
+  const bRes = el("button", "link-objeto", res.nombre);
+  bRes.type = "button"; bRes.addEventListener("click", () => { location.hash = `#/objeto/${res.id}`; });
+  t.append(bRes, el("div", "muted small", res.cantidad_min === res.cantidad_max
+    ? `Da ${res.cantidad_min} ${res.cantidad_min === 1 ? "unidad" : "unidades"}`
+    : `Da de ${res.cantidad_min} a ${res.cantidad_max} unidades (media ${String(res.rendimiento).replace(".", ",")})`));
+  cab.append(iconoNodo(res.icono, res.nombre, true), t);
+  nodos.push(cab);
+
+  const sec = el("section", "det-sec");
+  sec.append(el("h3", "", "Materiales"));
+  const tb = el("table", "tabla mini");
+  tb.append((() => { const h = el("tr"); for (const [k, c] of [["Material", ""], ["Cant.", "num"], ["Precio", "num"], ["Subtotal", "num"], ["% coste", "num"]]) h.append(el("th", c, k)); return h; })());
+  const pesos = pesosReactivos(r);
+  r.reactivos.forEach((x, i) => {
+    const tr = el("tr");
+    const td = el("td");
+    const b = el("button", "link-objeto");
+    b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${x.id}`; });
+    b.append(iconoNodo(x.icono, x.nombre), el("span", x.calidad ? `q-${x.calidad}` : "", x.nombre));
+    td.append(b);
+    tr.append(td, el("td", "num", `×${x.cantidad}`),
+      x.precio == null ? el("td", "num bad", "sin precio") : tdMoneda(x.precio), tdMoneda(x.coste),
+      el("td", "num", pesos[i] == null ? "—" : formatearPct(100 * pesos[i]).replace(/^\+/, "")));
+    tb.append(tr);
+  });
+  sec.append(tb);
+  nodos.push(sec);
+
+  const din = el("section", "det-sec");
+  din.append(el("h3", "", "Coste y valor"));
+  const dl = el("dl", "kv");
+  const f = (k, v, cls = "") => dl.append(el("dt", "", k), el("dd", cls, v));
+  if (r.completa) f("Coste de materiales", formatearMoneda(r.coste), "destacado");
+  else {
+    f("Coste de materiales", `INCOMPLETO: falta el precio de ${r.faltan.join(", ")}`, "bad");
+    f("Coste de lo que sí tiene precio", r.coste_parcial == null ? "—" : formatearMoneda(r.coste_parcial) + " (no es el coste real)");
+  }
+  f("Precio del resultado", res.precio == null ? "sin precio en el último escaneo" : `${formatearMoneda(res.precio)} por unidad`);
+  if (r.bruto != null) {
+    f("Valor bruto", `${formatearMoneda(r.bruto)}` + (res.rendimiento !== 1 ? ` (× ${String(res.rendimiento).replace(".", ",")} unidades)` : ""));
+    f(`Comisión (${String(datosRecetas.comision_pct).replace(".", ",")} %)`, "−" + formatearMoneda(r.comision));
+    f("Valor neto del objeto fabricado", formatearMoneda(r.neto), "destacado");
+  }
+  if (r.margen != null) {
+    f("Margen por fabricación", formatearMoneda(r.margen), "destacado " + (r.margen >= 0 ? "sube" : "baja"));
+    f("Margen %", pct(r.margen_pct));
+    f("Fabricado frente a ingredientes", r.coste > 0
+      ? `vale ${(r.neto / r.coste).toLocaleString("es", { maximumFractionDigits: 2 })} veces lo que cuestan sus materiales`
+      : "—");
+  } else {
+    f("Margen", "sin calcular (" + (r.completa ? "falta el precio del resultado" : "coste incompleto") + ")", "muted");
+  }
+  if (res.ventas_dia != null) f("Ventas/día del resultado", `${res.ventas_dia.toLocaleString("es")} (estimación de AHledger, tiende a quedarse corta)`);
+  if (res.publicadas != null) f("Unidades a la venta ahora", res.publicadas.toLocaleString("es") +
+    (r.dias_para_vender != null ? ` · a ese ritmo, ~${r.dias_para_vender.toLocaleString("es")} días en venderse` : ""));
+  if (r.ganancia_dia != null) f("Ganancia al día (máximo)", `${formatearMoneda(r.ganancia_dia)} si abastecieras tú todas las ventas estimadas`);
+  din.append(dl);
+  nodos.push(din);
+
+  const acc = el("div", "acciones-objeto");
+  const calc = el("button", "btn btn-small btn-rojo", "Calcular venta");
+  calc.type = "button";
+  calc.title = "Abre la calculadora con este objeto y su coste de fabricación por unidad";
+  calc.addEventListener("click", () => {
+    loteParaCalculo = { item_id: res.id, cantidad: null, coste_unitario: costeUnidad(r) };
+    calcObjetoId = null;
+    location.hash = `#/rentabilidad/${res.id}`;
+    if (leerRuta(location.hash).id === res.id) cargarObjetoCalc(res.id);
+  });
+  const cmp = el("button", "btn btn-small btn-piedra", "Añadir al comparador");
+  cmp.type = "button";
+  cmp.addEventListener("click", () => { anadirAlComparador(res.id, res.nombre); cmp.textContent = "En el comparador ✓"; });
+  acc.append(calc, cmp);
+  nodos.push(acc);
+  const enl = el("div", "enlaces");
+  const w = el("a", "", "Ver la receta en Wowhead");
+  w.href = `https://www.wowhead.com/forever/spell=${r.spell}`; w.target = "_blank"; w.rel = "noopener";
+  enl.append(w);
+  nodos.push(enl);
+  const a = el("a", "", datosRecetas.atribucion.texto);
+  a.href = datosRecetas.atribucion.url; a.target = "_blank"; a.rel = "noopener";
+  const p = el("p", "atribucion small"); p.append(a);
+  nodos.push(p);
+  cont.replaceChildren(...nodos);
+  if (estrecho()) $("card-receta").scrollIntoView({ block: "start" });
+}
+
+let abriendoProf = null;   // evita pedirlo dos veces si la ruta se aplica seguida
+function abrirProfesiones() {
+  abriendoProf ??= (async () => {
+    if (!profesiones && !(await cargarProfesiones())) return;
+    if (!datosRecetas) await cargarRecetas();
+  })().finally(() => { abriendoProf = null; });
+  return abriendoProf;
+}
+
+/** Desde la ficha: abre la sección Profesiones con esa receta. */
+async function irAReceta(profesion, spell) {
+  recetaAbierta = spell;
+  local.escribir("mw_profesion", profesion);
+  const cambia = $("rec-profesion").value !== profesion;
+  if (profesiones) $("rec-profesion").value = profesion;
+  if (cambia) datosRecetas = null;            // abrirProfesiones la cargará y abrirá la receta
+  if (location.hash !== "#/profesiones") location.hash = "#/profesiones";   // → aplicarRuta → abrirProfesiones
+  else await abrirProfesiones();
+  if (!cambia && datosRecetas) pintarReceta(spell);
+}
+
+$("rec-tbody").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-receta]");
+  if (!b) return;
+  recetaAbierta = Number(b.dataset.receta);
+  pintarReceta(recetaAbierta);
+});
+$("rec-profesion").addEventListener("change", () => {
+  local.escribir("mw_profesion", $("rec-profesion").value);
+  recetaAbierta = null; pintarReceta(null);
+  cargarRecetas();
+});
+$("rec-base").addEventListener("change", cargarRecetas);
+let temporizadorRec = null;
+for (const id of ["rec-texto", "rec-nivel-min", "rec-nivel-max"]) {
+  $(id).addEventListener("input", () => {
+    clearTimeout(temporizadorRec);
+    temporizadorRec = setTimeout(() => { recVisibles = REC_POR_PAGINA; pintarRecetas(); }, 200);
+  });
+}
+for (const id of ["rec-orden", "rec-completas", "rec-rentables", "rec-ventas"]) {
+  $(id).addEventListener("change", () => { recVisibles = REC_POR_PAGINA; pintarRecetas(); });
+}
+$("rec-mas").addEventListener("click", () => { recVisibles += REC_POR_PAGINA; pintarRecetas(); });
+
+/** Sección «Recetas» de la ficha de un objeto: con qué se fabrica y en qué se usa. */
+function seccionRecetas(id) {
+  const sec = el("section", "det-sec");
+  sec.append(el("h3", "", "Recetas"));
+  const cuerpo = el("div", "", "");
+  cuerpo.append(el("p", "muted small", "Cargando recetas…"));
+  sec.append(cuerpo);
+  fetch(`/api/recetas?mercado=${urlMercado()}&objeto=${id}`, { cache: "no-store" })
+    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "HTTP " + r.status); return d; })
+    .then((d) => {
+      const nodos = [];
+      if (d.fabricacion.length) {
+        nodos.push(el("h4", "", "Se fabrica con"));
+        const ul = el("ul", "det-lista");
+        for (const r of d.fabricacion) {
+          const li = el("li");
+          const b = el("button", "link-objeto", r.nombre);
+          b.type = "button"; b.addEventListener("click", () => irAReceta(r.profesion, r.spell));
+          const coste = r.completa ? `materiales ${formatearMoneda(r.coste)}` : `coste incompleto (falta ${r.faltan.join(", ")})`;
+          const margen = r.margen == null ? "" : ` · margen ${formatearMoneda(r.margen)}`;
+          li.append(b, el("span", "muted", ` · ${nombreProf(r.profesion)}${r.nivel != null ? " " + r.nivel : ""} · ${coste}${margen}`));
+          ul.append(li);
+        }
+        nodos.push(ul);
+      }
+      if (d.usos.length) {
+        nodos.push(el("h4", "", `Se usa en ${d.usos.length} ${d.usos.length === 1 ? "receta" : "recetas"}`));
+        const ul = el("ul", "det-lista");
+        const MAX = 12;
+        for (const u of d.usos.slice(0, MAX)) {
+          const li = el("li");
+          const b = el("button", "link-objeto", u.nombre);
+          b.type = "button"; b.addEventListener("click", () => irAReceta(u.profesion, u.spell));
+          li.append(b, el("span", "muted", ` · ${nombreProf(u.profesion)}${u.nivel != null ? " " + u.nivel : ""} · ×${u.cantidad}`));
+          ul.append(li);
+        }
+        if (d.usos.length > MAX) ul.append(el("li", "muted", `y ${d.usos.length - MAX} más (búscalo en Profesiones por su nombre)`));
+        nodos.push(ul);
+      }
+      if (!nodos.length) nodos.push(el("p", "muted small", "Ninguna receta de las que lista AHledger lo fabrica ni lo usa."));
+      cuerpo.replaceChildren(...nodos);
+    })
+    .catch((e) => cuerpo.replaceChildren(el("p", "bad small", "No se pudieron cargar las recetas: " + e.message)));
+  return sec;
+}
+
+// ---------- comparador de objetos ----------
+let comparar = local.leer("mw_comparar", []).filter((x) => Number.isInteger(x?.id)).slice(0, MAX_COMPARAR);
+const fabricacionCache = new Map();   // «mercado|id» → mejor receta (o null)
+
+function anadirAlComparador(id, nombre) {
+  const { lista, error } = anadirComparar(comparar.map((x) => x.id), id);
+  const msg = $("cmp-msg");
+  msg.hidden = !error; msg.textContent = error ?? "";
+  if (error) return false;
+  comparar = lista.map((i) => comparar.find((x) => x.id === i) ?? { id: i, nombre });
+  local.escribir("mw_comparar", comparar);
+  pintarComparador();
+  return true;
+}
+
+async function mejorFabricacion(id) {
+  const k = `${ultimo.mercado.clave}|${id}`;
+  if (fabricacionCache.has(k)) return fabricacionCache.get(k);
+  const r = await fetch(`/api/recetas?mercado=${urlMercado()}&objeto=${id}`, { cache: "no-store" });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+  const m = mejorReceta(d.fabricacion);
+  const v = { receta: m, hay: d.fabricacion.length > 0 };
+  fabricacionCache.set(k, v);
+  return v;
+}
+
+function pintarComparador() {
+  const tb = $("cmp-tbody");
+  tb.replaceChildren();
+  $("cmp-contador").textContent = `${comparar.length} de ${MAX_COMPARAR}`;
+  if (!comparar.length) {
+    const tr = el("tr");
+    const td = el("td", "muted", "Añade objetos (o pulsa «Añadir al comparador» en una receta) para comparar sus precios y lo que cuesta fabricarlos.");
+    td.colSpan = 10;
+    tr.append(td); tb.append(tr);
+    return;
+  }
+  if (!ultimo?.mercado?.clave) return;
+  for (const { id, nombre } of comparar) {
+    const f = filasTabla.find((x) => x.id === id);
+    const tr = el("tr");
+    const td = el("td", "celda-objeto");
+    const b = el("button", "link-objeto");
+    b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${id}`; });
+    b.append(iconoNodo(f?.icono, f?.nombre ?? nombre), el("span", f?.calidad ? `q-${f.calidad}` : "", f?.nombre ?? nombre ?? `#${id}`));
+    td.append(b);
+    if (!f) td.append(el("span", "muted small", " sin precio en este mercado"));
+    const tdCoste = el("td", "num muted", "…"), tdMargen = el("td", "num", "…");
+    const quitar = el("button", "btn-mini", "✕");
+    quitar.type = "button"; quitar.setAttribute("aria-label", `Quitar ${f?.nombre ?? nombre ?? id} del comparador`);
+    quitar.addEventListener("click", () => {
+      comparar = comparar.filter((x) => x.id !== id);
+      local.escribir("mw_comparar", comparar);
+      pintarComparador();
+    });
+    const tdQ = el("td"); tdQ.append(quitar);
+    tr.append(td, tdMoneda(f?.precio ?? null), tdMoneda(f?.mediana ?? null), tdMoneda(f?.historico ?? f?.med30 ?? null),
+      el("td", "num", f?.cantidad == null ? "—" : f.cantidad.toLocaleString("es")),
+      el("td", "num", f?.ventas_dia == null ? "—" : f.ventas_dia.toLocaleString("es")),
+      tdMoneda(f?.neto ?? null), tdCoste, tdMargen, tdQ);
+    tb.append(tr);
+    mejorFabricacion(id).then(({ receta, hay }) => {
+      const cu = costeUnidad(receta);
+      tdCoste.className = "num";
+      tdCoste.textContent = cu == null ? "—" : formatearMoneda(cu);
+      tdCoste.title = receta ? `${receta.nombre} (${nombreProf(receta.profesion)})` : hay ? "Falta el precio de algún material" : "No se fabrica con ninguna receta conocida";
+      const m = cu == null || f?.neto == null ? null : f.neto - cu;
+      tdMargen.textContent = m == null ? "—" : formatearMoneda(m);
+      tdMargen.className = "num " + (m == null ? "" : m >= 0 ? "sube" : "baja");
+    }).catch(() => { tdCoste.textContent = "error"; tdMargen.textContent = "—"; });
+  }
+}
+
+$("form-cmp").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const t = $("cmp-objeto").value.trim();
+  const fila = resolverObjeto(t);
+  const id = fila?.id ?? (/^#?(\d{1,9})$/.test(t) ? Number(t.replace("#", "")) : null);
+  if (!id) { $("cmp-msg").hidden = false; $("cmp-msg").textContent = "No encuentro ese objeto: elígelo de la lista o escribe su ID."; return; }
+  if (anadirAlComparador(id, fila?.nombre ?? null)) $("cmp-objeto").value = "";
+});
+$("cmp-vaciar").addEventListener("click", () => {
+  comparar = []; local.escribir("mw_comparar", comparar); $("cmp-msg").hidden = true; pintarComparador();
+});
+
 // ---------- actualización en vivo ----------
 // Cada 30 s (o cada 5 s justo después de pulsar «Actualizar») se consulta una huella mínima
 // del mercado; si cambió, se recargan el estado y la tabla sin recargar la página.
@@ -1762,6 +2167,9 @@ async function vigilar() {
           await cargarPrecios();
           cargarInventario();
           cargarVentas();
+          fabricacionCache.clear();
+          if (datosRecetas) cargarRecetas();   // precios nuevos → costes nuevos
+          if (!$("card-comparador").closest(".vista").hidden) pintarComparador();
         }
         firmaVersion = firma;
       }
@@ -1779,7 +2187,7 @@ async function refrescar() {
   cargarInventario();
   cargarVentas();
   cargarAjustes();
-  aplicarRuta();
+  aplicarRuta();          // con la tabla ya cargada (comparador, ficha)
 }
 
 // ---------- selector de mercado ----------
@@ -1787,6 +2195,7 @@ $("sel-mercado").addEventListener("change", async (ev) => {
   mercadoActual = ev.target.value;
   guardado.escribir(mercadoActual);
   filasTabla = []; firmaVersion = null; inventario = null; ventas = null; pintarTabla();
+  profesiones = null; datosRecetas = null; recetaAbierta = null; fabricacionCache.clear(); pintarReceta(null);
   // Al cambiar de mercado la ficha abierta deja de valer (otro mercado = otros datos).
   objetoActual = null;
   $("det-titulo").textContent = "Ficha del objeto";
