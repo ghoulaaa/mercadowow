@@ -6,7 +6,7 @@ import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompl
 import { leerRuta } from "./ruta.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
-import { ESTADO, POR_PAGINA, paginas, paramsMercado, segmentosSpark } from "./mercado.js";
+import { ESTADO, MAX_IDS, POR_PAGINA, leerIds, paginas, paramsMercado, segmentosSpark } from "./mercado.js";
 
 // ---------- utilidades ----------
 const $ = (id) => document.getElementById(id);
@@ -216,7 +216,7 @@ function pintarPie() {
   } else if (ultimo?.mercado?.proveedor === "TSM") {
     pie.append(el("span", "", "Precios: archivo público de TradeSkillMaster"));
   }
-  const cobertura = pagina ? ` · catálogo: ${pagina.total_catalogo.toLocaleString("es")} objetos conocidos (no es el total del juego)` : "";
+  const cobertura = pagina ? ` · ${pagina.total_catalogo.toLocaleString("es")} objetos en el catálogo (no es el total del juego)` : "";
   pie.append(el("span", "muted", ` · precios en oro (o), plata (p) y cobre (c) · nombres en inglés${cobertura}`));
 }
 
@@ -527,6 +527,63 @@ $("btn-limpiar").addEventListener("click", () => {
   $("buscador").value = "";
   pintarCalidades();
   repintar();
+});
+
+// ---------- catálogo: cobertura medida e importación verificable de IDs ----------
+function pintarCobertura(c) {
+  if (!c) return;
+  const n = (x) => (x ?? 0).toLocaleString("es");
+  $("cat-total").textContent = n(c.catalogo);
+  const dl = $("cat-cobertura");
+  dl.replaceChildren();
+  const fila = (k, v, ayuda) => { const dt = el("dt", "", k); if (ayuda) dt.title = ayuda; dl.append(dt, el("dd", "", v)); };
+  fila("En el catálogo", n(c.catalogo), `Objetos con ficha verificada (${c.fuente})`);
+  fila("Vistos en subasta", n(c.por_origen.mercado), "Aparecieron en algún escaneo de un mercado real");
+  fila("De recetas", n(c.por_origen.receta), `Materiales o resultados de recetas de AHledger (${n(c.por_origen.solo_receta)} solo por recetas)`);
+  if (c.por_origen.importacion) fila("Importados", n(c.por_origen.importacion), "Añadidos por ID desde aquí");
+  if (c.pendientes) fila("Por verificar", n(c.pendientes), "En cola: se comprueban con AHledger cada 5 minutos, por lotes");
+  if (c.sin_ficha_en_fuente) fila("Sin ficha en la fuente", n(c.sin_ficha_en_fuente), "AHledger no tiene ese ID: no se añaden");
+  const nota = el("dd", "nota", "No es el total del juego: ninguna fuente permitida publica la lista completa.");
+  dl.append(nota);
+}
+
+let coberturaPedida = false;
+async function cargarCobertura() {
+  try {
+    const r = await fetch("/api/cobertura", { cache: "no-store" });
+    if (r.ok) pintarCobertura(await r.json());
+  } catch { /* se queda como está */ }
+}
+$("grupo-catalogo").addEventListener("toggle", () => {
+  if ($("grupo-catalogo").open && !coberturaPedida) { coberturaPedida = true; cargarCobertura(); }
+});
+
+$("ids-archivo").addEventListener("change", async () => {
+  const f = $("ids-archivo").files[0];
+  if (f) $("ids-texto").value = await f.text();
+});
+$("form-ids").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("ids-msg");
+  const { ids, errores } = leerIds($("ids-texto").value);
+  msg.hidden = false;
+  if (!ids.length) { msg.className = "small bad"; msg.textContent = errores[0] ?? "Escribe al menos un ID."; return; }
+  if (ids.length > MAX_IDS) { msg.className = "small bad"; msg.textContent = `Máximo ${MAX_IDS} IDs por importación.`; return; }
+  try {
+    const r = await fetch("/api/cobertura", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    pintarCobertura(d.cobertura);
+    msg.className = "small ok";
+    msg.textContent = `${d.validos} IDs recibidos: ${d.ya_en_catalogo} ya estaban, ${d.nuevos_en_cola} nuevos en cola para verificar con AHledger.` +
+      (errores.length ? ` ${errores.length} no eran IDs (${errores.slice(0, 2).join("; ")}${errores.length > 2 ? "…" : ""}).` : "");
+    $("ids-texto").value = ""; $("ids-archivo").value = "";
+  } catch (e) {
+    msg.className = "small bad";
+    msg.textContent = "No se pudieron añadir: " + e.message;
+  }
 });
 
 // ---------- barra lateral en el móvil ----------
@@ -978,6 +1035,7 @@ async function refrescar() {
   if (!(await cargar())) return;
   aplicarRuta();          // un objeto pedido en la dirección se abre sin esperar a la tabla
   await cargarPagina();
+  cargarCobertura();      // contador del panel «Catálogo» (sin bloquear la tabla)
 }
 
 // ---------- acceso ----------

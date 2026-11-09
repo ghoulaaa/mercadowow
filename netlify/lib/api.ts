@@ -484,6 +484,25 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Cobertura del catálogo (GET) e importación verificable de IDs (POST {ids: number[]}). */
+    async cobertura(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") return json(200, await llamar(db, "select cobertura_catalogo('forever') as r", []));
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 100_000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!Array.isArray(c?.ids) || !c.ids.length || c.ids.length > 5000 || !c.ids.every((x: unknown) => Number.isInteger(x) && Math.abs(x as number) < 2 ** 31)) {
+          return json(400, { error: "ids debe ser una lista de 1 a 5000 números enteros" });
+        }
+        return json(200, await llamar(db, "select solicitar_catalogo('forever', $1::integer[], $2::timestamptz) as r",
+          [c.ids, ahora().toISOString()]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Tabla del Mercado paginada sobre todo el catálogo (V2): filtros, orden y página en la base de datos. */
     async mercado(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

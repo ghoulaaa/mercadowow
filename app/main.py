@@ -325,6 +325,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("Fallo al leer categorías: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
 
+    @app.get("/api/cobertura")
+    def cobertura():
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select cobertura_catalogo('forever') as r").fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer la cobertura: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/cobertura")
+    def solicitar_catalogo(c: dict = Body(...)):
+        ids = c.get("ids")
+        if (not isinstance(ids, list) or not 1 <= len(ids) <= 5000
+                or not all(isinstance(x, int) and not isinstance(x, bool) and abs(x) < 2**31 for x in ids)):
+            return JSONResponse(status_code=400, content={"error": "ids debe ser una lista de 1 a 5000 números enteros"})
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                r = conn.execute("select solicitar_catalogo('forever', %s::integer[]) as r", (ids,)).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al importar IDs: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        log.info("IDs pedidos para el catálogo: %s", len(ids))
+        return r
+
     @app.get("/api/mercado")
     def mercado(request: Request, mercado: str | None = Query(default=None, max_length=100)):
         p = {k: v[:80] for k, v in request.query_params.items()

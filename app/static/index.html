@@ -79,6 +79,19 @@
         <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>
       </div>
 
+      <details class="lat-grupo lat-catalogo" id="grupo-catalogo">
+        <summary><span class="lat-tit">Catálogo</span> <span id="cat-total" class="arbol-n"></span></summary>
+        <dl id="cat-cobertura" class="cobertura"></dl>
+        <form id="form-ids" class="form-ids" autocomplete="off">
+          <label for="ids-texto" class="lab">Añadir objetos por ID</label>
+          <textarea id="ids-texto" rows="3" placeholder="2589, 19019… o enlaces de Wowhead"
+                    title="IDs separados por comas o líneas, un CSV con columna itemId o enlaces «…/item=ID». Cada uno se comprueba con AHledger antes de añadirlo."></textarea>
+          <input id="ids-archivo" type="file" accept=".csv,.txt,text/csv,text/plain" aria-label="Archivo CSV o de texto con IDs">
+          <button type="submit" class="btn btn-piedra btn-small">Añadir</button>
+          <p id="ids-msg" class="small" role="status" hidden></p>
+        </form>
+      </details>
+
       <button id="btn-salir" type="button" class="btn-salir" hidden>
         <svg aria-hidden="true"><use href="#i-salir" /></svg>Salir</button>
     </aside>

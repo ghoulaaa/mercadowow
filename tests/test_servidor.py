@@ -79,12 +79,12 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:18] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:19] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
                            "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
                            "0015_recetas.sql", "0016_recetas_cron.sql", "0017_mercado_pagina.sql",
-                           "0018_evidencia.sql"]
+                           "0018_evidencia.sql", "0019_catalogo_ampliado.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -468,6 +468,12 @@ def test_recetas_valida(cliente, q):
 
 def test_mercado_valida(cliente):
     assert cliente.get("/api/mercado", params={"solo_ofertas": "quizas"}).status_code == 400
+
+
+@pytest.mark.parametrize("cuerpo", [{}, {"ids": []}, {"ids": ["2589"]}, {"ids": [True]}, {"ids": [2**40]},
+                                    {"ids": list(range(1, 5002))}])
+def test_importar_ids_valida(cliente, cuerpo):
+    assert cliente.post("/api/cobertura", json=cuerpo).status_code == 400
 
 
 def test_mercado_js_se_sirve(cliente):

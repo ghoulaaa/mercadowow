@@ -60,7 +60,12 @@ motor, el historial y las recetas **se conservan**.
    - Etiqueta «Vender», «Guardar» o «Esperar» («EN OBSERVACIÓN» pasa a llamarse «Esperar») y «Ver motivo» desplegable.
    - Desplegables con propiedades, recetas y profesiones; enlace discreto a Wowhead.
    - Sugerencias del buscador con icono y calidad (el manejo de Tab, flechas y Escape ya cumple la especificación).
-4. **V4 · Ampliar y medir el catálogo:**
+4. **V4 · Ampliar y medir el catálogo** ✅ (2026-11-09; migración 0019):
+   - **Cola del catálogo:** junta los objetos vistos en subasta, los de las recetas y los IDs importados.
+   - **Verificación:** cada ID se comprueba con AHledger antes de entrar. Si la fuente no lo tiene, queda contado como «sin ficha en la fuente».
+   - **Cobertura medida al aplicar:** 6.602 objetos conocidos, de ellos 5.041 vistos en subasta y 2.614 citados en recetas (1.561 solo por recetas). En el catálogo había 5.042, con 1.560 pendientes; pg_cron los completa en lotes de 150 cada 5 min.
+   - **Importación:** panel «Catálogo» en la barra lateral, que acepta IDs, un CSV con columna itemId o enlaces de Wowhead.
+   - **Blizzard:** no se ha hecho porque no hay credenciales; queda opcional.
    - Alta de los 1.562 objetos de las recetas desde AHledger.
    - Importación verificable por CSV.
    - Recuento de cobertura por fuente.

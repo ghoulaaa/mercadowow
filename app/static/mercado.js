@@ -32,6 +32,40 @@ export function paramsMercado(f) {
   return p;
 }
 
+export const MAX_IDS = 5000;
+
+/**
+ * IDs de objeto a importar desde un texto: un CSV con columna itemId / item_id / id, una lista
+ * separada por comas, espacios o saltos de línea, o enlaces de Wowhead («…/item=2589»).
+ * Lo que no es un ID se devuelve como error (con su línea); los repetidos se cuentan una vez.
+ * @returns {{ids: number[], errores: string[]}}
+ */
+export function leerIds(texto) {
+  const lineas = String(texto ?? "").replace(/^﻿/, "").split(/\r?\n/);
+  const errores = [];
+  const ids = new Set();
+  const valido = (s) => /^\d{1,9}$/.test(s) && Number(s) > 0;
+  // CSV con cabecera: se usa solo la columna del ID.
+  const cab = lineas[0]?.split(/[;,\t]/).map((c) => c.trim().replace(/^"|"$/g, "").toLowerCase()) ?? [];
+  const col = cab.findIndex((c) => ["itemid", "item_id", "id"].includes(c));
+  if (col >= 0 && cab.length > 1) {
+    lineas.slice(1).forEach((l, k) => {
+      if (!l.trim()) return;
+      const v = (l.split(/[;,\t]/)[col] ?? "").trim().replace(/^"|"$/g, "");
+      if (valido(v)) ids.add(Number(v)); else errores.push(`Línea ${k + 2}: «${v || l.trim()}» no es un ID`);
+    });
+    return { ids: [...ids], errores };
+  }
+  lineas.forEach((l, k) => {
+    for (const trozo of l.split(/[\s,;]+/).filter(Boolean)) {
+      const enlace = trozo.match(/item=(\d{1,9})/);
+      const v = enlace ? enlace[1] : trozo.replace(/^#/, "");
+      if (valido(v)) ids.add(Number(v)); else errores.push(`Línea ${k + 1}: «${trozo}» no es un ID`);
+    }
+  });
+  return { ids: [...ids], errores };
+}
+
 /** Número de páginas (al menos 1). */
 export const paginas = (total, porPagina = POR_PAGINA) => Math.max(1, Math.ceil((total || 0) / porPagina));
 
