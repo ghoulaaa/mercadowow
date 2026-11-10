@@ -7,7 +7,7 @@
   <title>Casa de Subastas — WoW Forever</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -43,7 +43,7 @@
       </nav>
 
       <div class="lat-grupo" id="grupo-mercado">
-        <span class="lat-tit">Reino</span>
+        <span class="lat-tit">Reino y facción</span>
         <div class="sel-mercado">
           <label><span class="sr-only">Región</span>
             <select id="sel-region" title="Región"></select></label>
@@ -57,12 +57,12 @@
       </div>
 
       <details class="lat-grupo plegable" id="grupo-cat" open>
-        <summary><span class="lat-tit">Categoría</span></summary>
+        <summary><span class="lat-tit">Categorías</span></summary>
         <ul id="arbol-cat" class="arbol" aria-label="Categorías"></ul>
       </details>
 
       <details class="lat-grupo plegable" id="grupo-prof">
-        <summary><span class="lat-tit">Profesión</span></summary>
+        <summary><span class="lat-tit">Profesiones</span></summary>
         <label class="check">
           <input id="f-materiales" type="checkbox"> Materiales <span id="n-materiales" class="arbol-n"></span></label>
         <ul id="familias" class="arbol arbol-familias" aria-label="Familias de materiales" hidden></ul>
@@ -238,7 +238,7 @@
       <section id="vista-mercado" class="resultados" aria-labelledby="titulo-resultados" hidden>
         <div id="avisos-alertas" class="avisos-alertas" role="status" hidden></div>
         <div class="res-cab">
-          <h1 id="titulo-resultados">Todos los objetos</h1>
+          <h1 id="titulo-resultados">Mercado</h1>
           <span id="contador" class="muted small" aria-live="polite"></span>
           <button id="btn-favoritos" type="button" class="btn-alterna" aria-pressed="false" title="Solo favoritos">
             <svg aria-hidden="true"><use href="#i-estrella" /></svg><span>Favoritos</span></button>
@@ -305,10 +305,10 @@
               <tr>
                 <th scope="col" aria-sort="none"><button type="button" class="th-orden" data-orden="nombre">Objeto</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra mínima por unidad en el último escaneo">Precio<span class="sr-only"> por unidad (compra mínima)</span></button></th>
-                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Cantidad</button></th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Disponible</button></th>
                 <th scope="col" class="num c-margen" aria-sort="none"><button type="button" class="th-orden" data-orden="margen" title="Estimación por unidad: valor de mercado menos la comisión de la subasta, menos la compra mínima. Si el NPC paga más, venta al NPC menos la compra mínima.">Margen</button></th>
-                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Frente a la observación de hace 24 h">24 h</button></th>
-                <th scope="col" class="c-spark" title="Compra mínima más baja de cada tramo de 6 h, últimos 7 días">7 días</th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Compra mínima frente a la de hace 24 h"><span class="th-largo">Variación (</span>24 h<span class="th-largo">)</span></button></th>
+                <th scope="col" class="c-spark" title="Compra mínima más baja de cada tramo de 6 h, últimos 7 días">Tendencia</th>
               </tr>
             </thead>
             <tbody id="tbody"></tbody>

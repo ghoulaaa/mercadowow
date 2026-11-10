@@ -64,9 +64,22 @@ function iconoNodo(url, nombre, calidad, grande = false) {
 function monedaNodo(cobre) {
   const span = el("span", "moneda");
   if (cobre == null) { span.textContent = "—"; span.classList.add("desconocido"); return span; }
+  const NOMBRE = { o: "oro", p: "plata", c: "cobre" };
+  const texto = [];
   for (const parte of formatearMoneda(cobre).split(" ")) {
-    span.append(el("span", { o: "o", p: "p", c: "c" }[parte.slice(-1)] ?? "", parte), " ");
+    const u = parte.slice(-1), n = parte.slice(0, -1);
+    const caja = el("span", "parte");
+    caja.append(el("span", "n", n));
+    const moneda = el("span", `coin coin-${u}`);
+    moneda.setAttribute("aria-hidden", "true");
+    caja.append(moneda);
+    span.append(caja);
+    texto.push(`${n} ${NOMBRE[u] ?? u}`);
   }
+  // Lectores de pantalla y tooltip: «12 oro 47 plata»; a la vista, cifra y moneda.
+  span.setAttribute("role", "img");
+  span.setAttribute("aria-label", texto.join(" "));
+  span.title = formatearMoneda(cobre);
   return span;
 }
 
@@ -220,7 +233,7 @@ function pintarEstadoDato() {
   const viejo = a.hora_dato_original && (Date.now() - new Date(a.hora_dato_original)) > 8 * 3600e3;
   const fallos = a.fallos_seguidos > 0;
   // Compacto: antigüedad del escaneo y, si algo falla, una marca. El detalle completo, al pulsarlo.
-  e.replaceChildren(el("span", "", `${sinConexion ? "Sin conexión · " : ""}${PROVEEDOR[m.proveedor?.toLowerCase()] ?? m.proveedor ?? ""} · ${hace(a.hora_dato_original)}`));
+  e.replaceChildren(el("span", "", sinConexion ? "Sin conexión · " : ""), el("span", "estado-pref", "Datos: "), hace(a.hora_dato_original));
   if (fallos) e.append(el("span", "", " · fallo"));
   e.className = "estado-dato" + (viejo && !m.ficticio ? " viejo" : "") + (fallos || sinConexion ? " bad" : "");
   $("btn-reintentar").hidden = !(sinConexion || fallos);
@@ -369,7 +382,7 @@ function celdaVariacion(x) {
 const NS = "http://www.w3.org/2000/svg";
 /** Minigráfico de 7 días: una línea por tramo continuo; los periodos sin escaneos quedan en blanco. */
 function celdaSpark(x) {
-  const td = el("td", "c-spark");
+  const td = el("td", "c-spark" + (x.var24 > 0.05 ? " sube" : x.var24 < -0.05 ? " baja" : ""));
   const segs = segmentosSpark(x.spark);
   const pts = segs.flat();
   if (pts.length < 2) { td.textContent = pts.length ? "·" : ""; return td; }
@@ -399,7 +412,7 @@ function celdaSpark(x) {
 }
 
 function celdaPrecio(x) {
-  const td = el("td", "num");
+  const td = el("td", "num c-precio");
   if (x.estado === "con_ofertas") {
     td.append(monedaNodo(x.precio));
   } else {
@@ -479,7 +492,14 @@ function pintarTabla() {
     const tdCant = el("td", "num c-cant");
     tdCant.append(x.cantidad == null ? sinDato(x.estado === "con_ofertas" ? "La fuente no publica la cantidad" : "Sin datos")
       : document.createTextNode(x.cantidad.toLocaleString("es")));
-    tr.append(tdObj, celdaPrecio(x), tdCant, celdaMargen(x), celdaVariacion(x), celdaSpark(x));
+    const tdPrecio = celdaPrecio(x);
+    // En tablas estrechas la variación va bajo el precio (su columna se oculta): la misma cifra, otra posición.
+    if (x.var24 != null) {
+      const mini = el("span", "var-mini " + (x.var24 > 0.05 ? "sube" : x.var24 < -0.05 ? "baja" : "igual"),
+        `${x.var24 > 0.05 ? "▲" : x.var24 < -0.05 ? "▼" : "▬"} ${formatearPct(x.var24)}`);
+      tdPrecio.append(mini);
+    }
+    tr.append(tdObj, tdPrecio, tdCant, celdaMargen(x), celdaVariacion(x), celdaSpark(x));
     frag.append(tr);
   }
   tbody.replaceChildren(frag);
@@ -501,7 +521,7 @@ function pintarTabla() {
   if ($("f-region").value) partes.push(`se vende en la región (≥ ${$("f-region").value}/día)`);
   if ($("f-lista").value) partes.unshift(`Lista «${misListas.find((l) => String(l.id) === $("f-lista").value)?.nombre ?? "?"}»`);
   const tit = partes.join(" · ");
-  $("titulo-resultados").textContent = tit ? tit[0].toUpperCase() + tit.slice(1) : "Todos los objetos";
+  $("titulo-resultados").textContent = tit ? tit[0].toUpperCase() + tit.slice(1) : "Mercado";
   // Oportunidades: cuántas hay con los demás filtros, y el aviso de que el dato puede ir con retraso.
   for (const o of $("f-oportunidad").options) {
     const n = d?.oportunidades?.[o.value];
@@ -1387,7 +1407,7 @@ new ResizeObserver(() => {
 
 // ---------- barra lateral en el móvil ----------
 const estrecho = () => window.matchMedia("(max-width: 900px)").matches;
-const detalleSuperpuesto = () => window.matchMedia("(max-width: 1279px)").matches;
+const detalleSuperpuesto = () => window.matchMedia("(max-width: 1339px)").matches;
 function abrirLateral() {
   $("lateral").classList.add("abierta"); $("velo-lateral").hidden = false;
   $("btn-lateral").setAttribute("aria-expanded", "true");
@@ -1470,8 +1490,26 @@ function cabeceraObjeto(f) {
     return b;
   };
   const acciones = el("div", "det-acciones");
-  if (es) acciones.append(copiar("Nombre", es, `Copiar el nombre: ${es}`), copiar("Inglés", f.nombre, `Copiar el nombre en inglés: ${f.nombre}`));
-  else if (!sinFicha(f.nombre)) acciones.append(copiar("Nombre", f.nombre, `Copiar el nombre: ${f.nombre}`));
+  // Favorito: el mismo que la estrella de la fila (lista «Favoritos»).
+  const fav = el("button", "btn-mini");
+  fav.type = "button";
+  const pintarFav = () => {
+    const marcado = favoritos.has(f.id);
+    fav.setAttribute("aria-pressed", String(marcado));
+    fav.replaceChildren();
+    fav.insertAdjacentHTML("afterbegin", '<svg aria-hidden="true"><use href="#i-estrella" /></svg>');
+    fav.append("Favorito");
+    fav.setAttribute("aria-label", marcado ? "Quitar de favoritos" : "Añadir a favoritos");
+  };
+  pintarFav();
+  fav.addEventListener("click", async () => {
+    fav.disabled = true;
+    try { await alternarFavorito(f.id, nom(f.id, f.nombre)); pintarFav(); }
+    catch (e) { avisar("No se pudo guardar el favorito: " + e.message, "bad"); }
+    finally { fav.disabled = false; }
+  });
+  acciones.append(fav);
+  if (!sinFicha(f.nombre)) acciones.append(copiar("Nombre", es ?? f.nombre, `Copiar el nombre: ${es ?? f.nombre}`));
   acciones.append(copiar(`#${f.id}`, String(f.id), `Copiar el ID ${f.id}`));
   if (f.wowhead_url) {
     const a = el("a", "btn-mini wowhead", "Wowhead ↗");
@@ -1718,7 +1756,7 @@ function bloquePreciosCompleto(f) {
       : m.columna === "sales_per_day" ? v.toLocaleString("es", { maximumFractionDigits: v >= 10 ? 0 : 1 })
       : monedaNodo(v);
     const c = cifra(m.nombre, valor, `${m.significado} (${m.clave_fuente} · ${origen})`,
-      m.columna === "min_buyout" ? "principal" : "");
+      m.columna === "min_buyout" ? "principal" : m.columna === "market_value" || m.columna === "median" ? "precio-grande" : "");
     grid.append(METRICAS_PRINCIPALES.has(m.columna) ? marcar(c) : c);
   }
   if (x) {
@@ -1840,11 +1878,20 @@ function bloqueQueHacer(f) {
   if (s.accion === "sin_datos") return null;
   const caja = el("section", "que-hacer");
   caja.setAttribute("aria-label", "Qué hacer con este objeto");
-  const titulo = s.accion === "publicar" ? `Publicar a ${formatearMoneda(s.precio)}`
-    : s.accion === "esperar" ? "Esperar"
-    : `Vender al NPC: ${formatearMoneda(s.ventaNpc)}`;
-  caja.append(el("p", `qh-accion ${s.accion}`, titulo), el("p", "qh-motivo", textoMotivo(s, formatearMoneda, perfilSubasta)));
-  if (s.accion === "npc" && s.accionSubasta === "publicar") {
+  // Sin evidencia suficiente (la recomendación dice «Sin datos suficientes»), no se presenta un precio
+  // como si estuviera respaldado: solo el cálculo de la banda, marcado como orientativo.
+  if (f.__sinEvidencia) {
+    caja.classList.add("sin-evidencia");
+    caja.append(el("p", "qh-accion", "Sin datos suficientes para sugerir un precio"),
+      el("p", "qh-motivo", "Falta historial de este mercado. El cálculo con la banda es solo orientativo."));
+  } else {
+    const titulo = s.accion === "publicar" ? `Publicar a ${formatearMoneda(s.precio)}`
+      : s.accion === "esperar" ? "Esperar"
+      : `Vender al NPC: ${formatearMoneda(s.ventaNpc)}`;
+    caja.append(el("p", `qh-accion ${s.accion}`, titulo), el("p", "qh-motivo", textoMotivo(s, formatearMoneda, perfilSubasta)));
+  }
+  if (f.__sinEvidencia) { /* sin explicaciones de una sugerencia que no se da */ }
+  else if (s.accion === "npc" && s.accionSubasta === "publicar") {
     caja.append(el("p", "qh-motivo", `En subasta a ${formatearMoneda(s.precio)} recibirías ${formatearMoneda(s.neto)} tras la comisión: no supera al NPC.`));
   } else if (s.accion === "npc" && s.accionSubasta === "esperar") {
     caja.append(el("p", "qh-motivo", `Tu mínimo (${formatearMoneda(s.banda.min)}) no supera lo que paga el NPC: vender al NPC ya no es peor.`));
@@ -1853,13 +1900,14 @@ function bloqueQueHacer(f) {
   const casa = `${perfilSubasta.tipo_casa === "faccion" ? "casa de facción" : "casa neutral"}, ${perfilSubasta.duracion} h`;
   // Lo esencial a la vista; las cifras y las advertencias, en «Ver motivo».
   const detalle = el("details", "motivo");
-  detalle.append(el("summary", "", "Ver cálculo"));
+  detalle.append(el("summary", "", f.__sinEvidencia ? "Ver cálculo orientativo" : "Ver cálculo"));
   caja.append(detalle);
+  const conPrecio = !f.__sinEvidencia;   // puja, neto y depósito dependen del precio sugerido
   detalle.append(kv([
     ["Banda", s.banda ? `${formatearMoneda(s.banda.min)} · ${formatearMoneda(s.banda.normal)} · ${formatearMoneda(s.banda.max)}` : null],
-    ["Puja", s.puja != null && s.precio != null ? formatearMoneda(s.puja) : null],
-    ["Neto tras comisión", s.neto != null ? `${formatearMoneda(s.neto)} (comisión ${formatearMoneda(s.comision)}, ${casa})` : null],
-    ["Depósito", s.deposito != null ? `${formatearMoneda(s.deposito)}: se devuelve si se vende, se pierde si caduca` : null],
+    ["Puja", conPrecio && s.puja != null && s.precio != null ? formatearMoneda(s.puja) : null],
+    ["Neto tras comisión", conPrecio && s.neto != null ? `${formatearMoneda(s.neto)} (comisión ${formatearMoneda(s.comision)}, ${casa})` : null],
+    ["Depósito", conPrecio && s.deposito != null ? `${formatearMoneda(s.deposito)}: se devuelve si se vende, se pierde si caduca` : null],
     ["El NPC paga", s.ventaNpc != null ? formatearMoneda(s.ventaNpc) : null],
   ]));
   const nota = el("p", "muted small",
@@ -2062,6 +2110,7 @@ async function bloqueRecomendacion(id) {
     const d = await r.json();
     const l = d.lectura;
     const rec = el("div", "det-rec");
+    rec.dataset.evidencia = l.evidencia === false ? "no" : "si";
     if (d.ficticio) rec.append(el("span", "banda-mini", "DATOS FICTICIOS"));
     // Sin evidencia (historial corto, dato antiguo…) no hay etiqueta: no se recomienda nada.
     if (l.evidencia === false) rec.append(el("span", "etiqueta sin-evidencia", "Sin datos suficientes"));
@@ -2111,10 +2160,15 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     if (n !== objetoN) return;
     $("det-titulo").textContent = nom(f.id, f.nombre);
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
+    // Sin recomendación respaldada (o sin poder pedirla), «Qué hacer» no da un precio como si lo estuviera.
+    f.__sinEvidencia = !rec || rec.dataset.evidencia === "no";
+    // Un solo aviso de «sin datos suficientes» (el de «Qué hacer»); la etiqueta repetida se quita y queda «Ver motivo».
+    if (f.__sinEvidencia) rec?.querySelector(".etiqueta.sin-evidencia")?.remove();
     fichaActual = f;
     // Primero lo esencial: objeto, precio y disponibilidad, gráfico y una recomendación breve.
     cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f),
-      f.estado === "sin_datos" ? null : seccionGrafico(id), rec, bloqueQueHacer(f),
+      f.estado === "sin_datos" ? null : seccionGrafico(id),
+      ...(f.__sinEvidencia ? [bloqueQueHacer(f), rec] : [rec, bloqueQueHacer(f)]),
       seccionListasAlertas(f), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
     if (abiertos) {
       for (const d of cuerpo.querySelectorAll("details")) {
@@ -2145,7 +2199,7 @@ function aplicarRuta() {
   }
 }
 window.addEventListener("hashchange", aplicarRuta);
-window.matchMedia("(max-width: 1279px)").addEventListener("change", () => {
+window.matchMedia("(max-width: 1339px)").addEventListener("change", () => {
   if (!$("panel-ficha").hidden) $("velo-detalle").hidden = !detalleSuperpuesto();
 });
 
@@ -2387,7 +2441,7 @@ $("btn-actualizar").addEventListener("click", async () => {
       body: JSON.stringify({ mercado: ultimo?.mercado?.clave }),
     });
     const d = await r.json();
-    avisar(d.mensaje || d.error || "Hecho", r.ok ? "" : "bad");
+    if (!r.ok || d.ok === false) avisar(d.error || d.mensaje || "No se pudo actualizar", "bad");
     rapidoHasta = Date.now() + 3 * 60_000;   // vigilar cada 5 s durante 3 min
   } catch (e) {
     avisar("No se pudo pedir la actualización: " + e.message, "bad");

@@ -114,8 +114,9 @@ export function dibujarGrafico(cont, datos) {
   ].filter((s) => s.nombre && pts.some((p) => p[s.i] != null));
   const paso = datos.pasoMs ?? pasoTipico(pts.map((p) => p[0]));
 
-  const W = Math.max(280, cont.clientWidth || 600), H = 220;
-  const m = { izq: 54, der: 104, arr: 12, aba: 26 };
+  // Más alto y sin nombres al final de las líneas (la leyenda de debajo ya los dice): todo el ancho para el gráfico.
+  const W = Math.max(280, cont.clientWidth || 600), H = 260;
+  const m = { izq: 58, der: 12, arr: 14, aba: 30 };
   const valores = pts.flatMap((p) => series.map((s) => p[s.i])).filter((v) => v != null);
   for (const r of [datos.med7, datos.med30]) if (r != null) valores.push(r);
   const { svg, X, Y, x0, x1 } = lienzo({ W, H, pts, valores, m, formatoEje: monedaCorta,
@@ -127,7 +128,8 @@ export function dibujarGrafico(cont, datos) {
     svg.append(el("rect", { x: X(a), y: m.arr, width: Math.max(1, X(b) - X(a)), height: H - m.arr - m.aba, class: "g-hueco" }));
   }
 
-  const nX = Math.min(5, pts.length);
+  // Tantas fechas como quepan sin pisarse (~80 px cada una).
+  const nX = Math.max(2, Math.min(5, pts.length, Math.floor((W - m.izq - m.der) / 80)));
   const conHora = x1 - x0 < 2 * 86400e3;
   for (let k = 0; k < nX; k++) {
     const t = x0 + ((x1 - x0) * k) / (nX - 1);
@@ -135,10 +137,11 @@ export function dibujarGrafico(cont, datos) {
       new Date(t).toLocaleString("es", conHora ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short" })));
   }
 
-  for (const [v, etiqueta] of [[datos.med30, "mediana 30 d"], [datos.med7, "mediana 7 d"]]) {
+  // Medianas de referencia: solo las líneas (7 d discontinua, 30 d punteada); nombre y valor van en la leyenda,
+  // así ninguna etiqueta se monta sobre las líneas de precio.
+  for (const [v, clase] of [[datos.med30, "med30"], [datos.med7, "med7"]]) {
     if (v == null) continue;
-    svg.append(el("line", { x1: m.izq, x2: W - m.der, y1: Y(v), y2: Y(v), class: "g-ref" }));
-    svg.append(el("text", { x: m.izq + 4, y: Y(v) - 4, class: "g-eje" }, etiqueta));
+    svg.append(el("line", { x1: m.izq, x2: W - m.der, y1: Y(v), y2: Y(v), class: `g-ref ${clase}` }));
   }
 
   const finales = [];
@@ -154,7 +157,7 @@ export function dibujarGrafico(cont, datos) {
   }
   finales.sort((a, b) => a.y - b.y);
   for (let k = 1; k < finales.length; k++) if (finales[k].y - finales[k - 1].y < 14) finales[k].y = finales[k - 1].y + 14;
-  for (const f of finales) svg.append(el("text", { x: W - m.der + 6, y: f.y + 4, class: "g-etiqueta" }, f.s.nombre));
+  void finales;   // los nombres de las series van en la leyenda (antes, al final de cada línea)
 
   const cruz = el("line", { y1: m.arr, y2: H - m.aba, class: "g-cruz", visibility: "hidden" });
   const puntosHover = series.map((s) => el("circle", { r: 4, class: `g-punto ${s.clase}`, visibility: "hidden" }));
@@ -202,9 +205,10 @@ export function dibujarGrafico(cont, datos) {
     it.append(html("span", `g-tip-marca ${s.clase}`), s.nombre);
     leyenda.append(it);
   }
-  if (datos.med7 != null || datos.med30 != null) {
+  for (const [v, clase, nombre] of [[datos.med7, "med7", "Mediana 7 d"], [datos.med30, "med30", "Mediana 30 d"]]) {
+    if (v == null) continue;
     const ref = html("span");
-    ref.append(html("span", "g-tip-marca g-ref-marca"), "Medianas propias (referencia)");
+    ref.append(html("span", `g-tip-marca g-ref-marca ${clase}`), `${nombre}: ${monedaCorta(v)}`);
     leyenda.append(ref);
   }
   if (huecos.length) {
@@ -219,13 +223,13 @@ export function dibujarGrafico(cont, datos) {
   // Cantidad publicada: gráfico aparte (otra unidad → otra escala, nunca doble eje).
   const cant = (datos.cantidad || []).filter(([, q]) => q != null);
   if (cant.length >= 2) {
-    const Hq = 90, mq = { izq: 54, der: 104, arr: 8, aba: 8 };
+    const Hq = 100, mq = { izq: 58, der: 12, arr: 8, aba: 8 };   // mismos márgenes que el de precios
     const c = lienzo({ W, H: Hq, pts: cant, valores: cant.map(([, q]) => q), m: mq,
       formatoEje: (v) => v.toLocaleString("es", { notation: "compact" }), aria: "Unidades publicadas" });
     let d = "";
     for (const tr of tramos(cant, 1, paso).tramos) tr.forEach(([t, q], k) => { d += `${k ? "L" : "M"}${c.X(t).toFixed(1)},${c.Y(q).toFixed(1)}`; });
     c.svg.append(el("path", { d, class: "g-linea g-cantidad" }));
-    c.svg.append(el("text", { x: W - mq.der + 6, y: mq.arr + 10, class: "g-etiqueta" }, "Unidades"));
+    // El subtítulo de debajo ya dice qué es: sin etiqueta dentro del gráfico.
     const t = html("div", "g-subtitulo muted small", "Unidades publicadas en cada escaneo");
     cont.append(t, c.svg);
   }
