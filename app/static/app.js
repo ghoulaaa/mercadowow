@@ -10,7 +10,7 @@ import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, paginas,
-  paramsMercado, segmentosSpark, sinFicha, textoReglaGanga, verMargen,
+  paramsMercado, segmentosSpark, sinFicha, textoReglaGanga, textoTasa, textoVentasDia, verMargen,
 } from "./mercado.js";
 
 // ---------- utilidades ----------
@@ -239,7 +239,7 @@ function leerFiltros() {
   const f = {
     texto: filtro.texto, categoria: filtro.categoria, subcategoria: filtro.subcategoria, calidad: filtro.calidad,
     profesion: filtro.profesion, rol: filtro.rol, materiales: $("f-materiales").checked, familia: filtro.familia,
-    soloOfertas: $("f-ofertas").checked, oportunidad: $("f-oportunidad").value, orden, dir, pagina: filtro.pagina,
+    soloOfertas: $("f-ofertas").checked, oportunidad: $("f-oportunidad").value, ventasRegion: $("f-region").value, orden, dir, pagina: filtro.pagina,
     nivel_min: enteroONull($("f-nivel-min").value), nivel_max: enteroONull($("f-nivel-max").value),
     precio_min: precioFiltro("f-precio-min", errores), precio_max: precioFiltro("f-precio-max", errores),
   };
@@ -449,13 +449,22 @@ function pintarTabla() {
   if (filtro.subcategoria) partes.push(filtro.subcategoria); else if (filtro.categoria) partes.push(nombreCat(filtro.categoria));
   if (filtro.texto) partes.push(`«${filtro.texto}»`);
   if ($("f-oportunidad").value) partes.unshift(NOMBRE_OPORTUNIDAD[$("f-oportunidad").value]);
-  $("titulo-resultados").textContent = partes.length ? partes.join(" · ") : "Todos los objetos";
+  if ($("f-region").value) partes.push(`se vende en la región (≥ ${$("f-region").value}/día)`);
+  const tit = partes.join(" · ");
+  $("titulo-resultados").textContent = tit ? tit[0].toUpperCase() + tit.slice(1) : "Todos los objetos";
   // Oportunidades: cuántas hay con los demás filtros, y el aviso de que el dato puede ir con retraso.
   for (const o of $("f-oportunidad").options) {
     const n = d?.oportunidades?.[o.value];
     if (o.value) o.textContent = NOMBRE_OPORTUNIDAD[o.value] + (n == null ? "" : ` (${n.toLocaleString("es")})`);
   }
   pintarAvisoOportunidad();
+  // Referencia regional: de cuándo es el archivo (o que todavía no hay ninguno).
+  const reg = d?.region;
+  $("f-region").disabled = !!d && !reg;
+  $("nota-region").hidden = !d;
+  $("nota-region").textContent = reg
+    ? `Región ${reg.region}, todos los reinos · archivo de TSM del ${new Date(reg.actualizado).toLocaleDateString("es")}`
+    : "Sin archivo regional importado para este mercado.";
   // Paginador.
   const n = paginas(total, d?.por_pagina ?? POR_PAGINA);
   $("paginador").hidden = !d || n < 2;
@@ -510,6 +519,7 @@ for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"])
   $(id).addEventListener("input", () => { clearTimeout(temporizadorFiltro); temporizadorFiltro = setTimeout(repintar, 300); });
 }
 $("f-ofertas").addEventListener("change", repintar);
+$("f-region").addEventListener("change", () => { repintar(); if (estrecho()) cerrarLateral(); });
 $("f-oportunidad").addEventListener("change", () => {
   // Al elegir una oportunidad, lo útil es ver primero la de mayor margen.
   if ($("f-oportunidad").value && !$("f-orden").value.startsWith("margen")) $("f-orden").value = "margen:desc";
@@ -671,6 +681,7 @@ $("btn-limpiar").addEventListener("click", () => {
   for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
   $("f-ofertas").checked = false;
   $("f-oportunidad").value = "";
+  $("f-region").value = "";
   $("f-materiales").checked = false;
   $("f-orden").value = "nombre:asc";
   $("buscador").value = "";
@@ -1150,6 +1161,32 @@ function seccionRecetas(id) {
   return sec;
 }
 
+/**
+ * Referencia regional (X3): datos de TODA la región según TSM. Van aparte porque no son de este reino
+ * ni de esta facción, y no entran en las recomendaciones.
+ */
+function seccionRegion(f) {
+  const est = f.region_estado;
+  if (!est) return null;   // mercado de demostración o sin archivo regional importado
+  const r = f.region;
+  const sec = seccion(`Región ${est.region} (no es PvP Horda)`, false);
+  if (!r) {
+    sec.append(el("p", "muted small", "El archivo regional de TSM no trae este objeto."));
+  } else {
+    sec.append(kv([
+      ["Venta media", r.venta_media == null ? "sin dato en la fuente" : monedaNodo(r.venta_media)],
+      ["Tasa de venta", textoTasa(r.tasa_venta) ?? "sin dato"],
+      ["Ventas por día", textoVentasDia(r.ventas_dia) ?? "sin dato"],
+      ["Valor de mercado regional", r.valor_mercado == null ? null : monedaNodo(r.valor_mercado)],
+      ["Histórico regional", r.historico == null ? null : monedaNodo(r.historico)],
+    ]));
+  }
+  sec.append(el("p", "muted small",
+    `Datos de todos los reinos de la región ${est.region} juntos, del archivo de TSM del ${fecha(est.actualizado)}. ` +
+    "Sirven de referencia; no cambian las recomendaciones, que solo usan los precios de PvP Horda."));
+  return sec;
+}
+
 function seccionPropiedades(f) {
   const sec = seccion("Propiedades");
   sec.append(kv([
@@ -1366,7 +1403,7 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
     fichaActual = f;
     cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f), bloqueQueHacer(f), rec,
-      f.estado === "sin_datos" ? null : seccionGrafico(id), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
+      f.estado === "sin_datos" ? null : seccionGrafico(id), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
     if (abiertos) {
       for (const d of cuerpo.querySelectorAll("details")) {
         if (abiertos.has(d.querySelector(":scope > summary")?.textContent)) d.open = true;

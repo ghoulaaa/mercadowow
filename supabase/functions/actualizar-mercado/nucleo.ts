@@ -480,6 +480,100 @@ export function leerRecetasAhledger(j: any, profesion: string, mercadoEsperado: 
   return { recetas, descartadas };
 }
 
+// ---------------------------------------------------------------------
+// Referencia regional (X3): archivo de TODA la región de TSM, una vez al día, en su propia tabla.
+// No son precios de PvP Horda: nunca se guardan en price_hourly.
+
+export const COLUMNAS_REGION = [
+  "itemId", "name", "marketValue", "historical", "avgSalePrice", "saleRate", "soldPerDay", "updatedAt",
+] as const;
+export const URL_REGION = "https://public-data.tradeskillmaster.com/forever/us/region/items.csv";
+
+export interface FilaRegion {
+  item_id: number; market_value: number | null; historical: number | null; avg_sale_price: number | null;
+  sale_rate: number | null; sold_per_day: number | null;
+}
+
+function decimal(valor: string, columna: string, linea: number, max: number): number | null {
+  if (valor === "") return null;
+  if (!/^\d+(\.\d+)?$/.test(valor)) throw new ErrorFormato(`Línea ${linea}: ${columna}=${JSON.stringify(valor)} no es un número`);
+  const n = Number(valor);
+  if (!(n <= max)) throw new ErrorFormato(`Línea ${linea}: ${columna}=${valor} fuera de rango`);
+  return n;
+}
+
+/** Valida y convierte el CSV regional de TSM. Si el formato cambia, falla en vez de guardar datos dudosos. */
+export function leerArchivoRegion(texto: string): { filas: FilaRegion[]; updatedAt: string; duplicadas: number } {
+  const tabla = parsearCsv(texto);
+  if (tabla.length === 0) throw new ErrorFormato("Archivo vacío");
+  const cabecera = tabla[0].map((c) => c.trim());
+  if (cabecera.join(",") !== COLUMNAS_REGION.join(",")) {
+    throw new ErrorFormato(`Columnas inesperadas: ${cabecera.join(",")} (se esperaba ${COLUMNAS_REGION.join(",")})`);
+  }
+  const porItem = new Map<number, FilaRegion>();
+  let updatedAt: string | null = null;
+  let total = 0;
+  const sinCero = (n: number | null) => (n === 0 ? null : n);
+  for (let k = 1; k < tabla.length; k++) {
+    const linea = k + 1;
+    const r = tabla[k];
+    if (r.length !== COLUMNAS_REGION.length) {
+      throw new ErrorFormato(`Línea ${linea}: ${r.length} columnas en vez de ${COLUMNAS_REGION.length}`);
+    }
+    const itemId = Number(r[0]);
+    if (!/^\d+$/.test(r[0]) || itemId <= 0 || itemId > 2_147_483_647) {
+      throw new ErrorFormato(`Línea ${linea}: itemId inválido ${JSON.stringify(r[0])}`);
+    }
+    const fecha = Date.parse(r[7]);
+    if (Number.isNaN(fecha)) throw new ErrorFormato(`Línea ${linea}: updatedAt inválido ${JSON.stringify(r[7])}`);
+    const iso = new Date(fecha).toISOString();
+    if (updatedAt === null) updatedAt = iso;
+    else if (updatedAt !== iso) throw new ErrorFormato(`Línea ${linea}: updatedAt distinto (${iso} ≠ ${updatedAt})`);
+    total++;
+    porItem.set(itemId, {
+      item_id: itemId,
+      market_value: sinCero(cobre(r[2], "marketValue", linea)),
+      historical: sinCero(cobre(r[3], "historical", linea)),
+      // TSM escribe 0 cuando no tiene venta media: es «sin dato», no un precio de 0.
+      avg_sale_price: sinCero(cobre(r[4], "avgSalePrice", linea)),
+      sale_rate: decimal(r[5], "saleRate", linea, 1),
+      sold_per_day: decimal(r[6], "soldPerDay", linea, 10_000_000),
+    });
+  }
+  if (updatedAt === null) throw new ErrorFormato("El archivo no tiene filas de datos");
+  return { filas: [...porItem.values()], updatedAt, duplicadas: total - porItem.size };
+}
+
+export async function actualizarRegion(db: Db, o: { fetch: typeof fetch; ahora?: () => Date; userAgent?: string;
+                                                   url?: string }) {
+  const ahora = o.ahora ?? (() => new Date());
+  const t = () => ahora().toISOString();
+  const turno = (await db.consulta("select tomar_turno_region(300, $1::timestamptz) as r", [t()]))[0]?.r;
+  if (!turno) return { estado: "omitido", motivo: "en_curso" };
+  try {
+    const pendiente = (await db.consulta("select region_pendiente('forever', 'us', $1::timestamptz) as r", [t()]))[0]?.r;
+    if (!pendiente) return { estado: "ok", motivo: "al_dia" };
+    const url = o.url ?? URL_REGION;
+    let r: Response;
+    try {
+      r = await o.fetch(url, { headers: { "User-Agent": o.userAgent ?? "mercadowow/0.1 (uso personal)" },
+                               signal: AbortSignal.timeout(30_000) });
+    } catch (e) { return { estado: "error", motivo: `Error de conexión: ${(e as Error).message ?? e}` }; }
+    if (r.status !== 200) { await r.body?.cancel(); return { estado: "error", motivo: `HTTP ${r.status}` }; }
+    try {
+      const { filas, updatedAt } = leerArchivoRegion(await r.text());
+      const n = Number((await db.consulta(
+        "select guardar_region('forever', 'us', $1::text::jsonb, $2::timestamptz, $3, $4::timestamptz) as r",
+        [JSON.stringify(filas), updatedAt, url, t()]))[0]?.r);
+      return { estado: "ok", guardadas: n, actualizado: updatedAt };
+    } catch (e) {
+      return { estado: "error", motivo: e instanceof ErrorFormato ? e.message : `Error: ${(e as Error).message ?? e}` };
+    }
+  } finally {
+    await db.consulta("select soltar_turno_region()", []);
+  }
+}
+
 export async function actualizarRecetas(db: Db, o: { fetch: typeof fetch; ahora?: () => Date;
                                                     userAgent?: string }) {
   const ahora = o.ahora ?? (() => new Date());

@@ -30,6 +30,7 @@ export function paramsMercado(f) {
   }
   if (f.soloOfertas) p.solo_ofertas = "true";
   if (OPORTUNIDADES.includes(f.oportunidad)) p.oportunidad = f.oportunidad;
+  if (VENTAS_REGION.includes(Number(f.ventasRegion))) p.ventas_region_min = String(Number(f.ventasRegion));
   poner("orden", f.orden);
   poner("dir", f.dir);
   if (f.pagina > 1) p.pagina = String(f.pagina);
@@ -39,6 +40,18 @@ export function paramsMercado(f) {
 /** Oportunidades de compra (X2). Las marca el servidor, siempre sobre el último escaneo. */
 export const OPORTUNIDADES = ["todas", "ganga", "npc"];
 export const NOMBRE_OPORTUNIDAD = { todas: "Todas las oportunidades", ganga: "Gangas", npc: "Bajo precio de NPC" };
+
+/**
+ * Referencia regional (X3): ventas al día en TODA la región US según TSM (no en PvP Horda).
+ * Umbrales que ofrece el filtro «Se vende en la región».
+ */
+export const VENTAS_REGION = [1, 5, 20];
+
+/** Tasa de venta de TSM (fracción 0–1) como porcentaje legible; null si no hay dato. */
+export const textoTasa = (t) => (t == null ? null : `${(Number(t) * 100).toLocaleString("es", { maximumFractionDigits: 1 })} %`);
+
+/** Ventas al día con pocos decimales; null si no hay dato. */
+export const textoVentasDia = (v) => (v == null ? null : Number(v).toLocaleString("es", { maximumFractionDigits: Number(v) < 10 ? 2 : 0 }));
 
 /** La columna «Margen» se ve al filtrar por oportunidad o al ordenar por margen. */
 export const verMargen = (f) => OPORTUNIDADES.includes(f.oportunidad) || f.orden === "margen" || f.orden === "margen_pct";

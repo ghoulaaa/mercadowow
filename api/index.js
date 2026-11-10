@@ -2734,6 +2734,7 @@ function crearApi(db2, o) {
         "precio_max",
         "solo_ofertas",
         "oportunidad",
+        "ventas_region_min",
         "orden",
         "dir",
         "pagina",

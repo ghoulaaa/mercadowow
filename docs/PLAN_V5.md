@@ -56,7 +56,13 @@ propia** de la lógica de TSM a precios agregados, no el código de TSM, así qu
    - **Orden** por margen y por margen en %.
    - **Aviso visible:** la compra mínima puede tener horas de retraso respecto al juego.
 
-3. **X3 · Referencia regional** (función 7):
+3. **X3 · Referencia regional** ✅ (2026-11-10; migraciones 0026 y 0027). Lo que quedó hecho:
+   - Tablas `region_items` y `region_sync`, aparte de los precios del reino. Primera carga: 5.640 objetos, archivo de TSM del 2026-11-09 08:25 UTC.
+   - Detalle: bloque «Región US (no es PvP Horda)» con venta media (0 en la fuente = «sin dato»), tasa de venta, ventas por día, valor de mercado e histórico regionales, y la fecha del archivo.
+   - Filtro «Se vende en la región»: 1, 5 o 20 ventas al día o más (con 20: 670 objetos).
+   - Descarga diaria: tarea `{"tarea": "region"}` de la Edge Function, pedida por pg_cron cada hora (minuto 37) solo si la última importación tiene más de ~1 día. **Necesita volver a desplegar la Edge Function**; hasta entonces el dato no se renueva solo.
+
+   Plan original:
    - **Importación una vez al día** del archivo regional de TSM, en una tabla aparte. Nunca se mezcla con los precios de PvP Horda.
    - **En el detalle,** un bloque «Región US (no es PvP Horda)» con venta media, tasa de venta y ventas por día.
    - **Filtro opcional** «Se vende en la región», por ventas al día.

@@ -4,11 +4,12 @@
 //   * pg_cron cada 5 min si hay objetos sin ficha en el catálogo → {"tarea": "catalogo"}
 //     completa un lote de ≈150 objetos desde AHledger;
 //   * pg_cron cada hora si alguna profesión lleva ~1 día sin descargar → {"tarea": "recetas"};
+//   * pg_cron cada hora si el archivo regional de TSM lleva ~1 día sin importar → {"tarea": "region"};
 //   * el botón «Actualizar» de la página.
 // Llamarla de más no provoca consultas extra a los proveedores.
 
 import postgres from "npm:postgres@3.4.9";
-import { actualizarRecetas, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
+import { actualizarRecetas, actualizarRegion, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -24,7 +25,9 @@ Deno.serve(async (req) => {
       ? { catalogo: await completarCatalogo(db, { fetch }) }
       : cuerpo?.tarea === "recetas"
         ? { recetas: await actualizarRecetas(db, { fetch }) }
-        : await ejecutarTodos(db, { fetch });
+        : cuerpo?.tarea === "region"
+          ? { region: await actualizarRegion(db, { fetch }) }
+          : await ejecutarTodos(db, { fetch });
     console.log(JSON.stringify(resultado));
     return Response.json(resultado);
   } catch (e) {
