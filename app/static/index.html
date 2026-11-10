@@ -21,6 +21,9 @@
     <symbol id="i-cerrar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
     <symbol id="i-filtro" viewBox="0 0 24 24"><path d="M4 5h16l-6 8v6l-4-2v-4z" /></symbol>
     <symbol id="i-salir" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></symbol>
+    <symbol id="i-estrella" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" /></symbol>
+    <symbol id="i-copiar" viewBox="0 0 24 24"><path d="M9 9h10v10H9zM5 15V5h10" /></symbol>
+    <symbol id="i-lupa" viewBox="0 0 24 24"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" /></symbol>
     <symbol id="i-campana" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0" /></symbol>
   </svg>
 
@@ -40,7 +43,7 @@
       </nav>
 
       <div class="lat-grupo" id="grupo-mercado">
-        <span class="lat-tit">Mercado</span>
+        <span class="lat-tit">Reino</span>
         <div class="sel-mercado">
           <label><span class="sr-only">Región</span>
             <select id="sel-region" title="Región"></select></label>
@@ -53,64 +56,71 @@
           <select id="sel-fuente" title="Proveedor de los precios"></select></label>
       </div>
 
-      <div class="lat-grupo">
-        <span class="lat-tit">Categorías</span>
+      <details class="lat-grupo plegable" id="grupo-cat" open>
+        <summary><span class="lat-tit">Categoría</span></summary>
         <ul id="arbol-cat" class="arbol" aria-label="Categorías"></ul>
-      </div>
+      </details>
 
-      <div class="lat-grupo">
-        <span class="lat-tit">Profesiones</span>
-        <label class="check" title="Objetos que aparecen como material en alguna receta">
-          <input id="f-materiales" type="checkbox"> Materiales de profesiones <span id="n-materiales" class="arbol-n"></span></label>
+      <details class="lat-grupo plegable" id="grupo-prof">
+        <summary><span class="lat-tit">Profesión</span></summary>
+        <label class="check">
+          <input id="f-materiales" type="checkbox"> Materiales <span id="n-materiales" class="arbol-n"></span></label>
         <ul id="familias" class="arbol arbol-familias" aria-label="Familias de materiales" hidden></ul>
         <ul id="arbol-prof" class="arbol" aria-label="Profesiones"></ul>
-      </div>
+      </details>
 
-      <div class="lat-grupo">
-        <label class="lat-tit" for="f-oportunidad">Oportunidades</label>
-        <select id="f-oportunidad" title="Objetos que conviene comprar según el último escaneo">
-          <option value="">Sin filtrar</option>
+      <details class="lat-grupo plegable filtros-lat" id="grupo-filtros" open>
+        <summary><span class="lat-tit">Filtros</span></summary>
+        <span class="lab" id="lab-calidad">Calidad</span>
+        <div class="calidades" id="f-calidad" role="group" aria-labelledby="lab-calidad"></div>
+        <div class="campo-doble">
+          <span class="lab">Nivel</span>
+          <div class="rango">
+            <input id="f-nivel-min" type="number" min="0" max="100" placeholder="mín." aria-label="Nivel mínimo">
+            <input id="f-nivel-max" type="number" min="0" max="100" placeholder="máx." aria-label="Nivel máximo">
+          </div>
+        </div>
+        <div class="campo-doble">
+          <span class="lab con-ayuda">Precio
+            <button type="button" class="ayuda" aria-label="Ayuda: precio"
+                    data-ayuda="Precio por unidad. En oro, plata y cobre (1o 50p 20c) o solo en cobre (15020).">?</button></span>
+          <div class="rango">
+            <input id="f-precio-min" placeholder="mín." aria-label="Precio mínimo">
+            <input id="f-precio-max" placeholder="máx." aria-label="Precio máximo">
+          </div>
+        </div>
+        <p id="f-precio-error" class="bad small" role="alert" hidden></p>
+        <label class="check"><input id="f-ofertas" type="checkbox"> Solo con ofertas</label>
+        <span class="lab con-ayuda"><label for="f-oportunidad">Oportunidad</label>
+          <button type="button" class="ayuda" aria-label="Ayuda: oportunidades" id="ayuda-oportunidad"
+                  data-ayuda="Gangas: compra mínima muy por debajo de su valor de mercado. Bajo precio de NPC: se compra por menos de lo que paga un vendedor. Se calcula con el último escaneo: compruébalo en el juego antes de comprar.">?</button></span>
+        <select id="f-oportunidad">
+          <option value="">Todas</option>
           <option value="todas">Todas las oportunidades</option>
           <option value="ganga">Gangas</option>
           <option value="npc">Bajo precio de NPC</option>
         </select>
-        <label class="lat-tit" for="f-lista">Mis listas</label>
-        <select id="f-lista" title="Solo los objetos de una de tus listas. Se añaden desde el detalle del objeto («Listas y alertas»).">
-          <option value="">Todos los objetos</option>
-        </select>
-        <label class="lat-tit" for="f-region">Se vende en la región</label>
-        <select id="f-region" title="Ventas al día en TODA la región US según TSM (no solo PvP Horda). Es una referencia: no cambia las recomendaciones.">
-          <option value="">Sin filtrar</option>
+        <span class="lab con-ayuda"><label for="f-region">Ventas en la región</label>
+          <button type="button" class="ayuda" aria-label="Ayuda: ventas en la región" id="ayuda-region"
+                  data-ayuda="Ventas al día en toda la región US según TSM, no solo en PvP Horda. Es una referencia: no cambia las recomendaciones.">?</button></span>
+        <select id="f-region">
+          <option value="">Cualquiera</option>
           <option value="1">1 o más al día</option>
           <option value="5">5 o más al día</option>
           <option value="20">20 o más al día</option>
         </select>
-        <p id="nota-region" class="lab" hidden></p>
-      </div>
-
-      <div class="lat-grupo filtros-lat">
-        <span class="lat-tit">Filtros</span>
-        <div class="calidades" id="f-calidad" role="group" aria-label="Calidad"></div>
-        <span class="lab">Nivel</span>
-        <div class="rango">
-          <input id="f-nivel-min" type="number" min="0" max="100" placeholder="mín." aria-label="Nivel mínimo">
-          <input id="f-nivel-max" type="number" min="0" max="100" placeholder="máx." aria-label="Nivel máximo">
-        </div>
-        <span class="lab">Precio unitario</span>
-        <div class="rango">
-          <input id="f-precio-min" placeholder="mín." aria-label="Precio mínimo (p. ej. 1o 50p)" title="En oro, plata y cobre: 1o 50p 20c, o en cobre">
-          <input id="f-precio-max" placeholder="máx." aria-label="Precio máximo (p. ej. 1o 50p)" title="En oro, plata y cobre: 1o 50p 20c, o en cobre">
-        </div>
-        <p id="f-precio-error" class="bad small" hidden></p>
-        <label class="check" title="Muestra solo los objetos que están a la venta en el último escaneo">
-          <input id="f-ofertas" type="checkbox"> Solo con ofertas</label>
-        <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>
-      </div>
+        <span class="lab con-ayuda"><label for="f-lista">Lista</label>
+          <button type="button" class="ayuda" aria-label="Ayuda: listas"
+                  data-ayuda="Tus listas de objetos. Añade o quita objetos con la estrella de cada fila o desde el detalle («Listas y alertas»).">?</button></span>
+        <select id="f-lista">
+          <option value="">Todos los objetos</option>
+        </select>
+        <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar</button>
+      </details>
 
       <details class="lat-grupo lat-catalogo" id="grupo-banda">
         <summary><span class="lat-tit">Banda de precios</span></summary>
-        <form id="form-banda" class="form-banda" autocomplete="off"
-              title="Para «Qué hacer con este objeto»: mínimo, normal y máximo respecto al valor de mercado (como TSM)">
+        <form id="form-banda" class="form-banda" autocomplete="off">
           <label class="lab" for="b-ambito">Banda de</label>
           <select id="b-ambito" title="La general vale para todo; una lista puede tener la suya (los objetos de esa lista la usan)">
             <option value="">General (todos los objetos)</option>
@@ -121,7 +131,9 @@
             <label><span>Normal</span><input id="b-normal_pct" type="number" min="10" max="1000" step="1"></label>
             <label><span>Máx.</span><input id="b-max_pct" type="number" min="50" max="5000" step="1"></label>
           </div>
-          <span class="lab" title="El mínimo nunca baja de este múltiplo de la venta al NPC, y el máximo llega al menos al otro">× venta al NPC (suelos)</span>
+          <span class="lab con-ayuda">× venta al NPC
+            <button type="button" class="ayuda" aria-label="Ayuda: suelos de la venta al NPC"
+                    data-ayuda="El mínimo nunca baja de este múltiplo de lo que paga el NPC, y el máximo llega al menos al otro.">?</button></span>
           <div class="trio">
             <label><span>Mín.</span><input id="b-npc_min_mult" type="number" min="0" max="100" step="0.1"></label>
             <label><span>Máx.</span><input id="b-npc_max_mult" type="number" min="0" max="1000" step="1"></label>
@@ -144,9 +156,10 @@
       <details class="lat-grupo lat-catalogo" id="grupo-npc">
         <summary><span class="lat-tit">Compra al NPC</span> <span id="npc-total" class="arbol-n"></span></summary>
         <form id="form-npc" class="form-ids" autocomplete="off">
-          <label for="npc-texto" class="lab">Precios que tú conoces (viales, hilos…)</label>
-          <textarea id="npc-texto" rows="3" placeholder="3371,4c&#10;2324,25c"
-                    title="Una línea por objeto: ID,precio. El precio en cobre (25) o con monedas (1o 2p 3c). Precio vacío = borrar. Ninguna fuente permitida publica estos precios: los introduces tú y se marcan así."></textarea>
+          <span class="lab con-ayuda"><label for="npc-texto">ID,precio</label>
+            <button type="button" class="ayuda" aria-label="Ayuda: compra al NPC"
+                    data-ayuda="Una línea por objeto: ID,precio (25c o 1o 2p 3c). Precio vacío = borrar. Ninguna fuente publica estos precios: los pones tú y se marcan así.">?</button></span>
+          <textarea id="npc-texto" rows="3" placeholder="3371,4c&#10;2324,25c"></textarea>
           <input id="npc-archivo" type="file" accept=".csv,.txt,text/csv,text/plain" aria-label="Archivo CSV con ID y precio">
           <div class="trio">
             <button type="submit" class="btn btn-piedra btn-small">Comprobar</button>
@@ -165,9 +178,10 @@
           <div id="cat-informe-cuerpo"></div>
         </details>
         <form id="form-ids" class="form-ids" autocomplete="off">
-          <label for="ids-texto" class="lab">Añadir objetos por ID</label>
-          <textarea id="ids-texto" rows="3" placeholder="2589, 19019… o enlaces de Wowhead"
-                    title="IDs separados por comas o líneas, un CSV con columna itemId o enlaces «…/item=ID». Cada uno se comprueba con AHledger antes de añadirlo."></textarea>
+          <span class="lab con-ayuda"><label for="ids-texto">Añadir por ID</label>
+            <button type="button" class="ayuda" aria-label="Ayuda: añadir por ID"
+                    data-ayuda="IDs separados por comas o líneas, un CSV con columna itemId o enlaces de Wowhead. Cada uno se comprueba con AHledger antes de añadirlo.">?</button></span>
+          <textarea id="ids-texto" rows="3" placeholder="2589, 19019…"></textarea>
           <input id="ids-archivo" type="file" accept=".csv,.txt,text/csv,text/plain" aria-label="Archivo CSV o de texto con IDs">
           <button type="submit" class="btn btn-piedra btn-small">Añadir</button>
           <p id="ids-msg" class="small" role="status" hidden></p>
@@ -185,16 +199,26 @@
         <button id="btn-lateral" type="button" class="btn-icono solo-movil" aria-label="Mostrar filtros"
                 aria-controls="lateral" aria-expanded="false"><svg><use href="#i-filtro" /></svg></button>
         <div class="combo">
-          <label class="sr-only" for="buscador">Buscar objeto por nombre o ID</label>
-          <input id="buscador" class="buscador" type="text" autocomplete="off" spellcheck="false"
+          <label class="sr-only" for="buscador">Buscar objeto</label>
+          <svg class="ic-lupa" aria-hidden="true"><use href="#i-lupa" /></svg>
+          <input id="buscador" class="buscador" type="text" autocomplete="off" spellcheck="false" enterkeyhint="search"
                  role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sugerencias"
-                 aria-describedby="ayuda-buscador" placeholder="Buscar objeto o ID…">
+                 aria-describedby="ayuda-buscador" placeholder="Buscar objeto">
+          <button id="btn-borrar-busqueda" type="button" class="btn-borrar" aria-label="Borrar la búsqueda" hidden>
+            <svg aria-hidden="true"><use href="#i-cerrar" /></svg></button>
+          <kbd class="atajo" aria-hidden="true">/</kbd>
           <ul id="sugerencias" class="sugerencias" role="listbox" aria-label="Sugerencias" hidden></ul>
-          <span id="ayuda-buscador" class="sr-only">Tab o flechas para recorrer las sugerencias, Enter para abrir, Escape para cerrar.</span>
+          <div id="recientes" class="sugerencias recientes" hidden>
+            <div class="rec-cab"><span class="lab">Recientes</span>
+              <button id="btn-borrar-recientes" type="button" class="enlace small">Borrar</button></div>
+            <ul id="lista-recientes" aria-label="Búsquedas recientes"></ul>
+          </div>
+          <span id="ayuda-buscador" class="sr-only">Nombre, parte del nombre o ID. Flechas o Tab para recorrer las sugerencias, Enter para abrir, Escape para cerrar. Tecla / para volver aquí.</span>
           <p id="anuncio" class="sr-only" aria-live="polite"></p>
         </div>
-        <span id="estado-dato" class="estado-dato" tabindex="0">—</span>
-        <button id="btn-actualizar" type="button" class="btn-icono" aria-label="Pedir actualización" title="Pedir actualización" hidden>
+        <span id="estado-dato" class="estado-dato" tabindex="0" role="button">—</span>
+        <button id="btn-reintentar" type="button" class="btn btn-piedra btn-small" hidden>Reintentar</button>
+        <button id="btn-actualizar" type="button" class="btn-icono" aria-label="Actualizar precios" title="Actualizar precios" hidden>
           <svg><use href="#i-recargar" /></svg></button>
       </div>
 
@@ -216,10 +240,16 @@
         <div class="res-cab">
           <h1 id="titulo-resultados">Todos los objetos</h1>
           <span id="contador" class="muted small" aria-live="polite"></span>
+          <button id="btn-favoritos" type="button" class="btn-alterna" aria-pressed="false" title="Solo favoritos">
+            <svg aria-hidden="true"><use href="#i-estrella" /></svg><span>Favoritos</span></button>
+          <div class="vistas" role="group" aria-label="Densidad" id="densidad">
+            <button type="button" class="btn-vista" data-densidad="comoda" aria-pressed="true">Cómoda</button>
+            <button type="button" class="btn-vista" data-densidad="compacta" aria-pressed="false">Compacta</button>
+          </div>
           <div class="vistas" role="group" aria-label="Vista">
             <button type="button" class="btn-vista" data-modo="lista" aria-pressed="true">Lista</button>
             <button type="button" class="btn-vista" data-modo="mapa" aria-pressed="false"
-                    title="Mapa de variación: materiales por familia o toda la casa por clase y subclase">Mapa</button>
+                    >Mapa</button>
           </div>
           <label class="orden"><span class="sr-only">Ordenar por</span>
             <select id="f-orden">
@@ -232,6 +262,11 @@
               <option value="margen:desc">Margen ↓</option>
               <option value="margen_pct:desc">Margen % ↓</option>
             </select></label>
+        </div>
+        <div id="chips-filtros" class="chips-filtros" aria-label="Filtros activos" hidden></div>
+        <div id="nuevo-orden" class="nuevo-orden" role="status" hidden>
+          <span>Precios actualizados. El orden puede haber cambiado.</span>
+          <button id="btn-reordenar" type="button" class="btn btn-piedra btn-small">Reordenar</button>
         </div>
         <section id="mapa" class="mapa" aria-label="Mapa de materiales" hidden>
           <div class="mapa-cab">
@@ -269,7 +304,7 @@
             <thead>
               <tr>
                 <th scope="col" aria-sort="none"><button type="button" class="th-orden" data-orden="nombre">Objeto</button></th>
-                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra inmediata mínima por unidad en el último escaneo">Compra mínima</button></th>
+                <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra mínima por unidad en el último escaneo">Precio<span class="sr-only"> por unidad (compra mínima)</span></button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Cantidad</button></th>
                 <th scope="col" class="num c-margen" aria-sort="none"><button type="button" class="th-orden" data-orden="margen" title="Estimación por unidad: valor de mercado menos la comisión de la subasta, menos la compra mínima. Si el NPC paga más, venta al NPC menos la compra mínima.">Margen</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Frente a la observación de hace 24 h">24 h</button></th>
@@ -279,7 +314,10 @@
             <tbody id="tbody"></tbody>
           </table>
         </div>
-        <p id="sin-resultados" class="muted vacio" hidden>Ningún objeto coincide con los filtros.</p>
+        <div id="sin-resultados" class="vacio" hidden>
+          <p id="sin-resultados-txt" class="muted">Ningún objeto coincide con los filtros.</p>
+          <button id="btn-quitar-filtros" type="button" class="btn btn-piedra btn-small">Quitar filtros</button>
+        </div>
         <nav class="paginador" id="paginador" aria-label="Páginas" hidden>
           <button id="pag-ant" type="button" class="btn btn-piedra btn-small">‹ Anterior</button>
           <span id="pag-txt" class="muted small" aria-live="polite"></span>
@@ -301,6 +339,8 @@
     </aside>
     <div class="velo" id="velo-detalle" hidden></div>
   </div>
+
+  <div id="ayuda-pop" class="ayuda-pop" role="dialog" aria-modal="false" hidden><p id="ayuda-txt"></p></div>
 
   <script type="module" src="app.js"></script>
 </body>

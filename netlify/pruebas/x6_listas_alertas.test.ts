@@ -69,6 +69,8 @@ describe("listas y alertas (SQL)", () => {
   test("los favoritos pasan a la lista «Favoritos»; crear, poner, filtrar, renombrar y borrar", async () => {
     let l = (await uno("select listar_listas(2840) as r")).r.listas;
     assert.deepEqual(l.map((x: any) => [x.nombre, x.n, x.contiene]), [["Favoritos", 1, true]]);
+    await pg.exec(leer("0032_favoritos_ids.sql"));
+    assert.deepEqual((await uno("select listar_listas() as r")).r.favoritos, [2840]);
     const c = await lista({ accion: "crear", nombre: "Hierbas", objeto: 765 });
     const idH = c.id;
     await lista({ accion: "poner", id: idH, objeto: 2589, dentro: true });

@@ -8,6 +8,7 @@ import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { normalizarPerfil, perfilDeLista, textoAlerta } from "./listas.js";
+import { agregarReciente, atajoBuscar, chipsFiltros, fusionarSinReordenar } from "./interfaz.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, leerPreciosNpc, paginas,
@@ -171,7 +172,9 @@ async function cargar() {
     $("estado-dato").className = "estado-dato bad";
     $("tbody").replaceChildren();
     $("sin-resultados").hidden = false;
-    $("sin-resultados").textContent = "No se pudo conectar con la base de datos. " + (s?.error ?? "");
+    $("sin-resultados-txt").textContent = "No se pudo conectar con la base de datos. " + (s?.error ?? "");
+    $("btn-quitar-filtros").hidden = true;
+    $("btn-reintentar").hidden = false;
     return false;
   }
   ultimo = s;
@@ -196,10 +199,12 @@ function pintarEstadoDato() {
   const e = $("estado-dato");
   const viejo = a.hora_dato_original && (Date.now() - new Date(a.hora_dato_original)) > 8 * 3600e3;
   const fallos = a.fallos_seguidos > 0;
-  e.replaceChildren(el("span", "", `${sinConexion ? "Sin conexión · " : ""}Datos: ${hace(a.hora_dato_original)}`));
-  if (m.automatico && a.ultima_consulta_ok) e.append(el("span", "consulta", ` · consulta: ${hace(a.ultima_consulta_ok)}`));
-  if (fallos) e.append(el("span", "", " · ⚠"));
+  // Compacto: antigüedad del escaneo y, si algo falla, una marca. El detalle completo, al pulsarlo.
+  e.replaceChildren(el("span", "", `${sinConexion ? "Sin conexión · " : ""}${PROVEEDOR[m.proveedor?.toLowerCase()] ?? m.proveedor ?? ""} · ${hace(a.hora_dato_original)}`));
+  if (fallos) e.append(el("span", "", " · fallo"));
   e.className = "estado-dato" + (viejo && !m.ficticio ? " viejo" : "") + (fallos || sinConexion ? " bad" : "");
+  $("btn-reintentar").hidden = !(sinConexion || fallos);
+  ajustarAltoBarra();   // el texto del estado puede cambiar el alto de la barra
   e.title = [
     sinConexion ? "Sin conexión: lo que ves son los últimos datos recibidos; se reintenta cada 15 s." : null,
     `Mercado: ${m.nombre}`,
@@ -224,8 +229,7 @@ function pintarPie() {
   } else if (ultimo?.mercado?.proveedor === "TSM") {
     pie.append(el("span", "", "Precios: archivo público de TradeSkillMaster"));
   }
-  const cobertura = pagina ? ` · ${pagina.total_catalogo.toLocaleString("es")} objetos en el catálogo (no es el total del juego)` : "";
-  pie.append(el("span", "muted", ` · precios en oro (o), plata (p) y cobre (c) · nombres en inglés${cobertura}`));
+  pie.append(el("span", "muted", " · o = oro, p = plata, c = cobre"));
 }
 
 // ---------- tabla del mercado (paginada en el servidor) ----------
@@ -251,6 +255,14 @@ function leerFiltros() {
 
 let peticionN = 0;
 let controlador = null;
+let paginaPendiente = null;   // página con el orden nuevo, a la espera de «Reordenar»
+
+/** «Sin datos» con su significado para lectores de pantalla (nunca un 0). */
+function sinDato(titulo = "Sin datos") {
+  const s = el("span", "sin-dato", "—");
+  s.setAttribute("aria-label", titulo); s.title = titulo;
+  return s;
+}
 /** Pide la página actual. Una respuesta de una petición anterior se descarta. */
 async function cargarPagina({ silencioso = false } = {}) {
   if (!ultimo?.mercado?.clave) return;
@@ -279,6 +291,14 @@ async function cargarPagina({ silencioso = false } = {}) {
   if (!r.ok) { pintarTabla(); avisar(d.error || "Error " + r.status, "bad"); return; }
   if (d.mercado !== clave) return;     // respuesta de otro mercado: se descarta
   marcarConexion(true);
+  // Precios nuevos con la misma página a la vista: las filas no cambian de sitio por sorpresa; si el
+  // orden activo cambió, se ofrece «Reordenar».
+  if (silencioso && pagina?.filas && pagina.pagina === d.pagina) {
+    const { filas, cambioOrden } = fusionarSinReordenar(pagina.filas, d.filas);
+    paginaPendiente = cambioOrden ? d : null;
+    if (cambioOrden) d = { ...d, filas };
+  } else paginaPendiente = null;
+  $("nuevo-orden").hidden = !paginaPendiente || vista === "mapa";
   pagina = d;
   // Si la página pedida ya no existe (menos resultados), vuelve a la última.
   const ult = paginas(d.total, d.por_pagina);
@@ -316,8 +336,7 @@ function celdaVariacion(x) {
   const td = el("td", "num var");
   const p = x.var24;
   if (p == null) {
-    td.textContent = "—";
-    td.title = x.estado === "con_ofertas" ? "Sin una observación propia de hace 24 h" : "";
+    td.append(sinDato(x.estado === "con_ofertas" ? "Sin dato de hace 24 h" : "Sin datos"));
     return td;
   }
   const dir = p > 0.05 ? "sube" : p < -0.05 ? "baja" : "";
@@ -378,8 +397,7 @@ function celdaPrecio(x) {
 function celdaMargen(x) {
   const td = el("td", "num c-margen");
   if (x.margen == null) {
-    td.textContent = "—";
-    td.title = x.estado === "con_ofertas" ? "La fuente no publica valor de mercado ni venta al NPC para este objeto" : "";
+    td.append(sinDato(x.estado === "con_ofertas" ? "Sin valor de mercado ni venta al NPC" : "Sin datos"));
     return td;
   }
   if (x.margen < 0) { td.classList.add("negativo"); td.append(el("span", "signo", "−")); }
@@ -401,12 +419,14 @@ function pintarAvisoOportunidad() {
   $("tabla-mercado").classList.toggle("con-margen", verMargen(f));
   if (!ver) return;
   const r = pagina?.reglas_oportunidad;
-  p.replaceChildren(
-    el("strong", "", "Comprueba el precio en el juego antes de comprar. "),
-    `La compra mínima es la del último escaneo (${hace(pagina?.escaneo)}) y puede haberse vendido ya. ` +
-    `El margen es una estimación por unidad: valor de mercado − ${r?.comision_pct ?? 5} % de comisión − compra mínima ` +
-    "(o venta al NPC − compra mínima si el NPC paga más). No descuenta el depósito. ",
-    el("span", "muted", textoReglaGanga(r, formatearMoneda)));
+  // Una línea a la vista; el cálculo completo, en la ayuda «?».
+  const ayuda = el("button", "ayuda", "?");
+  ayuda.type = "button"; ayuda.setAttribute("aria-label", "Cómo se calcula el margen");
+  ayuda.dataset.ayuda = `Escaneo ${hace(pagina?.escaneo)}: la oferta puede haberse vendido ya. ` +
+    `Margen por unidad = valor de mercado − ${r?.comision_pct ?? 5} % de comisión − compra mínima ` +
+    "(o venta al NPC − compra mínima si el NPC paga más). No descuenta el depósito. " + textoReglaGanga(r, formatearMoneda);
+  p.replaceChildren(el("strong", "", "Comprueba el precio en el juego antes de comprar"),
+    el("span", "muted", ` · escaneo ${hace(pagina?.escaneo)} `), ayuda);
 }
 
 function pintarTabla() {
@@ -432,17 +452,24 @@ function pintarTabla() {
     b.append(iconoNodo(x.icono, x.nombre, x.calidad), txt);
     b.title = sf ? `#${x.id} · ni AHledger ni TSM publican su nombre, calidad ni icono`
       : `#${x.id} · ${NOMBRE_CALIDAD[x.calidad] ?? "calidad desconocida"}`;
-    tdObj.append(b);
+    if (x.id === objetoActual) b.setAttribute("aria-current", "true");
+    tdObj.append(botonEstrella(x), b);
 
-    const tdCant = el("td", "num", x.cantidad == null ? "—" : x.cantidad.toLocaleString("es"));
+    const tdCant = el("td", "num c-cant");
+    tdCant.append(x.cantidad == null ? sinDato(x.estado === "con_ofertas" ? "La fuente no publica la cantidad" : "Sin datos")
+      : document.createTextNode(x.cantidad.toLocaleString("es")));
     tr.append(tdObj, celdaPrecio(x), tdCant, celdaMargen(x), celdaVariacion(x), celdaSpark(x));
     frag.append(tr);
   }
   tbody.replaceChildren(frag);
+  // Sin cantidades en toda la página (TSM no las publica): la columna no ocupa sitio.
+  $("tabla-mercado").classList.toggle("sin-cantidad", !!d && d.filas.length > 0 && d.filas.every((x) => x.cantidad == null));
   const total = d?.total ?? 0;
+  const chips = pintarChips();
   $("sin-resultados").hidden = !d || total > 0;
-  $("sin-resultados").textContent = "Ningún objeto coincide con los filtros.";
-  $("contador").textContent = d ? `${total.toLocaleString("es")} objetos` : "";
+  $("sin-resultados-txt").textContent = chips ? "Ningún objeto coincide con los filtros." : "No hay objetos en este mercado.";
+  $("btn-quitar-filtros").hidden = !chips;
+  $("contador").textContent = d ? `${total.toLocaleString("es")} ${total === 1 ? "objeto" : "objetos"}` : "";
   // Título: lo que se está viendo, en pocas palabras.
   const partes = [];
   if (filtro.profesion) partes.push(nombreProf(filtro.profesion) + (filtro.rol ? ` · ${NOMBRE_ROL[filtro.rol].toLowerCase()}` : ""));
@@ -460,13 +487,15 @@ function pintarTabla() {
     if (o.value) o.textContent = NOMBRE_OPORTUNIDAD[o.value] + (n == null ? "" : ` (${n.toLocaleString("es")})`);
   }
   pintarAvisoOportunidad();
-  // Referencia regional: de cuándo es el archivo (o que todavía no hay ninguno).
+  // Referencia regional: de cuándo es el archivo (en su ayuda, no como párrafo fijo).
   const reg = d?.region;
   $("f-region").disabled = !!d && !reg;
-  $("nota-region").hidden = !d;
-  $("nota-region").textContent = reg
-    ? `Región ${reg.region}, todos los reinos · archivo de TSM del ${new Date(reg.actualizado).toLocaleDateString("es")}`
-    : "Sin archivo regional importado para este mercado.";
+  $("ayuda-region").dataset.ayuda = reg
+    ? `Ventas al día en toda la región ${reg.region} según TSM (todos los reinos, no solo PvP Horda), archivo del ` +
+      `${new Date(reg.actualizado).toLocaleDateString("es")}. Es una referencia: no cambia las recomendaciones.`
+    : "Este mercado no tiene archivo regional de TSM.";
+  $("btn-favoritos").setAttribute("aria-pressed", String(!!listaFavoritos() && $("f-lista").value === String(listaFavoritos()?.id)));
+  guardarEstado();
   // Paginador.
   const n = paginas(total, d?.por_pagina ?? POR_PAGINA);
   $("paginador").hidden = !d || n < 2;
@@ -488,7 +517,188 @@ function pintarTabla() {
 /** Cualquier cambio de filtro u orden vuelve a la página 1 (y rehace el mapa si está a la vista). */
 function repintar() { filtro.pagina = 1; cargarPagina(); if (vista === "mapa") cargarMapa(); }
 
+// ---------- favoritos desde cada fila (lista «Favoritos») ----------
+let favoritos = new Set();
+const listaFavoritos = () => misListas.find((l) => l.nombre === "Favoritos") ?? null;
+
+function botonEstrella(x) {
+  const b = el("button", "estrella");
+  b.type = "button";
+  const es = favoritos.has(x.id);
+  b.setAttribute("aria-pressed", String(es));
+  b.setAttribute("aria-label", `${es ? "Quitar de" : "Añadir a"} favoritos: ${x.nombre}`);
+  b.title = es ? "Quitar de favoritos" : "Añadir a favoritos";
+  b.dataset.fav = x.id;
+  b.innerHTML = '<svg aria-hidden="true"><use href="#i-estrella" /></svg>';
+  return b;
+}
+
+async function alternarFavorito(id, nombre) {
+  const dentro = !favoritos.has(id);
+  const l = listaFavoritos();
+  const d = await postJson("/api/listas", l
+    ? { accion: "poner", id: l.id, objeto: id, dentro }
+    : { accion: "crear", nombre: "Favoritos", objeto: id });
+  ponerListas(d.listas, d.favoritos);
+  avisar(`${nombre} ${dentro ? "añadido a" : "quitado de"} favoritos`);
+  // Filtrando por favoritos, quitar uno lo saca de la tabla.
+  if (!dentro && $("f-lista").value === String(listaFavoritos()?.id)) cargarPagina({ silencioso: true });
+}
+
+// ---------- filtros activos como etiquetas ----------
+function estadoFiltros() {
+  const f = leerFiltros();
+  return { ...f, ventasRegion: f.ventasRegion || "", lista: f.lista || "" };
+}
+const NOMBRES_CHIP = {
+  categoria: (c) => nombreCat(c), profesion: (p) => nombreProf(p), rol: (r) => NOMBRE_ROL[r]?.toLowerCase() ?? r,
+  familia: (f) => NOMBRE_FAMILIA[f] ?? f, calidad: (q) => NOMBRE_CALIDAD[q] ?? q,
+  oportunidad: (o) => NOMBRE_OPORTUNIDAD[o] ?? o, moneda: (c) => formatearMoneda(c),
+  lista: (id) => `Lista «${misListas.find((l) => String(l.id) === String(id))?.nombre ?? "?"}»`,
+};
+
+/** Pinta las etiquetas removibles. Devuelve cuántas hay. */
+function pintarChips() {
+  const chips = chipsFiltros(estadoFiltros(), NOMBRES_CHIP);
+  const cont = $("chips-filtros");
+  cont.hidden = chips.length === 0 || vista === "mapa";
+  cont.replaceChildren(...chips.map((c) => {
+    const b = el("button", "chip-filtro");
+    b.type = "button"; b.dataset.quitar = c.clave;
+    b.setAttribute("aria-label", `Quitar filtro: ${c.texto}`);
+    const x = el("span", "x", "×"); x.setAttribute("aria-hidden", "true");
+    b.append(c.texto, x);
+    return b;
+  }));
+  if (chips.length > 1) {
+    const todo = el("button", "enlace", "Limpiar todo");
+    todo.type = "button"; todo.addEventListener("click", limpiarTodo);
+    cont.append(todo);
+  }
+  return chips.length;
+}
+
+function quitarFiltro(clave) {
+  switch (clave) {
+    case "texto": filtro.texto = ""; $("buscador").value = ""; $("btn-borrar-busqueda").hidden = true; break;
+    case "categoria": filtro.categoria = ""; filtro.subcategoria = ""; break;
+    case "profesion": filtro.profesion = ""; filtro.rol = ""; break;
+    case "materiales": $("f-materiales").checked = false; filtro.familia = ""; break;
+    case "calidad": filtro.calidad = ""; break;
+    case "nivel": $("f-nivel-min").value = ""; $("f-nivel-max").value = ""; break;
+    case "precio": $("f-precio-min").value = ""; $("f-precio-max").value = ""; break;
+    case "ofertas": $("f-ofertas").checked = false; break;
+    case "oportunidad":
+      $("f-oportunidad").value = "";
+      if ($("f-orden").value.startsWith("margen")) $("f-orden").value = "nombre:asc";
+      break;
+    case "region": $("f-region").value = ""; break;
+    case "lista": $("f-lista").value = ""; break;
+  }
+  pintarCalidades(); pintarArbol(); pintarProfesiones();
+  repintar();
+}
+$("chips-filtros").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-quitar]");
+  if (!b) return;
+  quitarFiltro(b.dataset.quitar);
+  // El foco no se pierde: pasa a la etiqueta siguiente o al buscador.
+  requestAnimationFrame(() => ($("chips-filtros").querySelector(".chip-filtro") ?? $("buscador")).focus());
+});
+
+function limpiarTodo() {
+  Object.assign(filtro, { texto: "", categoria: "", subcategoria: "", calidad: "", profesion: "", rol: "", familia: "", pagina: 1 });
+  for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
+  $("f-ofertas").checked = false;
+  $("f-oportunidad").value = "";
+  $("f-region").value = "";
+  $("f-lista").value = "";
+  $("f-materiales").checked = false;
+  if ($("f-orden").value.startsWith("margen")) $("f-orden").value = "nombre:asc";
+  $("buscador").value = "";
+  $("btn-borrar-busqueda").hidden = true;
+  pintarCalidades(); pintarArbol(); pintarProfesiones();
+  repintar();
+}
+$("btn-quitar-filtros").addEventListener("click", () => { limpiarTodo(); $("buscador").focus(); });
+$("btn-reordenar").addEventListener("click", () => {
+  if (paginaPendiente) pagina = paginaPendiente;
+  paginaPendiente = null;
+  $("nuevo-orden").hidden = true;
+  pintarTabla();
+});
+
+// ---------- filtros, orden, densidad y vista se conservan al recargar ----------
+const CAMPOS_GUARDADOS = ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max", "f-oportunidad", "f-region", "f-orden"];
+function guardarEstado() {
+  local.escribir("mw_estado", {
+    filtro: { ...filtro },
+    campos: Object.fromEntries(CAMPOS_GUARDADOS.map((id) => [id, $(id).value])),
+    materiales: $("f-materiales").checked, ofertas: $("f-ofertas").checked, lista: $("f-lista").value,
+  });
+}
+let listaPendiente = "";   // la lista guardada se aplica cuando llegan las listas
+function restaurarEstado() {
+  const e = local.leer("mw_estado", null);
+  if (!e || typeof e !== "object") return;
+  for (const k of Object.keys(filtro)) if (typeof e.filtro?.[k] === typeof filtro[k]) filtro[k] = e.filtro[k];
+  for (const id of CAMPOS_GUARDADOS) {
+    const v = e.campos?.[id];
+    if (typeof v !== "string") continue;
+    const s = $(id);
+    if (s.tagName === "SELECT" && ![...s.options].some((o) => o.value === v)) {
+      if (id !== "f-orden" || !/^[a-z_0-9]+:(asc|desc)$/.test(v)) continue;
+      const o = el("option", "", v.replace(":asc", " ↑").replace(":desc", " ↓")); o.value = v; s.append(o);
+    }
+    s.value = v;
+  }
+  $("f-materiales").checked = !!e.materiales;
+  $("f-ofertas").checked = !!e.ofertas;
+  listaPendiente = typeof e.lista === "string" ? e.lista : "";
+  $("buscador").value = filtro.texto;
+  $("btn-borrar-busqueda").hidden = !filtro.texto;
+  if (filtro.categoria) abiertas.add(filtro.categoria);
+  if (filtro.profesion) profAbiertas.add(filtro.profesion);
+}
+
+// Densidad de la tabla: cómoda (por defecto) o compacta.
+function ponerDensidad(d) {
+  document.body.classList.toggle("compacta", d === "compacta");
+  for (const b of document.querySelectorAll("#densidad [data-densidad]")) b.setAttribute("aria-pressed", String(b.dataset.densidad === d));
+  local.escribir("mw_densidad", d);
+}
+for (const b of document.querySelectorAll("#densidad [data-densidad]")) b.addEventListener("click", () => ponerDensidad(b.dataset.densidad));
+ponerDensidad(local.leer("mw_densidad", "comoda") === "compacta" ? "compacta" : "comoda");
+
+// «Favoritos» en la cabecera: atajo al filtro de la lista «Favoritos».
+$("btn-favoritos").addEventListener("click", () => {
+  const l = listaFavoritos();
+  if (!l) { avisar("Aún no tienes favoritos: pulsa la estrella de un objeto."); return; }
+  $("f-lista").value = $("f-lista").value === String(l.id) ? "" : String(l.id);
+  repintar();
+});
+
+// Grupos plegables de la barra lateral: se recuerda cuáles están abiertos.
+for (const d of document.querySelectorAll(".lateral details[id]")) {
+  const abiertosGuardados = local.leer("mw_plegables", null);
+  if (abiertosGuardados && d.id in abiertosGuardados) d.open = !!abiertosGuardados[d.id];
+  d.addEventListener("toggle", () => {
+    const g = local.leer("mw_plegables", {}) ?? {};
+    g[d.id] = d.open;
+    local.escribir("mw_plegables", g);
+  });
+}
+
 $("tbody").addEventListener("click", (ev) => {
+  const fav = ev.target.closest("[data-fav]");
+  if (fav) {
+    const id = Number(fav.dataset.fav);
+    const nombre = pagina?.filas.find((x) => x.id === id)?.nombre ?? `#${id}`;
+    fav.disabled = true;
+    alternarFavorito(id, nombre).catch((e) => avisar("No se pudo guardar el favorito: " + e.message, "bad"))
+      .finally(() => { fav.disabled = false; });
+    return;
+  }
   const b = ev.target.closest("[data-detalle]") ?? ev.target.closest("tr[data-id]");
   if (!b) return;
   location.hash = `#/objeto/${Number(b.dataset.detalle ?? b.dataset.id)}`;
@@ -679,19 +889,7 @@ function elegirCategoria(cat, sub) {
   if (estrecho()) cerrarLateral();
 }
 
-$("btn-limpiar").addEventListener("click", () => {
-  Object.assign(filtro, { texto: "", categoria: "", subcategoria: "", calidad: "", profesion: "", rol: "", familia: "", pagina: 1 });
-  for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
-  $("f-ofertas").checked = false;
-  $("f-oportunidad").value = "";
-  $("f-region").value = "";
-  $("f-lista").value = "";
-  $("f-materiales").checked = false;
-  $("f-orden").value = "nombre:asc";
-  $("buscador").value = "";
-  pintarCalidades();
-  repintar();
-});
+$("btn-limpiar").addEventListener("click", limpiarTodo);
 
 // ---------- catálogo: cobertura medida e importación verificable de IDs ----------
 function pintarCobertura(c) {
@@ -910,8 +1108,15 @@ function ponerVista(v) {
   $("mapa").hidden = v !== "mapa";
   $("vista-lista").hidden = v === "mapa";
   document.querySelector(".res-cab .orden").hidden = v === "mapa";
-  if (v === "mapa") { $("paginador").hidden = true; $("sin-resultados").hidden = true; cargarMapa(); }
-  else pintarTabla();
+  if (v === "mapa") {
+    $("paginador").hidden = true; $("sin-resultados").hidden = true;
+    $("chips-filtros").hidden = true; $("nuevo-orden").hidden = true;
+    for (const id of ["btn-favoritos", "densidad"]) $(id).hidden = true;
+    cargarMapa();
+  } else {
+    for (const id of ["btn-favoritos", "densidad"]) $(id).hidden = false;
+    pintarTabla();
+  }
 }
 for (const b of document.querySelectorAll(".btn-vista")) b.addEventListener("click", () => ponerVista(b.dataset.modo));
 for (const b of document.querySelectorAll("#mapa-periodos [data-periodo]")) {
@@ -1199,7 +1404,7 @@ $("det-cerrar").addEventListener("click", salirDelDetalle);
 $("velo-detalle").addEventListener("click", salirDelDetalle);
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape" || ev.defaultPrevented) return;
-  if (document.activeElement === $("buscador")) return;   // Escape del buscador solo cierra sugerencias
+  if ($("buscador").closest(".combo").contains(document.activeElement)) return;   // Escape del buscador solo cierra sus listas
   if ($("lateral").classList.contains("abierta")) cerrarLateral();
   else if (!$("panel-ficha").hidden) salirDelDetalle();
 });
@@ -1226,22 +1431,32 @@ function cabeceraObjeto(f) {
   const cab = el("div", "det-objeto");
   cab.append(iconoNodo(f.icono, f.nombre, f.calidad, true));
   const t = el("div");
-  const idBtn = el("button", "btn-mini", `#${f.id}`);
-  idBtn.type = "button"; idBtn.title = "Copiar el ID";
-  idBtn.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(String(f.id)); idBtn.textContent = `#${f.id} ✓`; }
-    catch { idBtn.textContent = `#${f.id}`; }
-  });
+  // Acciones discretas: copiar nombre o ID y abrir Wowhead.
+  const copiar = (texto, valor, etiqueta) => {
+    const b = el("button", "btn-mini");
+    b.type = "button"; b.setAttribute("aria-label", etiqueta);
+    b.innerHTML = '<svg aria-hidden="true"><use href="#i-copiar" /></svg>';
+    b.append(texto);
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(valor); avisar(`Copiado: ${valor}`); }
+      catch { avisar("No se pudo copiar", "bad"); }
+    });
+    return b;
+  };
+  const acciones = el("div", "det-acciones");
+  if (!sinFicha(f.nombre)) acciones.append(copiar("Nombre", f.nombre, `Copiar el nombre: ${f.nombre}`));
+  acciones.append(copiar(`#${f.id}`, String(f.id), `Copiar el ID ${f.id}`));
+  if (f.wowhead_url) {
+    const a = el("a", "btn-mini wowhead", "Wowhead ↗");
+    a.href = f.wowhead_url; a.target = "_blank"; a.rel = "noopener";
+    a.setAttribute("aria-label", "Abrir en Wowhead (pestaña nueva)");
+    acciones.append(a);
+  }
   t.append(sinFicha(f.nombre)
     ? el("div", "det-sub sin-ficha", `${TEXTO_SIN_FICHA}: ni AHledger ni TSM publican su nombre, calidad ni icono.`)
     : el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), f.subclase]
       .filter((x) => x && x !== nombreCat(SIN_CATEGORIA)).join(" › "), f.nivel ? `nivel ${f.nivel}` : null].filter(Boolean).join(" · ")),
-    idBtn);
-  if (f.wowhead_url) {
-    const a = el("a", "wowhead", "Wowhead ↗");
-    a.href = f.wowhead_url; a.target = "_blank"; a.rel = "noopener"; a.title = "Ver el objeto en Wowhead";
-    t.append(a);
-  }
+    acciones);
   cab.append(t);
   return cab;
 }
@@ -1430,20 +1645,41 @@ function cifra(etiqueta, valor, ayuda, cls = "") {
 const CAMPO_METRICA = { min_buyout: "precio", market_value: "valor_mercado", recent: "reciente", historical: "historico",
   median: "mediana", quantity: "cantidad", sales_per_day: "ventas_dia" };
 
+/** A la vista: compra mínima, valor de mercado y cantidad. Las demás métricas, en «Más precios». */
+const METRICAS_PRINCIPALES = new Set(["min_buyout", "market_value", "median", "quantity"]);
+
 function bloquePrecios(f) {
+  const completo = bloquePreciosCompleto(f);
+  const principales = [...completo.children].filter((c) => c.dataset.principal === "1");
+  const resto = [...completo.children].filter((c) => c.dataset.principal !== "1");
+  const arriba = el("div", "det-precios");
+  arriba.append(...principales);
+  if (!resto.length) return arriba;
+  const mas = el("details", "mas-precios");
+  mas.append(el("summary", "", `Más precios (${resto.length})`));
+  const g = el("div", "det-precios");
+  g.append(...resto);
+  mas.append(g);
+  const caja = el("div");
+  caja.append(arriba, mas);
+  return caja;
+}
+
+function bloquePreciosCompleto(f) {
   const p = f.mercado, x = f.extremos_30d;
   const grid = el("div", "det-precios");
+  const marcar = (nodo) => { nodo.dataset.principal = "1"; return nodo; };
   const prov = (f.proveedor ?? "").toUpperCase();
   const origen = p ? `${prov} · escaneo del ${fecha(p.observado ?? p.hora)}` +
     (p.importado ? ` · importado el ${fecha(p.importado)}` : "") : "";
   if (f.estado === "sin_datos" || !p) {
-    grid.append(cifra("Compra mínima", el("span", "estado-txt sin_datos", ESTADO.sin_datos),
-      "Nunca se ha visto en este mercado", "principal"));
+    grid.append(marcar(cifra("Compra mínima", el("span", "estado-txt sin_datos", ESTADO.sin_datos),
+      "Nunca se ha visto en este mercado", "principal")));
   } else if (f.estado === "sin_ofertas") {
     const u = f.ultima_compra_minima;
-    grid.append(cifra("Compra mínima", el("span", "estado-txt sin_ofertas", ESTADO.sin_ofertas),
+    grid.append(marcar(cifra("Compra mínima", el("span", "estado-txt sin_ofertas", ESTADO.sin_ofertas),
       `Ningún anuncio en el último escaneo (${fecha(f.escaneo)})` +
-        (u ? `. Última compra mínima vista: ${formatearMoneda(u.valor)} (${fecha(u.hora)})` : ""), "principal"));
+        (u ? `. Última compra mínima vista: ${formatearMoneda(u.valor)} (${fecha(u.hora)})` : ""), "principal")));
   }
   // Cada métrica que publica la fuente, con su nombre y su significado (de la tabla «metricas»).
   for (const m of f.metricas ?? []) {
@@ -1453,8 +1689,9 @@ function bloquePrecios(f) {
     const valor = m.columna === "quantity" ? v.toLocaleString("es")
       : m.columna === "sales_per_day" ? v.toLocaleString("es", { maximumFractionDigits: v >= 10 ? 0 : 1 })
       : monedaNodo(v);
-    grid.append(cifra(m.nombre, valor, `${m.significado} (${m.clave_fuente} · ${origen})`,
-      m.columna === "min_buyout" ? "principal" : ""));
+    const c = cifra(m.nombre, valor, `${m.significado} (${m.clave_fuente} · ${origen})`,
+      m.columna === "min_buyout" ? "principal" : "");
+    grid.append(METRICAS_PRINCIPALES.has(m.columna) ? marcar(c) : c);
   }
   if (x) {
     grid.append(cifra("Mínimo 30 d", monedaNodo(x.minimo),
@@ -1517,7 +1754,7 @@ function recalcularQueHacer() {
 /** Guarda la banda de una lista (null = usar la general) y actualiza las listas y la ficha abierta. */
 async function guardarPerfilLista(id, perfil) {
   const d = await postJson("/api/listas", { accion: "perfil", id: Number(id), perfil });
-  ponerListas(d.listas);
+  ponerListas(d.listas, d.favoritos);
   if (fichaActual) {
     for (const l of fichaActual.listas ?? []) if (String(l.id) === String(id)) l.perfil = misListas.find((x) => x.id === l.id)?.perfil ?? null;
   }
@@ -1586,7 +1823,11 @@ function bloqueQueHacer(f) {
   }
   const regla = reglaPerfil();
   const casa = `${perfilSubasta.tipo_casa === "faccion" ? "casa de facción" : "casa neutral"}, ${perfilSubasta.duracion} h`;
-  caja.append(kv([
+  // Lo esencial a la vista; las cifras y las advertencias, en «Ver motivo».
+  const detalle = el("details", "motivo");
+  detalle.append(el("summary", "", "Ver motivo"));
+  caja.append(detalle);
+  detalle.append(kv([
     ["Banda", s.banda ? `${formatearMoneda(s.banda.min)} · ${formatearMoneda(s.banda.normal)} · ${formatearMoneda(s.banda.max)}` : null],
     ["Puja", s.puja != null && s.precio != null ? formatearMoneda(s.puja) : null],
     ["Neto tras comisión", s.neto != null ? `${formatearMoneda(s.neto)} (comisión ${formatearMoneda(s.comision)}, ${casa})` : null],
@@ -1597,9 +1838,8 @@ function bloqueQueHacer(f) {
     "Sugerencia propia con la lógica de publicación de TSM (mínimo, normal y máximo; 1 rebaja por debajo de la compra mínima). " +
     "No se puede saber si la subasta más barata es tuya: si lo es, no hace falta bajar el precio." +
     (regla && !regla.verificado ? " La comisión y el depósito están sin verificar." : ""));
-  caja.append(nota);
-  if (listaBanda) caja.append(el("p", "muted small", `Usa la banda de tu lista «${listaBanda}».`));
-  caja.title = "Banda: mínimo, normal y máximo. Ajústala en «Banda de precios» (barra lateral).";
+  detalle.append(nota);
+  if (listaBanda) caja.insertBefore(el("p", "muted small", `Banda de tu lista «${listaBanda}»`), detalle);
   return caja;
 }
 const perfilGeneral = () => perfilSubasta;
@@ -1616,8 +1856,19 @@ async function postJson(url, cuerpo) {
 }
 
 /** Guarda las listas y rehace los dos desplegables (filtro y banda) sin perder lo elegido. */
-function ponerListas(listas) {
+function ponerListas(listas, favs) {
   misListas = listas ?? [];
+  if (Array.isArray(favs)) {
+    favoritos = new Set(favs);
+    // Las estrellas de la tabla se actualizan sin volver a pedir la página.
+    for (const b of $("tbody").querySelectorAll("[data-fav]")) {
+      const id = Number(b.dataset.fav), es = favoritos.has(id);
+      const nombre = pagina?.filas.find((x) => x.id === id)?.nombre ?? `#${id}`;
+      b.setAttribute("aria-pressed", String(es));
+      b.setAttribute("aria-label", `${es ? "Quitar de" : "Añadir a"} favoritos: ${nombre}`);
+      b.title = es ? "Quitar de favoritos" : "Añadir a favoritos";
+    }
+  }
   for (const [id, primera] of [["f-lista", "Todos los objetos"], ["b-ambito", "General (todos los objetos)"]]) {
     const s = $(id), antes = s.value;
     const op0 = el("option", "", primera); op0.value = "";
@@ -1626,14 +1877,17 @@ function ponerListas(listas) {
       o.value = String(l.id);
       return o;
     }));
-    s.value = misListas.some((l) => String(l.id) === antes) ? antes : "";
+    const quiere = id === "f-lista" && listaPendiente ? listaPendiente : antes;
+    s.value = misListas.some((l) => String(l.id) === quiere) ? quiere : "";
     if (id === "f-lista" && antes && !s.value) repintar();   // la lista filtrada ya no existe
   }
+  listaPendiente = "";
+  $("btn-favoritos").setAttribute("aria-pressed", String(!!listaFavoritos() && $("f-lista").value === String(listaFavoritos()?.id)));
 }
 async function cargarListas() {
   try {
     const r = await fetch("/api/listas", { cache: "no-store" });
-    if (r.ok) { ponerListas((await r.json()).listas); pintarFormBanda(); }
+    if (r.ok) { const d = await r.json(); ponerListas(d.listas, d.favoritos); pintarFormBanda(); }
   } catch { /* las listas no bloquean la página */ }
 }
 
@@ -1695,7 +1949,7 @@ function seccionListasAlertas(f) {
       cb.addEventListener("change", async () => {
         try {
           const d = await postJson("/api/listas", { accion: "poner", id: l.id, objeto: id, dentro: cb.checked });
-          ponerListas(d.listas);
+          ponerListas(d.listas, d.favoritos);
           f.listas = d.listas.filter((x) => x.contiene).map((x) => ({ id: x.id, nombre: x.nombre, perfil: x.perfil }));
           recalcularQueHacer();
         } catch (e) { cb.checked = !cb.checked; error(e); }
@@ -1711,7 +1965,7 @@ function seccionListasAlertas(f) {
       ev.preventDefault();
       try {
         const d = await postJson("/api/listas", { accion: "crear", nombre: nom.value, objeto: id });
-        ponerListas(d.listas);
+        ponerListas(d.listas, d.favoritos);
         f.listas = d.listas.filter((x) => x.contiene).map((x) => ({ id: x.id, nombre: x.nombre, perfil: x.perfil }));
         pintar(alertasObj);
       } catch (e) { error(e); }
@@ -1753,9 +2007,7 @@ function seccionListasAlertas(f) {
           : "Alerta creada. Se comprueba con cada escaneo nuevo y avisa en esta página al abrirla.";
       } catch (e) { error(e); }
     });
-    nodos.push(ul, fa, msg,
-      el("p", "muted small", "Las alertas se revisan en la base de datos con cada consulta horaria y se ven al abrir la página. " +
-        "No hay aviso fuera de la página (correo o Discord): necesitaría un servicio y credenciales aparte."));
+    nodos.push(ul, fa, msg, el("p", "muted small", "Se revisan con cada escaneo y se avisan al abrir la página."));
     cuerpo.replaceChildren(...nodos);
   };
   const cargar = () => fetch(`/api/alertas?mercado=${urlMercado()}&objeto=${id}`, { cache: "no-store" })
@@ -1825,8 +2077,10 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     $("det-titulo").textContent = f.nombre;
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
     fichaActual = f;
-    cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f), bloqueQueHacer(f), rec,
-      f.estado === "sin_datos" ? null : seccionGrafico(id), seccionListasAlertas(f), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
+    // Primero lo esencial: objeto, precio y disponibilidad, gráfico y una recomendación breve.
+    cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f),
+      f.estado === "sin_datos" ? null : seccionGrafico(id), rec, bloqueQueHacer(f),
+      seccionListasAlertas(f), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
     if (abiertos) {
       for (const d of cuerpo.querySelectorAll("details")) {
         if (abiertos.has(d.querySelector(":scope > summary")?.textContent)) d.open = true;
@@ -1909,8 +2163,10 @@ function confirmarSugerencia(k) {
   const s = sugerencias[k];
   if (!s) return;
   $("buscador").value = s.nombre;     // el texto solo cambia al confirmar
+  $("btn-borrar-busqueda").hidden = false;
   ac = { ...ac, abierto: false, activo: -1 };
   pintarSugerencias();
+  guardarReciente({ id: s.id, nombre: s.nombre, icono: s.icono, calidad: s.calidad });
   location.hash = `#/objeto/${s.id}`;
   if (leerRuta(location.hash).id === objetoActual) abrirObjeto(s.id);
 }
@@ -1920,16 +2176,85 @@ function buscarEnMercado() {
   filtro.texto = $("buscador").value.trim();
   ac = { ...ac, abierto: false, activo: -1 };
   pintarSugerencias();
+  ocultarRecientes();
+  if (filtro.texto) guardarReciente({ texto: filtro.texto });
   repintar();
 }
 
+// ---------- búsquedas recientes (solo en este navegador) ----------
+const leerRecientes = () => { const l = local.leer("mw_recientes", []); return Array.isArray(l) ? l : []; };
+function guardarReciente(item) { local.escribir("mw_recientes", agregarReciente(leerRecientes(), item)); }
+function ocultarRecientes() { $("recientes").hidden = true; }
+function mostrarRecientes() {
+  const lista = leerRecientes();
+  if (!lista.length || $("buscador").value.trim() || !$("sugerencias").hidden) { ocultarRecientes(); return; }
+  $("lista-recientes").replaceChildren(...lista.map((x, k) => {
+    const li = el("li");
+    const b = el("button", "reciente");
+    b.type = "button"; b.dataset.reciente = k;
+    if (x.id != null) b.append(iconoNodo(x.icono, x.nombre, x.calidad), el("span", x.calidad ? `q-${x.calidad}` : "", x.nombre));
+    else b.append(el("span", "muted", "Buscar: "), el("span", "", x.texto));
+    li.append(b);
+    return li;
+  }));
+  $("recientes").hidden = false;
+}
+$("lista-recientes").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-reciente]");
+  if (!b) return;
+  const x = leerRecientes()[Number(b.dataset.reciente)];
+  if (!x) return;
+  ocultarRecientes();
+  if (x.id != null) {
+    $("buscador").value = x.nombre; $("btn-borrar-busqueda").hidden = false;
+    guardarReciente(x);
+    location.hash = `#/objeto/${x.id}`;
+  } else {
+    $("buscador").value = x.texto; $("btn-borrar-busqueda").hidden = false;
+    buscarEnMercado();
+  }
+});
+$("btn-borrar-recientes").addEventListener("click", () => {
+  local.escribir("mw_recientes", []);
+  ocultarRecientes();
+  $("buscador").focus();
+});
+$("buscador").addEventListener("focus", mostrarRecientes);
+// Al salir del buscador y de sus listas, se cierran (sin atrapar el foco).
+$("buscador").closest(".combo").addEventListener("focusout", (ev) => {
+  if (!ev.currentTarget.contains(ev.relatedTarget)) ocultarRecientes();
+});
+$("btn-borrar-busqueda").addEventListener("click", () => {
+  $("buscador").value = "";
+  $("btn-borrar-busqueda").hidden = true;
+  sugerencias = []; ac = conSugerencias(ac, 0); pintarSugerencias();
+  if (filtro.texto) { filtro.texto = ""; repintar(); }
+  $("buscador").focus();
+});
+// «/» lleva al buscador cuando no se está escribiendo en otro campo.
+document.addEventListener("keydown", (ev) => {
+  if (!atajoBuscar(ev, document.activeElement) || $("barra").hidden) return;
+  ev.preventDefault();
+  if (estrecho()) cerrarLateral();
+  $("buscador").focus();
+  $("buscador").select();
+});
+
 $("buscador").addEventListener("input", () => {
   ac = alEscribir(ac);
+  $("btn-borrar-busqueda").hidden = !$("buscador").value;
+  if ($("buscador").value) ocultarRecientes();
   if (!$("buscador").value.trim() && filtro.texto) { filtro.texto = ""; repintar(); }
   clearTimeout(temporizadorAc);
   temporizadorAc = setTimeout(pedirSugerencias, 150);
 });
 $("buscador").addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !$("recientes").hidden) { ocultarRecientes(); ev.preventDefault(); return; }
+  if (ev.key === "ArrowDown" && !$("recientes").hidden) {
+    ev.preventDefault();
+    $("lista-recientes").querySelector("button")?.focus();
+    return;
+  }
   const r = teclado(ac, { tecla: ev.key, shift: ev.shiftKey, hayTexto: $("buscador").value.trim() !== "" });
   const activoAntes = ac.activo;
   ac = r.estado;
@@ -1943,11 +2268,77 @@ $("buscador").addEventListener("blur", () => {
   setTimeout(() => { if (document.activeElement !== $("buscador")) { ac = { ...ac, abierto: false, activo: -1 }; pintarSugerencias(); } }, 150);
 });
 // Ratón o toque: pointerdown para que la elección llegue antes de que el campo pierda el foco.
+// Dentro de las búsquedas recientes: flechas para moverse y Escape para volver al buscador.
+$("recientes").addEventListener("keydown", (ev) => {
+  const botones = [...$("lista-recientes").querySelectorAll("button")];
+  const k = botones.indexOf(document.activeElement);
+  if (ev.key === "Escape") { ev.preventDefault(); ocultarRecientes(); $("buscador").focus(); }
+  else if (ev.key === "ArrowDown" && k >= 0) { ev.preventDefault(); botones[Math.min(k + 1, botones.length - 1)].focus(); }
+  else if (ev.key === "ArrowUp" && k >= 0) { ev.preventDefault(); (k === 0 ? $("buscador") : botones[k - 1]).focus(); }
+});
 $("sugerencias").addEventListener("pointerdown", (ev) => {
   const li = ev.target.closest("[data-k]");
   if (!li) return;
   ev.preventDefault();
   confirmarSugerencia(Number(li.dataset.k));
+});
+
+// ---------- ayuda contextual: un «?» abre una nota breve (clic, Enter o toque); Escape o clic fuera la cierra ----------
+let ayudaBoton = null;
+function cerrarAyuda({ devolverFoco = false } = {}) {
+  if (!ayudaBoton) return;
+  ayudaBoton.setAttribute("aria-expanded", "false");
+  $("ayuda-pop").hidden = true;
+  if (devolverFoco) ayudaBoton.focus();
+  ayudaBoton = null;
+}
+function abrirAyuda(boton, texto) {
+  if (ayudaBoton === boton) { cerrarAyuda(); return; }
+  cerrarAyuda();
+  ayudaBoton = boton;
+  const pop = $("ayuda-pop");
+  $("ayuda-txt").textContent = texto;
+  pop.setAttribute("aria-label", boton.getAttribute("aria-label") ?? "Ayuda");
+  pop.hidden = false;
+  boton.setAttribute("aria-expanded", "true");
+  boton.setAttribute("aria-controls", "ayuda-pop");
+  // Debajo del botón, sin salirse de la pantalla.
+  const r = boton.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+  const top = r.bottom + 8 + h > window.innerHeight ? Math.max(8, r.top - h - 8) : r.bottom + 8;
+  pop.style.left = `${left}px`; pop.style.top = `${top}px`;
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest(".ayuda");
+  if (b) { ev.preventDefault(); abrirAyuda(b, b.dataset.ayuda ?? ""); return; }
+  if (ev.target.closest("#estado-dato")) { abrirAyuda($("estado-dato"), $("estado-dato").title); return; }
+  if (!ev.target.closest("#ayuda-pop")) cerrarAyuda();
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && ayudaBoton) { ev.preventDefault(); cerrarAyuda({ devolverFoco: true }); }
+  if ((ev.key === "Enter" || ev.key === " ") && document.activeElement === $("estado-dato")) {
+    ev.preventDefault(); abrirAyuda($("estado-dato"), $("estado-dato").title);
+  }
+}, true);
+window.addEventListener("resize", () => cerrarAyuda());
+document.addEventListener("scroll", () => cerrarAyuda(), true);
+
+// La cabecera de la tabla se fija justo debajo de la barra superior (su alto cambia con el zoom).
+function ajustarAltoBarra() {
+  const h = $("barra").offsetHeight;
+  if (h > 0) document.documentElement.style.setProperty("--alto-barra", `${h}px`);
+}
+new ResizeObserver(ajustarAltoBarra).observe($("barra"));
+window.addEventListener("resize", ajustarAltoBarra);
+
+// Tras un fallo se conservan los datos y se puede reintentar al momento.
+$("btn-reintentar").addEventListener("click", async () => {
+  const b = $("btn-reintentar");
+  b.disabled = true;
+  try {
+    if (!ultimo) await refrescar();
+    else { await vigilar(); await cargarPagina({ silencioso: true }); }
+  } finally { b.disabled = false; }
 });
 
 // ---------- actualización ----------
@@ -2050,6 +2441,7 @@ $("btn-salir").addEventListener("click", async () => {
   cargar();
 });
 
+restaurarEstado();   // filtros, orden y búsqueda de la última visita
 ponerVista(vista);   // la vista elegida (Lista o Mapa) se recuerda en este navegador
 refrescar();
 vigilar();
