@@ -1601,6 +1601,15 @@ function seccionGrafico(id) {
   return sec;
 }
 
+/** Clave del mercado AHledger del mismo reino (región, tipo y facción) que el actual, si el actual no es AHledger. */
+function mercadoCantidades() {
+  const actual = ultimo?.mercado;
+  if (!actual || /^ahledger:/.test(actual.clave)) return null;
+  const p = partesMercado(actual);
+  return (ultimo.mercados ?? []).map((m) => ({ ...m, ...partesMercado(m) }))
+    .find((m) => /^ahledger:/.test(m.clave) && m.region === p.region && m.modo === p.modo && m.faccion === p.faccion)?.clave ?? null;
+}
+
 /** Dibuja la pestaña elegida con los últimos datos recibidos (sin volver a pedirlos). */
 function pintarHistorial(cont) {
   const h = cont._historial;
@@ -1609,7 +1618,7 @@ function pintarHistorial(cont) {
     cont.replaceChildren(el("p", "muted small", "Sin observaciones en este periodo."));
     return;
   }
-  if (vistaHistorial === "precios") { cont.replaceChildren(tablaPrecios(h)); return; }
+  if (vistaHistorial === "precios") { cont.replaceChildren(tablaPrecios(h, cont._cantRef)); return; }
   dibujarGrafico(cont, { puntos: h.puntos, nombres: h.nombres, cantidad: h.cantidad, med7: h.med7, med30: h.med30, pasoMs: h.paso_ms });
   if (h.nota) cont.append(el("p", "muted small", h.nota));
 }
@@ -1618,32 +1627,36 @@ function pintarHistorial(cont) {
  * Tabla de precio por unidad, como la del juego pero con lo que publica la fuente: una fila por escaneo
  * (no por subasta: ninguna fuente pública da las subastas una a una), la más reciente arriba.
  */
-function tablaPrecios(h) {
+function tablaPrecios(h, ref = null) {
   const [n1, n2] = h.nombres ?? ["Compra mínima", "Valor de mercado"];
-  const cant = new Map((h.cantidad ?? []).map(([t, q]) => [t, q]));
-  const hayCant = [...cant.values()].some((q) => q != null);
+  // Unidades: las del propio mercado si las publica; si no, las de AHledger en la misma hora (marcadas).
+  const propias = (h.cantidad ?? []).some(([, q]) => q != null);
+  const cant = new Map(((propias ? h.cantidad : ref?.cantidad) ?? []).map(([t, q]) => [t, q]));
+  const fuenteCant = !propias && ref ? ref.proveedor : null;
   const filas = h.puntos.filter((p) => p[1] != null || p[2] != null).slice().reverse();
   const caja = el("div", "tabla-precios-wrap");
   const t = el("table", "tabla tabla-precios");
-  const cap = el("caption", "sr-only", `${n1} por unidad en cada escaneo, del más reciente al más antiguo`);
+  const cap = el("caption", "sr-only", `${n1} por unidad, valor de mercado y unidades a la venta en cada escaneo, del más reciente al más antiguo`);
   const thead = el("thead"), trh = el("tr");
-  for (const [txt, num] of [["Precio por unidad", true], [n2, true], ...(hayCant ? [["Disponible", true]] : []), ["Escaneo", true]]) {
-    const th = el("th", num ? "num" : "", txt); th.scope = "col"; trh.append(th);
+  for (const txt of ["Precio por unidad", n2, "Unidades"]) {
+    const th = el("th", "num", txt); th.scope = "col"; trh.append(th);
   }
+  const thU = trh.lastChild;
+  thU.title = fuenteCant
+    ? `Unidades del objeto a la venta en esa misma hora según ${fuenteCant} (todas, a cualquier precio: ninguna fuente publica cuántas hay a cada precio).`
+    : "Unidades del objeto a la venta en ese escaneo (todas, a cualquier precio).";
+  if (fuenteCant) thU.append(el("span", "th-fuente", fuenteCant));
   thead.append(trh);
   const tb = el("tbody");
   const fmt = (ms) => new Date(ms).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   for (const p of filas.slice(0, 300)) {
     const tr = el("tr");
+    tr.title = fmt(p[0]);   // la hora del escaneo, al pasar el ratón
     const a = el("td", "num"); a.append(p[1] == null ? sinDato() : monedaNodo(p[1]));
     const b = el("td", "num"); b.append(p[2] == null ? sinDato() : monedaNodo(p[2]));
-    tr.append(a, b);
-    if (hayCant) {
-      const q = cant.get(p[0]);
-      const c = el("td", "num"); c.append(q == null ? sinDato() : document.createTextNode(q.toLocaleString("es")));
-      tr.append(c);
-    }
-    tr.append(el("td", "fecha-escaneo", fmt(p[0])));
+    const q = cant.get(p[0]);
+    const c = el("td", "num"); c.append(q == null ? sinDato("Sin dato de unidades en esa hora") : document.createTextNode(q.toLocaleString("es")));
+    tr.append(a, b, c);
     tb.append(tr);
   }
   t.append(cap, thead, tb);
@@ -1662,6 +1675,16 @@ async function cargarHistorialEn(cont, id, rango) {
     if (!r.ok) throw new Error(h.error || "HTTP " + r.status);
     if (cont.dataset.token !== token || !cont.isConnected) return;
     cont._historial = h;   // la otra pestaña se dibuja con estos mismos datos
+    cont._cantRef = null;
+    const comp = mercadoCantidades();
+    if (comp && !(h.cantidad ?? []).some(([, q]) => q != null)) {
+      try {
+        const r2 = await fetch(`/api/historial-fuente?mercado=${encodeURIComponent(comp)}&id=${id}&rango=${rango}`);
+        const h2 = r2.ok ? await r2.json() : null;
+        if (cont.dataset.token !== token || !cont.isConnected) return;
+        if (h2?.cantidad?.some(([, q]) => q != null)) cont._cantRef = { proveedor: "AHledger", cantidad: h2.cantidad };
+      } catch { /* sin unidades: la tabla las muestra como «—» */ }
+    }
     pintarHistorial(cont);
   } catch (e) {
     if (cont.dataset.token === token) cont.replaceChildren(el("p", "bad small", "No se pudo cargar el historial: " + e.message));
