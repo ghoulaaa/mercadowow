@@ -23,6 +23,20 @@ test("etiquetas: una por filtro activo, en el orden de la barra lateral", () => 
   assert.equal(chipsFiltros({ nivel_min: 0 }, N)[0].texto, "Nivel 0–…");
 });
 
+test("subcategorías en español en las etiquetas; las desconocidas, tal cual", async () => {
+  const { nombreSubcategoria, NOMBRE_SUBCATEGORIA } = await import("../../app/static/tabla.js");
+  assert.equal(nombreSubcategoria("Food & Drink"), "Comida y bebida");
+  assert.equal(nombreSubcategoria("Metal & Stone"), "Metal y piedra");
+  assert.equal(nombreSubcategoria("Inventada"), "Inventada");
+  assert.equal(nombreSubcategoria(null), null);
+  // Las 67 subcategorías distintas del catálogo (comprobado contra Supabase el 2026-11-10) tienen traducción.
+  for (const s of ["Ammo Pouch", "Fist Weapon", "Junk", "Libram", "Soul Bag", "Temporary", "Trade Goods", "Wand"]) {
+    assert.ok(s in NOMBRE_SUBCATEGORIA, s);
+  }
+  const c = chipsFiltros({ categoria: "Weapon", subcategoria: "Sword" }, { ...N, subcategoria: nombreSubcategoria });
+  assert.equal(c[0].texto, "Armas › Espada");
+});
+
 test("recientes: lo último primero, sin repetir, con límite", () => {
   let l = agregarReciente([], { texto: "Linen" });
   l = agregarReciente(l, { id: 2589, nombre: "Linen Cloth" });

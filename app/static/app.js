@@ -9,7 +9,7 @@ import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariaci
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { normalizarPerfil, perfilDeLista, textoAlerta } from "./listas.js";
 import { agregarReciente, atajoBuscar, chipsFiltros, fusionarSinReordenar } from "./interfaz.js";
-import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
+import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct, nombreSubcategoria } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, leerPreciosNpc, paginas,
   paramsMercado, segmentosSpark, sinFicha, textoReglaGanga, textoTasa, textoVentasDia, verMargen,
@@ -38,6 +38,7 @@ const local = {
   escribir(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento: no pasa nada */ } },
 };
 const nombreCat = (c) => NOMBRE_CATEGORIA[c] ?? c;
+const nombreSub = nombreSubcategoria;   // subcategoría en español (solo para mostrar)
 const nombreProf = (p) => NOMBRE_PROFESION[p] ?? p;
 const urlMercado = () => encodeURIComponent(ultimo.mercado.clave);
 
@@ -64,6 +65,22 @@ function monedaNodo(cobre) {
     span.append(el("span", { o: "o", p: "p", c: "c" }[parte.slice(-1)] ?? "", parte), " ");
   }
   return span;
+}
+
+/**
+ * Copia al portapapeles. Si el navegador no deja usar la API moderna (permisos, http, navegador antiguo),
+ * prueba con el método clásico. Devuelve si se copió.
+ */
+async function copiarTexto(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; } catch { /* se prueba el método clásico */ }
+  const ta = document.createElement("textarea");
+  ta.value = texto; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  return ok;
 }
 
 let temporizadorAviso = null;
@@ -446,7 +463,7 @@ function pintarTabla() {
     const sf = sinFicha(x.nombre);
     txt.append(el("span", "objeto-nombre" + (x.calidad ? ` q-${x.calidad}` : ""), x.nombre),
       el("span", "objeto-id" + (sf ? " sin-ficha" : ""), sf ? TEXTO_SIN_FICHA
-        : [x.subcategoria || nombreCat(x.categoria), x.nivel ? `nivel ${x.nivel}` : null].filter(Boolean).join(" · ")));
+          : [nombreSub(x.subcategoria) || nombreCat(x.categoria), x.nivel ? `nivel ${x.nivel}` : null].filter(Boolean).join(" · ")));
     if (x.ganga) txt.firstChild.append(el("span", "marca-op", "Ganga"));
     if (x.bajo_npc) txt.firstChild.append(el("span", "marca-op", "< NPC"));
     b.append(iconoNodo(x.icono, x.nombre, x.calidad), txt);
@@ -474,7 +491,7 @@ function pintarTabla() {
   const partes = [];
   if (filtro.profesion) partes.push(nombreProf(filtro.profesion) + (filtro.rol ? ` · ${NOMBRE_ROL[filtro.rol].toLowerCase()}` : ""));
   if ($("f-materiales").checked) partes.push(filtro.familia ? NOMBRE_FAMILIA[filtro.familia] : "Materiales");
-  if (filtro.subcategoria) partes.push(filtro.subcategoria); else if (filtro.categoria) partes.push(nombreCat(filtro.categoria));
+  if (filtro.subcategoria) partes.push(nombreSub(filtro.subcategoria)); else if (filtro.categoria) partes.push(nombreCat(filtro.categoria));
   if (filtro.texto) partes.push(`«${filtro.texto}»`);
   if ($("f-oportunidad").value) partes.unshift(NOMBRE_OPORTUNIDAD[$("f-oportunidad").value]);
   if ($("f-region").value) partes.push(`se vende en la región (≥ ${$("f-region").value}/día)`);
@@ -554,6 +571,7 @@ const NOMBRES_CHIP = {
   categoria: (c) => nombreCat(c), profesion: (p) => nombreProf(p), rol: (r) => NOMBRE_ROL[r]?.toLowerCase() ?? r,
   familia: (f) => NOMBRE_FAMILIA[f] ?? f, calidad: (q) => NOMBRE_CALIDAD[q] ?? q,
   oportunidad: (o) => NOMBRE_OPORTUNIDAD[o] ?? o, moneda: (c) => formatearMoneda(c),
+  subcategoria: (s) => nombreSub(s),
   lista: (id) => `Lista «${misListas.find((l) => String(l.id) === String(id))?.nombre ?? "?"}»`,
 };
 
@@ -718,7 +736,9 @@ for (const b of document.querySelectorAll(".th-orden")) {
     const nuevaDir = clave === k ? (dir === "asc" ? "desc" : "asc") : (k === "nombre" || k === "precio" ? "asc" : "desc");
     const valor = `${k}:${nuevaDir}`;
     if (![...$("f-orden").options].some((o) => o.value === valor)) {
-      const o = el("option", "", `${b.textContent} ${nuevaDir === "asc" ? "↑" : "↓"}`); o.value = valor; $("f-orden").append(o);
+      // Solo el texto visible de la cabecera (sin el texto oculto para lectores de pantalla).
+      const visible = b.firstChild?.nodeType === Node.TEXT_NODE ? b.firstChild.textContent : b.textContent;
+      const o = el("option", "", `${visible} ${nuevaDir === "asc" ? "↑" : "↓"}`); o.value = valor; $("f-orden").append(o);
     }
     $("f-orden").value = valor;
     repintar();
@@ -871,7 +891,7 @@ function pintarArbol() {
     if (abiertas.has(c.categoria) && c.subcategorias.length) {
       const sub = el("ul");
       for (const s of c.subcategorias) {
-        sub.append(fila(s.subcategoria, s.n, undefined, filtro.categoria === c.categoria && filtro.subcategoria === s.subcategoria,
+        sub.append(fila(nombreSub(s.subcategoria), s.n, undefined, filtro.categoria === c.categoria && filtro.subcategoria === s.subcategoria,
           () => elegirCategoria(c.categoria, s.subcategoria)));
       }
       li.append(sub);
@@ -1061,7 +1081,7 @@ $("npc-guardar").addEventListener("click", async () => {
 });
 
 // ---------- vista «Mapa»: treemap de materiales por familia ----------
-let vista = local.leer("mw_vista", "lista") === "mapa" ? "mapa" : "lista";
+let vista = local.leer("mw_vista", "lista") === "mapa" ? "mapa" : "lista";   // cualquier otro valor guardado = lista
 let periodoMapa = "24h";
 let mapaDatos = null;
 let mapaN = 0;
@@ -1090,7 +1110,7 @@ function pintarMigas(d) {
   if (nav.hidden) return;
   const pasos = [["Toda la casa", "", ""]];
   if (d.clase) pasos.push([nombreCat(d.clase), d.clase, ""]);
-  if (d.subclase) pasos.push([d.subclase, d.clase, d.subclase]);
+  if (d.subclase) pasos.push([nombreSub(d.subclase), d.clase, d.subclase]);
   nav.replaceChildren(...pasos.flatMap(([txt, c, s], i) => {
     const ultimoPaso = i === pasos.length - 1;
     const n = ultimoPaso ? el("span", "", txt) : el("button", "enlace", txt);
@@ -1104,7 +1124,7 @@ const PERIODO_TXT = { "24h": "24 h", "3d": "3 días", "7d": "7 días" };
 function ponerVista(v) {
   vista = v;
   local.escribir("mw_vista", v);
-  for (const b of document.querySelectorAll(".btn-vista")) b.setAttribute("aria-pressed", String(b.dataset.modo === v));
+  for (const b of document.querySelectorAll(".btn-vista[data-modo]")) b.setAttribute("aria-pressed", String(b.dataset.modo === v));
   $("mapa").hidden = v !== "mapa";
   $("vista-lista").hidden = v === "mapa";
   document.querySelector(".res-cab .orden").hidden = v === "mapa";
@@ -1118,7 +1138,8 @@ function ponerVista(v) {
     pintarTabla();
   }
 }
-for (const b of document.querySelectorAll(".btn-vista")) b.addEventListener("click", () => ponerVista(b.dataset.modo));
+// Solo los botones Lista / Mapa (los de densidad usan el mismo estilo, pero no cambian la vista).
+for (const b of document.querySelectorAll(".btn-vista[data-modo]")) b.addEventListener("click", () => ponerVista(b.dataset.modo));
 for (const b of document.querySelectorAll("#mapa-periodos [data-periodo]")) {
   b.addEventListener("click", () => {
     periodoMapa = b.dataset.periodo;
@@ -1163,7 +1184,7 @@ const contadorMapa = (d) =>
 
 /** Texto de un grupo del mapa de la casa (tooltip y lector de pantalla). */
 function textoGrupo(g, d) {
-  const nombre = d.nivel === "clases" ? nombreCat(g.clave) : g.clave;
+  const nombre = d.nivel === "clases" ? nombreCat(g.clave) : nombreSub(g.clave);
   const partes = [nombre, `${g.n.toLocaleString("es")} objetos (${g.con_ofertas.toLocaleString("es")} con ofertas)`];
   partes.push(g.variacion != null
     ? `mediana ${textoVariacion(Number(g.variacion))} en ${PERIODO_TXT[d.periodo]} (de ${g.con_variacion.toLocaleString("es")} con historial)`
@@ -1183,7 +1204,7 @@ function bloqueGrupo(g, d, r) {
   b.setAttribute("aria-label", texto);
   b.dataset.tip = texto;
   b.dataset.grupo = g.clave;
-  const nombre = d.nivel === "clases" ? nombreCat(g.clave) : g.clave;
+  const nombre = d.nivel === "clases" ? nombreCat(g.clave) : nombreSub(g.clave);
   if (r.w >= 30 && r.h >= 28) b.append(iconoNodo(g.icono, nombre, null));
   if (r.w >= 64 && r.h >= 44) b.append(el("span", "m-nombre", abreviar(`${nombre} · ${g.n}`, Math.floor((r.w - 8) / 6.2))));
   if (r.w >= 40 && r.h >= 36) {
@@ -1199,7 +1220,7 @@ function pintarMapaCasa(d, cont, ancho) {
     ? "Tamaño: unidades publicadas en el último escaneo"
     : d.nivel === "objetos" ? "Tamaño: igual para todos (esta fuente no publica cantidades)"
       : "Tamaño: número de objetos (esta fuente no publica cantidades) · color: mediana de la variación";
-  $("titulo-resultados").textContent = "Mapa de la casa" + (d.clase ? ` · ${nombreCat(d.clase)}` : "") + (d.subclase ? ` · ${d.subclase}` : "");
+  $("titulo-resultados").textContent = "Mapa de la casa" + (d.clase ? ` · ${nombreCat(d.clase)}` : "") + (d.subclase ? ` · ${nombreSub(d.subclase)}` : "");
   const objetos = d.nivel === "objetos";
   const lista = objetos ? d.objetos : d.grupos;
   const peso = (x) => (objetos ? pesoBloque(x, d.tamano) : pesoGrupo(x, d.tamano));
@@ -1438,8 +1459,8 @@ function cabeceraObjeto(f) {
     b.innerHTML = '<svg aria-hidden="true"><use href="#i-copiar" /></svg>';
     b.append(texto);
     b.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(valor); avisar(`Copiado: ${valor}`); }
-      catch { avisar("No se pudo copiar", "bad"); }
+      const ok = await copiarTexto(valor);
+      avisar(ok ? `Copiado: ${valor}` : "No se pudo copiar: selecciónalo a mano", ok ? "" : "bad");
     });
     return b;
   };
@@ -1454,7 +1475,7 @@ function cabeceraObjeto(f) {
   }
   t.append(sinFicha(f.nombre)
     ? el("div", "det-sub sin-ficha", `${TEXTO_SIN_FICHA}: ni AHledger ni TSM publican su nombre, calidad ni icono.`)
-    : el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), f.subclase]
+    : el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), nombreSub(f.subclase)]
       .filter((x) => x && x !== nombreCat(SIN_CATEGORIA)).join(" › "), f.nivel ? `nivel ${f.nivel}` : null].filter(Boolean).join(" · ")),
     acciones);
   cab.append(t);
@@ -1618,7 +1639,7 @@ function seccionPropiedades(f) {
   sec.append(kv([
     ["Compra al NPC", f.compra_npc == null ? null
       : el("span", "", formatearMoneda(f.compra_npc) + (f.compra_npc_origen === "usuario" ? " (introducido por ti)" : ""))],
-    ["Clase", [f.clase, f.subclase].filter(Boolean).join(" › ") || "desconocida"],
+    ["Clase", [f.clase ? nombreCat(f.clase) : null, nombreSub(f.subclase)].filter(Boolean).join(" › ") || "desconocida"],
     ["Nivel del objeto", f.nivel ?? "desconocido"],
     ["Nivel requerido", f.nivel_requerido ?? "—"],
     ["Venta al NPC", f.venta_npc == null ? "desconocido" : monedaNodo(f.venta_npc)],
@@ -1825,7 +1846,7 @@ function bloqueQueHacer(f) {
   const casa = `${perfilSubasta.tipo_casa === "faccion" ? "casa de facción" : "casa neutral"}, ${perfilSubasta.duracion} h`;
   // Lo esencial a la vista; las cifras y las advertencias, en «Ver motivo».
   const detalle = el("details", "motivo");
-  detalle.append(el("summary", "", "Ver motivo"));
+  detalle.append(el("summary", "", "Ver cálculo"));
   caja.append(detalle);
   detalle.append(kv([
     ["Banda", s.banda ? `${formatearMoneda(s.banda.min)} · ${formatearMoneda(s.banda.normal)} · ${formatearMoneda(s.banda.max)}` : null],
@@ -2131,7 +2152,7 @@ function pintarSugerencias() {
     li.dataset.k = k;
     const txt = el("span", "sug-txt");
     txt.append(el("span", s.calidad ? `q-${s.calidad}` : "", s.nombre),
-      el("span", "sug-sub", [NOMBRE_CALIDAD[s.calidad], s.subclase || nombreCat(s.clase), s.en_mercado ? null : "sin precio aquí"]
+      el("span", "sug-sub", [NOMBRE_CALIDAD[s.calidad], nombreSub(s.subclase) || nombreCat(s.clase), s.en_mercado ? null : "sin precio aquí"]
         .filter(Boolean).join(" · ")));
     li.append(iconoNodo(s.icono, s.nombre, s.calidad), txt);
     lista.append(li);

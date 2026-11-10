@@ -47,6 +47,40 @@ export const NOMBRE_CATEGORIA = {
   [SIN_CATEGORIA]: "Sin clasificar",
 };
 
+/**
+ * Subcategorías oficiales (las fuentes las dan en inglés) → nombre en español del juego.
+ * Solo cambia lo que se muestra: los filtros siguen usando el valor original.
+ * Una subcategoría desconocida se muestra tal cual (no se inventa una traducción).
+ */
+export const NOMBRE_SUBCATEGORIA = {
+  // Armadura
+  Cloth: "Tela", Cosmetic: "Cosmético", Idol: "Ídolo", Leather: "Cuero", Libram: "Tratado", Mail: "Malla",
+  Miscellaneous: "Miscelánea", Plate: "Placas", Shield: "Escudo", Totem: "Tótem",
+  // Consumibles
+  Bandages: "Vendas", Consumable: "Consumible", Device: "Dispositivo", Elixirs: "Elixires", Explosives: "Explosivos",
+  Flasks: "Frascos", "Food & Drink": "Comida y bebida", Other: "Otros", Permanent: "Permanente", Potions: "Pociones",
+  Scrolls: "Pergaminos", Temporary: "Temporal",
+  // Recipientes y carcajes
+  Bag: "Bolsa", "Enchanting Bag": "Bolsa de encantamiento", "Herb Bag": "Bolsa de hierbas",
+  "Reagent Bag": "Bolsa de componentes", "Soul Bag": "Bolsa de almas", "Ammo Pouch": "Bolsa de munición", Quiver: "Carcaj",
+  // Varios
+  Key: "Llave", Holiday: "Festividad", Junk: "Chatarra", Mount: "Montura", Pet: "Mascota", Reagent: "Componente",
+  Quest: "Misión", Arrow: "Flecha", Bullet: "Bala",
+  // Recetas
+  Alchemy: "Alquimia", Blacksmithing: "Herrería", Book: "Libro", Cooking: "Cocina", Enchanting: "Encantamiento",
+  Engineering: "Ingeniería", "First Aid": "Primeros auxilios", Fishing: "Pesca", Leatherworking: "Peletería",
+  Tailoring: "Sastrería",
+  // Objetos comerciales
+  Devices: "Dispositivos", Elemental: "Elemental", Herb: "Hierba", "Metal & Stone": "Metal y piedra", Parts: "Piezas",
+  "Trade Goods": "Objetos comerciales",
+  // Armas
+  Axe: "Hacha", Bow: "Arco", Crossbow: "Ballesta", Dagger: "Daga", "Fishing Pole": "Caña de pescar",
+  "Fist Weapon": "Arma de puño", Gun: "Arma de fuego", Mace: "Maza", Polearm: "Arma de asta", Staff: "Bastón",
+  Sword: "Espada", Thrown: "Arrojadiza", Wand: "Varita",
+};
+
+export const nombreSubcategoria = (s) => (s == null ? s : NOMBRE_SUBCATEGORIA[s] ?? s);
+
 export function categorias(filas) {
   const set = new Set(filas.map((f) => f.categoria));
   return [...set].sort((a, b) =>

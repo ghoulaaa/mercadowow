@@ -24,7 +24,8 @@ export function chipsFiltros(e, n) {
   const c = [];
   const pon = (clave, texto) => c.push({ clave, texto });
   if (e.texto) pon("texto", `«${e.texto}»`);
-  if (e.categoria) pon("categoria", e.subcategoria ? `${n.categoria(e.categoria)} › ${e.subcategoria}` : n.categoria(e.categoria));
+  const sub = (s) => (n.subcategoria ? n.subcategoria(s) : s);
+  if (e.categoria) pon("categoria", e.subcategoria ? `${n.categoria(e.categoria)} › ${sub(e.subcategoria)}` : n.categoria(e.categoria));
   if (e.profesion) pon("profesion", n.profesion(e.profesion) + (e.rol ? ` · ${n.rol(e.rol)}` : ""));
   if (e.materiales) pon("materiales", e.familia ? `Materiales · ${n.familia(e.familia)}` : "Materiales");
   if (e.calidad) pon("calidad", n.calidad(e.calidad));
