@@ -1,0 +1,18 @@
+# Vercel solo necesita app/static, api/index.js y vercel.json.
+# Sin esto detecta el servidor local (FastAPI), que no tiene clave de acceso y no debe publicarse.
+app/*.py
+requirements.txt
+requirements-dev.txt
+pytest.ini
+tests
+db
+docs
+reports
+research_notes
+supabase
+netlify
+netlify.toml
+vercel/
+*.bat
+logs
+backups

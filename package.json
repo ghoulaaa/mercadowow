@@ -4,12 +4,14 @@
   "type": "module",
   "description": "Funciones de Supabase y Netlify, y sus pruebas con Postgres simulado (PGlite).",
   "scripts": {
+    "vercel": "node vercel/empaquetar.mjs",
     "test": "node --test \"supabase/pruebas/*.test.ts\" \"netlify/pruebas/*.test.ts\""
   },
   "dependencies": {
     "postgres": "3.4.9"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.15"
+    "@electric-sql/pglite": "0.5.15",
+    "esbuild": "0.28.2"
   }
 }
