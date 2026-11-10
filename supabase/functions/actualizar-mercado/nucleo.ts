@@ -586,7 +586,8 @@ export const LOCALE_ES = "es_MX";
 /** Objeto de control: el espacio de datos solo vale si devuelve este ID con este nombre en inglés. */
 export const CONTROL_BLIZZARD = { id: 2589, nombre_en: "Linen Cloth" };
 
-type RespuestaItem = { tipo: "ok"; nombre: string } | { tipo: "no" } | { tipo: "parar"; motivo: string };
+type RespuestaItem = { tipo: "ok"; nombre: string } | { tipo: "no" } | { tipo: "error"; motivo: string }
+  | { tipo: "parar"; motivo: string };
 
 async function pedirItemBlizzard(f: typeof fetch, token: string, ns: string, locale: string, id: number): Promise<RespuestaItem> {
   let r: Response;
@@ -596,7 +597,11 @@ async function pedirItemBlizzard(f: typeof fetch, token: string, ns: string, loc
     });
   } catch (e) { return { tipo: "parar", motivo: `Error de conexión: ${(e as Error).message ?? e}` }; }
   if (r.status === 404) { await r.body?.cancel(); return { tipo: "no" }; }
-  if (r.status !== 200) { await r.body?.cancel(); return { tipo: "parar", motivo: `HTTP ${r.status}` }; }
+  // Límite de peticiones o credenciales: parar. Otro error del servidor con ESTE objeto: solo se salta.
+  if (r.status === 429 || r.status === 401 || r.status === 403) {
+    await r.body?.cancel(); return { tipo: "parar", motivo: `HTTP ${r.status}` };
+  }
+  if (r.status !== 200) { await r.body?.cancel(); return { tipo: "error", motivo: `HTTP ${r.status}` }; }
   const j = await r.json().catch(() => null) as { id?: unknown; name?: unknown } | null;
   // Con locale, la API devuelve el nombre como texto. Si no coincide el ID o no hay nombre, no se guarda nada.
   if (!j || j.id !== id || typeof j.name !== "string" || !j.name.trim()) return { tipo: "no" };
@@ -634,7 +639,7 @@ export async function actualizarNombresEs(db: Db, o: { fetch: typeof fetch; clie
     let ns: string | null = null;
     for (const cand of NAMESPACES_BLIZZARD) {
       const c = await pedirItemBlizzard(o.fetch, token, cand, "en_US", CONTROL_BLIZZARD.id);
-      if (c.tipo === "parar") { pausa = 900; return { estado: "error", motivo: c.motivo }; }
+      if (c.tipo === "parar" || c.tipo === "error") { pausa = 900; return { estado: "error", motivo: c.motivo }; }
       if (c.tipo === "ok" && c.nombre === CONTROL_BLIZZARD.nombre_en) { ns = cand; break; }
     }
     if (!ns) { pausa = 24 * 3600; return { estado: "error", motivo: "ningun_espacio_de_datos_coincide" }; }
@@ -642,22 +647,29 @@ export async function actualizarNombresEs(db: Db, o: { fetch: typeof fetch; clie
     // 3. Nombres en español, con pocas peticiones a la vez (muy por debajo del límite de la API).
     const encontrados: { id: number; nombre: string }[] = [];
     const sinNombre: number[] = [];
+    const conError: number[] = [];
     let parado: string | null = null;
+    let erroresSeguidos = 0;
     let k = 0;
     const trabajador = async () => {
       while (!parado && k < pendientes.length) {
         const id = pendientes[k++];
-        const r = await pedirItemBlizzard(o.fetch, token, ns!, LOCALE_ES, id);
-        if (r.tipo === "ok") encontrados.push({ id, nombre: r.nombre });
-        else if (r.tipo === "no") sinNombre.push(id);
-        else parado = r.motivo;
+        let r = await pedirItemBlizzard(o.fetch, token, ns!, LOCALE_ES, id);
+        if (r.tipo === "error") r = await pedirItemBlizzard(o.fetch, token, ns!, LOCALE_ES, id);   // un reintento
+        if (r.tipo === "ok") { encontrados.push({ id, nombre: r.nombre }); erroresSeguidos = 0; }
+        else if (r.tipo === "no") { sinNombre.push(id); erroresSeguidos = 0; }
+        else if (r.tipo === "error") {
+          conError.push(id);   // se salta: se reintenta en ~1 día
+          // Muchos errores seguidos: la API está fallando en general, no un objeto concreto.
+          if (++erroresSeguidos >= 10) parado = `${r.motivo} en ${erroresSeguidos} objetos seguidos`;
+        } else parado = r.motivo;
       }
     };
     await Promise.all(Array.from({ length: o.paralelo ?? 5 }, trabajador));
     if (parado) pausa = 900;
     const g = (await db.consulta(
-      "select guardar_nombres_es('forever', $1::text::jsonb, $2::integer[], $3, $4::timestamptz) as r",
-      [JSON.stringify(encontrados), sinNombre, `blizzard:${ns}:${LOCALE_ES}`, t()]))[0]?.r;
+      "select guardar_nombres_es('forever', $1::text::jsonb, $2::integer[], $3, $4::timestamptz, $5::integer[]) as r",
+      [JSON.stringify(encontrados), sinNombre, `blizzard:${ns}:${LOCALE_ES}`, t(), conError]))[0]?.r;
     return { estado: "ok", espacio: ns, pedidos: pendientes.length, ...(g as object), parado };
   } finally {
     await db.consulta("select soltar_turno_nombres_es($1, $2::timestamptz)", [pausa, t()]);

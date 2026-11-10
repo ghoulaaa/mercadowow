@@ -16,7 +16,8 @@ describe("nombres en español", () => {
   const ahora = () => new Date("2026-11-10T12:00:00Z");
 
   /** API de Blizzard simulada: token, objeto de control y nombres es_MX. */
-  function blizzard(o: { tokenStatus?: number; controlEn?: string; nombres?: Record<number, string>; caida?: boolean } = {}) {
+  function blizzard(o: { tokenStatus?: number; controlEn?: string; nombres?: Record<number, string>; caida?: boolean;
+                     error500?: number[] } = {}) {
     const pedidas: string[] = [];
     const f = (async (url: string) => {
       pedidas.push(url);
@@ -28,6 +29,7 @@ describe("nombres en español", () => {
       const id = Number(m[1]), locale = m[3];
       if (o.caida) return new Response("", { status: 503 });
       if (locale === "en_US") return id === 2589 ? Response.json({ id, name: o.controlEn ?? "Linen Cloth" }) : new Response("", { status: 404 });
+      if ((o.error500 ?? []).includes(id)) return new Response("", { status: 500 });
       const n = (o.nombres ?? {})[id];
       return n ? Response.json({ id, name: n }) : new Response("", { status: 404 });
     }) as unknown as typeof fetch;
@@ -43,7 +45,7 @@ describe("nombres en español", () => {
                      "0008_ventas.sql", "0009_ahledger.sql", "0010_catalogo.sql", "0012_busqueda_mercado.sql",
                      "0013_textos_fuente.sql", "0014_tasas.sql", "0015_recetas.sql", "0017_mercado_pagina.sql",
                      "0018_evidencia.sql", "0019_catalogo_ampliado.sql", "0020_precios_tsm.sql", "0023_catalogo_informe.sql",
-                     "0033_nombres_es.sql"]) await pg.exec(leer(n));
+                     "0033_nombres_es.sql", "0035_nombres_es_errores.sql"]) await pg.exec(leer(n));
     const cat = [[2589, "Linen Cloth"], [2840, "Copper Bar"], [99001, "New Forever Item"]]
       .map(([id, name]) => ({ id, name, itemClass: "Trade Goods", itemSubclass: "Cloth", quality: "COMMON" }));
     await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify(cat)]);
@@ -90,6 +92,16 @@ describe("nombres en español", () => {
     assert.deepEqual((await uno("select nombres_es_pendientes('forever', 10, $1::timestamptz) as r", ["2026-12-15T00:00:00Z"])).r, [99001]);
     const e = (await uno("select nombres_es_estado('forever') as r")).r;
     assert.deepEqual([e.total, e.con_nombre, e.sin_nombre_en_blizzard, e.pendientes], [3, 2, 1, 0]);
+  });
+
+  test("un objeto con error 500 se salta (sin frenar a los demás) y se reintenta al cabo de ~1 día", async () => {
+    const { f, pedidas } = blizzard({ nombres: { 2589: "Tela de lino", 99001: "Objeto nuevo" }, error500: [2840] });
+    const r: any = await actualizarNombresEs(db, { fetch: f, clientId: "a", secreto: "b", ahora });
+    assert.deepEqual([r.estado, r.guardados, r.con_error, r.parado], ["ok", 2, 1, null]);
+    assert.equal(pedidas.filter((u) => u.includes("/item/2840")).length, 2);   // un reintento
+    assert.equal((await uno("select value from settings where key = 'nombres_es_turno_hasta'")).value, "-infinity");   // sin pausa
+    assert.deepEqual((await uno("select nombres_es_pendientes('forever', 10, $1::timestamptz) as r", ["2026-11-10T13:00:00Z"])).r, []);
+    assert.deepEqual((await uno("select nombres_es_pendientes('forever', 10, $1::timestamptz) as r", ["2026-11-11T13:00:00Z"])).r, [2840]);
   });
 
   test("si la API se cae a mitad, se para, guarda lo que tenga y se pausa", async () => {
