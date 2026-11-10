@@ -6,6 +6,7 @@ import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompl
 import { leerRuta } from "./ruta.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, pesoBloque, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
+import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, paginas, paramsMercado,
@@ -1163,6 +1164,98 @@ function bloquePrecios(f) {
   return grid;
 }
 
+// ---------- X1 · «Qué hacer con este objeto» (lógica de Auctioning adaptada) ----------
+let perfilSubasta = { ...PERFIL_POR_DEFECTO };
+let fichaActual = null;   // última ficha pintada en el detalle
+let reglasTasas = [];
+
+async function cargarPerfilSubasta() {
+  try {
+    const [p, t] = await Promise.all([
+      fetch("/api/perfil-subasta", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/tasas", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
+    ]);
+    if (p) perfilSubasta = { ...PERFIL_POR_DEFECTO, ...Object.fromEntries(Object.entries(p).map(([k, v]) => [k, k === "tipo_casa" ? v : Number(v)])) };
+    if (t) reglasTasas = t;
+  } catch { /* se queda con los valores por defecto */ }
+  pintarFormBanda();
+}
+
+function reglaPerfil() {
+  const r = reglasTasas.find((x) => x.tipo_casa === perfilSubasta.tipo_casa && Number(x.duracion_horas) === Number(perfilSubasta.duracion));
+  return r ? { ...r, comision_pct: Number(r.comision_pct), deposito_pct: Number(r.deposito_pct), deposito_minimo: Number(r.deposito_minimo) } : null;
+}
+
+function pintarFormBanda() {
+  for (const k of ["min_pct", "normal_pct", "max_pct", "npc_min_mult", "npc_max_mult", "puja_pct", "tipo_casa", "duracion"]) {
+    $(`b-${k}`).value = String(perfilSubasta[k]);
+  }
+  $("b-undercut").value = formatearMoneda(perfilSubasta.undercut);
+}
+
+$("form-banda").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("banda-msg");
+  msg.hidden = false;
+  try {
+    const ajustes = {};
+    for (const k of ["min_pct", "normal_pct", "max_pct", "npc_min_mult", "npc_max_mult", "puja_pct", "duracion"]) ajustes[k] = Number($(`b-${k}`).value);
+    ajustes.tipo_casa = $("b-tipo_casa").value;
+    ajustes.undercut = parsearMoneda($("b-undercut").value) ?? 0;
+    const r = await fetch("/api/perfil-subasta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ajustes }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+    perfilSubasta = { ...PERFIL_POR_DEFECTO, ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, k === "tipo_casa" ? v : Number(v)])) };
+    pintarFormBanda();
+    msg.className = "small ok"; msg.textContent = "Banda guardada.";
+    // Solo se recalcula el bloque «Qué hacer» con la ficha que ya está en pantalla (sin pedir nada).
+    const viejo = $("det-cuerpo").querySelector(".que-hacer");
+    if (viejo && fichaActual?.id === objetoActual) {
+      const nuevo = bloqueQueHacer(fichaActual);
+      if (nuevo) viejo.replaceWith(nuevo); else viejo.remove();
+    }
+  } catch (e) {
+    msg.className = "small bad"; msg.textContent = e.message;
+  }
+});
+
+function bloqueQueHacer(f) {
+  const p = f.mercado;
+  const s = sugerencia({
+    compraMinima: f.estado === "con_ofertas" ? p?.precio : null,
+    mercado: p?.valor_mercado ?? null,
+    ventaNpc: f.venta_npc ?? null,
+  }, perfilSubasta, reglaPerfil());
+  if (s.accion === "sin_datos") return null;
+  const caja = el("section", "que-hacer");
+  caja.setAttribute("aria-label", "Qué hacer con este objeto");
+  const titulo = s.accion === "publicar" ? `Publicar a ${formatearMoneda(s.precio)}`
+    : s.accion === "esperar" ? "Esperar"
+    : `Vender al NPC: ${formatearMoneda(s.ventaNpc)}`;
+  caja.append(el("p", `qh-accion ${s.accion}`, titulo), el("p", "qh-motivo", textoMotivo(s, formatearMoneda, perfilSubasta)));
+  if (s.accion === "npc" && s.accionSubasta === "publicar") {
+    caja.append(el("p", "qh-motivo", `En subasta a ${formatearMoneda(s.precio)} recibirías ${formatearMoneda(s.neto)} tras la comisión: no supera al NPC.`));
+  } else if (s.accion === "npc" && s.accionSubasta === "esperar") {
+    caja.append(el("p", "qh-motivo", `Tu mínimo (${formatearMoneda(s.banda.min)}) no supera lo que paga el NPC: vender al NPC ya no es peor.`));
+  }
+  const regla = reglaPerfil();
+  const casa = `${perfilSubasta.tipo_casa === "faccion" ? "casa de facción" : "casa neutral"}, ${perfilSubasta.duracion} h`;
+  caja.append(kv([
+    ["Banda", s.banda ? `${formatearMoneda(s.banda.min)} · ${formatearMoneda(s.banda.normal)} · ${formatearMoneda(s.banda.max)}` : null],
+    ["Puja", s.puja != null && s.precio != null ? formatearMoneda(s.puja) : null],
+    ["Neto tras comisión", s.neto != null ? `${formatearMoneda(s.neto)} (comisión ${formatearMoneda(s.comision)}, ${casa})` : null],
+    ["Depósito", s.deposito != null ? `${formatearMoneda(s.deposito)}: se devuelve si se vende, se pierde si caduca` : null],
+    ["El NPC paga", s.ventaNpc != null ? formatearMoneda(s.ventaNpc) : null],
+  ]));
+  const nota = el("p", "muted small",
+    "Sugerencia propia con la lógica de publicación de TSM (mínimo, normal y máximo; 1 rebaja por debajo de la compra mínima). " +
+    "No se puede saber si la subasta más barata es tuya: si lo es, no hace falta bajar el precio." +
+    (regla && !regla.verificado ? " La comisión y el depósito están sin verificar." : ""));
+  caja.append(nota);
+  caja.title = "Banda: mínimo, normal y máximo. Ajústala en «Banda de precios» (barra lateral).";
+  return caja;
+}
+
 async function bloqueRecomendacion(id) {
   try {
     const r = await fetch(`/api/explicacion?mercado=${urlMercado()}&id=${id}`, { cache: "no-store" });
@@ -1219,7 +1312,8 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     if (n !== objetoN) return;
     $("det-titulo").textContent = f.nombre;
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
-    cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f), rec,
+    fichaActual = f;
+    cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f), bloqueQueHacer(f), rec,
       f.estado === "sin_datos" ? null : seccionGrafico(id), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
     if (abiertos) {
       for (const d of cuerpo.querySelectorAll("details")) {
@@ -1408,6 +1502,7 @@ window.addEventListener("online", () => { if (sinConexion) vigilar(); });
 
 async function refrescar() {
   if (!(await cargar())) return;
+  await cargarPerfilSubasta();   // banda y comisiones (dos peticiones pequeñas) antes de abrir un objeto
   aplicarRuta();          // un objeto pedido en la dirección se abre sin esperar a la tabla
   await cargarPagina();
   if (vista === "mapa") cargarMapa();

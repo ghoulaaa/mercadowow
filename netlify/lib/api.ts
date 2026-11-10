@@ -511,6 +511,22 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Banda de precios para «Qué hacer con este objeto» (X1): leer (GET) y guardar (POST {ajustes}). */
+    async perfilSubasta(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") return json(200, await llamar(db, "select leer_perfil_subasta() as r", []));
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 2000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!c?.ajustes || typeof c.ajustes !== "object" || Array.isArray(c.ajustes)) return json(400, { error: "Faltan los ajustes" });
+        return json(200, await llamar(db, "select guardar_perfil_subasta($1::text::jsonb) as r", [JSON.stringify(c.ajustes)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Mapa de materiales (W3): variación por periodo, agrupada por familia. */
     async mapa(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

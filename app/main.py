@@ -356,6 +356,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("IDs pedidos para el catálogo: %s", len(ids))
         return r
 
+    @app.get("/api/perfil-subasta")
+    def perfil_subasta_leer():
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select leer_perfil_subasta() as r").fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer la banda de precios: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/perfil-subasta")
+    def perfil_subasta_guardar(c: dict = Body(...)):
+        if not isinstance(c.get("ajustes"), dict):
+            return JSONResponse(status_code=400, content={"error": "Faltan los ajustes"})
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                r = conn.execute("select guardar_perfil_subasta(%s) as r", (Jsonb(c["ajustes"]),)).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al guardar la banda de precios: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return r
+
     @app.get("/api/mapa")
     def mapa(request: Request, mercado: str | None = Query(default=None, max_length=100)):
         p = {k: v[:40] for k, v in request.query_params.items()

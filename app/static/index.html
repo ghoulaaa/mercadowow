@@ -84,6 +84,32 @@
         <button id="btn-limpiar" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>
       </div>
 
+      <details class="lat-grupo lat-catalogo" id="grupo-banda">
+        <summary><span class="lat-tit">Banda de precios</span></summary>
+        <form id="form-banda" class="form-banda" autocomplete="off"
+              title="Para «Qué hacer con este objeto»: mínimo, normal y máximo respecto al valor de mercado (como TSM)">
+          <span class="lab">% del valor de mercado</span>
+          <div class="trio">
+            <label><span>Mín.</span><input id="b-min_pct" type="number" min="10" max="500" step="1"></label>
+            <label><span>Normal</span><input id="b-normal_pct" type="number" min="10" max="1000" step="1"></label>
+            <label><span>Máx.</span><input id="b-max_pct" type="number" min="50" max="5000" step="1"></label>
+          </div>
+          <span class="lab" title="El mínimo nunca baja de este múltiplo de la venta al NPC, y el máximo llega al menos al otro">× venta al NPC (suelos)</span>
+          <div class="trio">
+            <label><span>Mín.</span><input id="b-npc_min_mult" type="number" min="0" max="100" step="0.1"></label>
+            <label><span>Máx.</span><input id="b-npc_max_mult" type="number" min="0" max="1000" step="1"></label>
+            <label><span>Puja %</span><input id="b-puja_pct" type="number" min="1" max="100" step="1"></label>
+          </div>
+          <div class="trio">
+            <label><span>Rebaja</span><input id="b-undercut" placeholder="1c" title="Cuánto por debajo de la compra mínima (undercut)"></label>
+            <label><span>Casa</span><select id="b-tipo_casa"><option value="faccion">Facción</option><option value="neutral">Neutral</option></select></label>
+            <label><span>Duración</span><select id="b-duracion"><option value="2">2 h</option><option value="8">8 h</option><option value="24">24 h</option></select></label>
+          </div>
+          <button type="submit" class="btn btn-piedra btn-small">Guardar banda</button>
+          <p id="banda-msg" class="small" role="status" hidden></p>
+        </form>
+      </details>
+
       <details class="lat-grupo lat-catalogo" id="grupo-catalogo">
         <summary><span class="lat-tit">Catálogo</span> <span id="cat-total" class="arbol-n"></span></summary>
         <dl id="cat-cobertura" class="cobertura"></dl>
