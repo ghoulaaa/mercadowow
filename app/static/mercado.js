@@ -29,10 +29,31 @@ export function paramsMercado(f) {
     if (Number.isInteger(f[k]) && f[k] >= 0) poner(k, f[k]);
   }
   if (f.soloOfertas) p.solo_ofertas = "true";
+  if (OPORTUNIDADES.includes(f.oportunidad)) p.oportunidad = f.oportunidad;
   poner("orden", f.orden);
   poner("dir", f.dir);
   if (f.pagina > 1) p.pagina = String(f.pagina);
   return p;
+}
+
+/** Oportunidades de compra (X2). Las marca el servidor, siempre sobre el último escaneo. */
+export const OPORTUNIDADES = ["todas", "ganga", "npc"];
+export const NOMBRE_OPORTUNIDAD = { todas: "Todas las oportunidades", ganga: "Gangas", npc: "Bajo precio de NPC" };
+
+/** La columna «Margen» se ve al filtrar por oportunidad o al ordenar por margen. */
+export const verMargen = (f) => OPORTUNIDADES.includes(f.oportunidad) || f.orden === "margen" || f.orden === "margen_pct";
+
+/** Regla de las gangas en una frase, con los números que devuelve el servidor (nunca fijos en la página). */
+export function textoReglaGanga(reglas, formatear) {
+  if (!reglas?.tramos?.length) return "";
+  const tramos = [...reglas.tramos].sort((a, b) => a[0] - b[0]);
+  const partes = tramos.map(([desde, pct], i) => {
+    const hasta = tramos[i + 1]?.[0];
+    const rango = hasta == null ? `desde ${formatear(desde)}` : desde === 0 ? `menos de ${formatear(hasta)}` : `de ${formatear(desde)} a ${formatear(hasta)}`;
+    return `${pct} % (${rango})`;
+  });
+  return `Ganga: compra mínima ≤ un % del valor de mercado según su precio — ${partes.join(", ")} — ` +
+    `y con el histórico en al menos el ${reglas.historico_min_pct} % del valor de mercado.`;
 }
 
 /** Familias de materiales (de la clase/subclase oficial del objeto; las calcula el servidor). */

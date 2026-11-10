@@ -313,6 +313,16 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
 .c-spark polyline { fill: none; stroke: var(--metal-claro); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 .c-spark circle { fill: var(--metal-claro); }
 .estado-txt { font-size: 12px; color: var(--muted); font-style: italic; }
+/* Oportunidades (X2): la columna «Margen» solo se ve al filtrar por oportunidad u ordenar por margen. */
+.tabla-mercado:not(.con-margen) .c-margen { display: none; }
+.c-margen { white-space: nowrap; }
+.c-margen .margen-pct { display: block; font-size: 11px; color: var(--muted); }
+.c-margen.negativo .moneda, .c-margen.negativo .signo { color: var(--danger); }
+.marca-op { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--metal); color: var(--gold); vertical-align: 1px; }
+.nota-oportunidad { margin: 0 0 8px; padding: 7px 10px; border-radius: 6px; font-size: 12.5px; line-height: 1.45;
+  border: 1px solid var(--metal); border-left: 3px solid var(--gold); background: var(--panel-2); color: var(--text); }
+.nota-oportunidad strong { color: var(--gold); }
 .estado-txt.sin_datos { opacity: .8; }
 .tabla tr.sin-oferta .objeto-nombre { opacity: .8; }
 .tabla tr.sin-oferta .icono { filter: saturate(.6); }
@@ -525,7 +535,8 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
   .estado-dato { padding: 3px 6px; font-size: 11px; }
   /* Tabla de 3 columnas: la cantidad y el minigráfico están en el detalle. */
   .tabla-mercado th:nth-child(3), .tabla-mercado td:nth-child(3),
-  .tabla-mercado th:nth-child(5), .tabla-mercado td:nth-child(5) { display: none; }
+  .tabla-mercado th:nth-child(6), .tabla-mercado td:nth-child(6),
+  .tabla-mercado.con-margen th:nth-child(5), .tabla-mercado.con-margen td:nth-child(5) { display: none; }
   .tabla td { padding: 4px 4px; }
   .icono { flex-basis: 28px; width: 28px; height: 28px; }
   .res-cab { flex-wrap: wrap; row-gap: 4px; }

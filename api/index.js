@@ -2733,6 +2733,7 @@ function crearApi(db2, o) {
         "precio_min",
         "precio_max",
         "solo_ofertas",
+        "oportunidad",
         "orden",
         "dir",
         "pagina",

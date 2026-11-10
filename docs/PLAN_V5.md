@@ -42,7 +42,13 @@ propia** de la lógica de TSM a precios agregados, no el código de TSM, así qu
    - **Aviso visible:** la página no puede saber si la subasta más barata es tuya.
    - **Ajustes de la banda** en un desplegable de la barra lateral, guardados en Supabase.
 
-2. **X2 · Oportunidades de compra** (funciones 2 y 3):
+2. **X2 · Oportunidades de compra** ✅ (2026-11-10; migración 0025). Lo que quedó hecho:
+   - **Regla de la ganga** (estimación propia, inspirada en el Sniper de TSM): compra mínima ≤ 40 % del valor de mercado si vale menos de 1 o, 50 % de 1 a 10 o, 60 % de 10 a 100 o y 70 % desde 100 o. Además, el histórico debe ser al menos el 80 % del valor de mercado; sin histórico no se marca.
+   - **Margen por unidad:** valor de mercado − comisión (ajuste `motor.comision_pct`, 5 %) − compra mínima. Si vender al NPC deja más, venta al NPC − compra mínima. No descuenta el depósito. Sin compra mínima en el último escaneo no hay margen.
+   - **Medido en el escaneo del 2026-11-10 01:13 UTC:** 548 gangas y 66 bajo precio de NPC (612 objetos distintos) sobre 6.768.
+   - **Límite conocido:** al ordenar por margen en %, suben objetos de pocos cobres (2c → miles de %). El margen en oro es la columna fiable para decidir.
+
+   Plan original (funciones 2 y 3):
    - **Filtro «Oportunidades»** en la barra lateral, con dos tipos:
      - **«Ganga»:** la compra mínima es menor o igual que un porcentaje del valor de mercado. El porcentaje va escalonado por precio, como el Sniper de TSM, y el histórico no puede estar muy por debajo del valor de mercado, para descartar caídas que no se recuperan.
      - **«Bajo precio de NPC»:** la compra mínima es menor que la venta al NPC. Hoy hay 16.

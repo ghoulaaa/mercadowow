@@ -65,6 +65,16 @@
         <ul id="arbol-prof" class="arbol" aria-label="Profesiones"></ul>
       </div>
 
+      <div class="lat-grupo">
+        <label class="lat-tit" for="f-oportunidad">Oportunidades</label>
+        <select id="f-oportunidad" title="Objetos que conviene comprar según el último escaneo">
+          <option value="">Sin filtrar</option>
+          <option value="todas">Todas las oportunidades</option>
+          <option value="ganga">Gangas</option>
+          <option value="npc">Bajo precio de NPC</option>
+        </select>
+      </div>
+
       <div class="lat-grupo filtros-lat">
         <span class="lat-tit">Filtros</span>
         <div class="calidades" id="f-calidad" role="group" aria-label="Calidad"></div>
@@ -181,6 +191,8 @@
               <option value="cantidad:desc">Cantidad ↓</option>
               <option value="var24:desc">Variación ↑ (sube más)</option>
               <option value="var24:asc">Variación ↓ (baja más)</option>
+              <option value="margen:desc">Margen ↓</option>
+              <option value="margen_pct:desc">Margen % ↓</option>
             </select></label>
         </div>
         <section id="mapa" class="mapa" aria-label="Mapa de materiales" hidden>
@@ -207,13 +219,15 @@
           <div id="mapa-tip" class="mapa-tip" role="tooltip" hidden></div>
         </section>
 
+        <p id="aviso-oportunidad" class="nota-oportunidad" role="note" hidden></p>
         <div class="tabla-wrap" id="vista-lista">
-          <table class="tabla tabla-mercado">
+          <table class="tabla tabla-mercado" id="tabla-mercado">
             <thead>
               <tr>
                 <th scope="col" aria-sort="none"><button type="button" class="th-orden" data-orden="nombre">Objeto</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="precio" title="Compra inmediata mínima por unidad en el último escaneo">Compra mínima</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="cantidad" title="Unidades publicadas en el último escaneo">Cantidad</button></th>
+                <th scope="col" class="num c-margen" aria-sort="none"><button type="button" class="th-orden" data-orden="margen" title="Estimación por unidad: valor de mercado menos la comisión de la subasta, menos la compra mínima. Si el NPC paga más, venta al NPC menos la compra mínima.">Margen</button></th>
                 <th scope="col" class="num" aria-sort="none"><button type="button" class="th-orden" data-orden="var24" title="Frente a la observación de hace 24 h">24 h</button></th>
                 <th scope="col" class="c-spark" title="Compra mínima más baja de cada tramo de 6 h, últimos 7 días">7 días</th>
               </tr>

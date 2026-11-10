@@ -560,7 +560,8 @@ export function crearApi(db: Db, o: OpcionesApi) {
       const mercado = u.get("mercado") || o.mercado;
       const p: Record<string, string> = {};
       for (const k of ["q", "categoria", "subcategoria", "calidad", "profesion", "rol", "materiales", "familia",
-                       "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina"]) {
+                       "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "oportunidad",
+                       "orden", "dir", "pagina", "por_pagina"]) {
         const v = u.get(k);
         if (v !== null && v !== "") p[k] = v.slice(0, 80);
       }

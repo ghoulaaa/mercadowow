@@ -9,8 +9,8 @@ import { abreviar, pesoBloque, squarify, textoVariacion, tonoVariacion } from ".
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
-  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, paginas, paramsMercado,
-  segmentosSpark, sinFicha,
+  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, paginas,
+  paramsMercado, segmentosSpark, sinFicha, textoReglaGanga, verMargen,
 } from "./mercado.js";
 
 // ---------- utilidades ----------
@@ -239,7 +239,7 @@ function leerFiltros() {
   const f = {
     texto: filtro.texto, categoria: filtro.categoria, subcategoria: filtro.subcategoria, calidad: filtro.calidad,
     profesion: filtro.profesion, rol: filtro.rol, materiales: $("f-materiales").checked, familia: filtro.familia,
-    soloOfertas: $("f-ofertas").checked, orden, dir, pagina: filtro.pagina,
+    soloOfertas: $("f-ofertas").checked, oportunidad: $("f-oportunidad").value, orden, dir, pagina: filtro.pagina,
     nivel_min: enteroONull($("f-nivel-min").value), nivel_max: enteroONull($("f-nivel-max").value),
     precio_min: precioFiltro("f-precio-min", errores), precio_max: precioFiltro("f-precio-max", errores),
   };
@@ -301,8 +301,8 @@ function esqueleto() {
   tb.replaceChildren();
   for (let i = 0; i < 14; i++) {
     const tr = el("tr", "esq");
-    for (let k = 0; k < 5; k++) {
-      const td = el("td", k ? "num" : "");
+    for (let k = 0; k < 6; k++) {
+      const td = el("td", k === 3 ? "num c-margen" : k ? "num" : "");
       td.append(el("span", "barra-esq"));
       tr.append(td);
     }
@@ -373,6 +373,41 @@ function celdaPrecio(x) {
   return td;
 }
 
+/** Margen estimado por unidad (X2). Sin compra mínima o sin referencia no hay número: se deja «—». */
+function celdaMargen(x) {
+  const td = el("td", "num c-margen");
+  if (x.margen == null) {
+    td.textContent = "—";
+    td.title = x.estado === "con_ofertas" ? "La fuente no publica valor de mercado ni venta al NPC para este objeto" : "";
+    return td;
+  }
+  if (x.margen < 0) { td.classList.add("negativo"); td.append(el("span", "signo", "−")); }
+  td.append(monedaNodo(Math.abs(x.margen)));
+  if (x.margen_pct != null) td.append(el("span", "margen-pct", formatearPct(x.margen_pct)));
+  td.title = x.margen_tipo === "npc"
+    ? `Venta al NPC ${formatearMoneda(x.venta_npc)} − compra mínima ${formatearMoneda(x.precio)}. Sin comisión: se vende al NPC.`
+    : `Valor de mercado ${formatearMoneda(x.valor_mercado)} − ${pagina?.reglas_oportunidad?.comision_pct ?? 5} % de comisión − compra mínima ${formatearMoneda(x.precio)}. ` +
+      "Estimación: no descuenta el depósito ni garantiza que se venda a ese precio.";
+  return td;
+}
+
+/** Aviso fijo sobre las oportunidades: de cuándo es el dato y cómo se calcula. */
+function pintarAvisoOportunidad() {
+  const p = $("aviso-oportunidad");
+  const f = { oportunidad: $("f-oportunidad").value, orden: $("f-orden").value.split(":")[0] };
+  const ver = verMargen(f) && vista !== "mapa";
+  p.hidden = !ver;
+  $("tabla-mercado").classList.toggle("con-margen", verMargen(f));
+  if (!ver) return;
+  const r = pagina?.reglas_oportunidad;
+  p.replaceChildren(
+    el("strong", "", "Comprueba el precio en el juego antes de comprar. "),
+    `La compra mínima es la del último escaneo (${hace(pagina?.escaneo)}) y puede haberse vendido ya. ` +
+    `El margen es una estimación por unidad: valor de mercado − ${r?.comision_pct ?? 5} % de comisión − compra mínima ` +
+    "(o venta al NPC − compra mínima si el NPC paga más). No descuenta el depósito. ",
+    el("span", "muted", textoReglaGanga(r, formatearMoneda)));
+}
+
 function pintarTabla() {
   const d = pagina;
   const tbody = $("tbody");
@@ -391,13 +426,15 @@ function pintarTabla() {
     txt.append(el("span", "objeto-nombre" + (x.calidad ? ` q-${x.calidad}` : ""), x.nombre),
       el("span", "objeto-id" + (sf ? " sin-ficha" : ""), sf ? TEXTO_SIN_FICHA
         : [x.subcategoria || nombreCat(x.categoria), x.nivel ? `nivel ${x.nivel}` : null].filter(Boolean).join(" · ")));
+    if (x.ganga) txt.firstChild.append(el("span", "marca-op", "Ganga"));
+    if (x.bajo_npc) txt.firstChild.append(el("span", "marca-op", "< NPC"));
     b.append(iconoNodo(x.icono, x.nombre, x.calidad), txt);
     b.title = sf ? `#${x.id} · ni AHledger ni TSM publican su nombre, calidad ni icono`
       : `#${x.id} · ${NOMBRE_CALIDAD[x.calidad] ?? "calidad desconocida"}`;
     tdObj.append(b);
 
     const tdCant = el("td", "num", x.cantidad == null ? "—" : x.cantidad.toLocaleString("es"));
-    tr.append(tdObj, celdaPrecio(x), tdCant, celdaVariacion(x), celdaSpark(x));
+    tr.append(tdObj, celdaPrecio(x), tdCant, celdaMargen(x), celdaVariacion(x), celdaSpark(x));
     frag.append(tr);
   }
   tbody.replaceChildren(frag);
@@ -411,7 +448,14 @@ function pintarTabla() {
   if ($("f-materiales").checked) partes.push(filtro.familia ? NOMBRE_FAMILIA[filtro.familia] : "Materiales");
   if (filtro.subcategoria) partes.push(filtro.subcategoria); else if (filtro.categoria) partes.push(nombreCat(filtro.categoria));
   if (filtro.texto) partes.push(`«${filtro.texto}»`);
+  if ($("f-oportunidad").value) partes.unshift(NOMBRE_OPORTUNIDAD[$("f-oportunidad").value]);
   $("titulo-resultados").textContent = partes.length ? partes.join(" · ") : "Todos los objetos";
+  // Oportunidades: cuántas hay con los demás filtros, y el aviso de que el dato puede ir con retraso.
+  for (const o of $("f-oportunidad").options) {
+    const n = d?.oportunidades?.[o.value];
+    if (o.value) o.textContent = NOMBRE_OPORTUNIDAD[o.value] + (n == null ? "" : ` (${n.toLocaleString("es")})`);
+  }
+  pintarAvisoOportunidad();
   // Paginador.
   const n = paginas(total, d?.por_pagina ?? POR_PAGINA);
   $("paginador").hidden = !d || n < 2;
@@ -466,6 +510,13 @@ for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"])
   $(id).addEventListener("input", () => { clearTimeout(temporizadorFiltro); temporizadorFiltro = setTimeout(repintar, 300); });
 }
 $("f-ofertas").addEventListener("change", repintar);
+$("f-oportunidad").addEventListener("change", () => {
+  // Al elegir una oportunidad, lo útil es ver primero la de mayor margen.
+  if ($("f-oportunidad").value && !$("f-orden").value.startsWith("margen")) $("f-orden").value = "margen:desc";
+  if (!$("f-oportunidad").value && $("f-orden").value.startsWith("margen")) $("f-orden").value = "nombre:asc";
+  repintar();
+  if (estrecho()) cerrarLateral();
+});
 $("f-materiales").addEventListener("change", () => {
   if (!$("f-materiales").checked) filtro.familia = "";
   pintarProfesiones();
@@ -619,6 +670,7 @@ $("btn-limpiar").addEventListener("click", () => {
   Object.assign(filtro, { texto: "", categoria: "", subcategoria: "", calidad: "", profesion: "", rol: "", familia: "", pagina: 1 });
   for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
   $("f-ofertas").checked = false;
+  $("f-oportunidad").value = "";
   $("f-materiales").checked = false;
   $("f-orden").value = "nombre:asc";
   $("buscador").value = "";

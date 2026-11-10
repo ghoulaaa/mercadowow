@@ -172,7 +172,7 @@ def main_market(conn: psycopg.Connection) -> str | None:
 
 
 PARAMS_MERCADO = ("q", "categoria", "subcategoria", "calidad", "profesion", "rol", "materiales", "familia",
-                  "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "orden", "dir", "pagina", "por_pagina")
+                  "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "oportunidad", "orden", "dir", "pagina", "por_pagina")
 
 
 def market_page(conn: psycopg.Connection, market_key: str, params: dict) -> dict:
