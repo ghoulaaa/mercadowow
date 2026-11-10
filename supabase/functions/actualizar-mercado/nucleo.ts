@@ -574,6 +574,96 @@ export async function actualizarRegion(db: Db, o: { fetch: typeof fetch; ahora?:
   }
 }
 
+// ---------------------------------------------------------------------
+// Nombres oficiales en español: API de datos de juego de Blizzard (locale es_MX), por lotes.
+// Credenciales: BLIZZARD_CLIENT_ID y BLIZZARD_CLIENT_SECRET, secretos de la Edge Function (nunca en el código).
+
+export const URL_TOKEN_BLIZZARD = "https://oauth.battle.net/token";
+export const URL_API_BLIZZARD = "https://us.api.blizzard.com";
+/** Espacios de datos candidatos para Forever (se usa el primero que pase la comprobación). */
+export const NAMESPACES_BLIZZARD = ["static-classic1x-us"];
+export const LOCALE_ES = "es_MX";
+/** Objeto de control: el espacio de datos solo vale si devuelve este ID con este nombre en inglés. */
+export const CONTROL_BLIZZARD = { id: 2589, nombre_en: "Linen Cloth" };
+
+type RespuestaItem = { tipo: "ok"; nombre: string } | { tipo: "no" } | { tipo: "parar"; motivo: string };
+
+async function pedirItemBlizzard(f: typeof fetch, token: string, ns: string, locale: string, id: number): Promise<RespuestaItem> {
+  let r: Response;
+  try {
+    r = await f(`${URL_API_BLIZZARD}/data/wow/item/${id}?namespace=${ns}&locale=${locale}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(15_000),
+    });
+  } catch (e) { return { tipo: "parar", motivo: `Error de conexión: ${(e as Error).message ?? e}` }; }
+  if (r.status === 404) { await r.body?.cancel(); return { tipo: "no" }; }
+  if (r.status !== 200) { await r.body?.cancel(); return { tipo: "parar", motivo: `HTTP ${r.status}` }; }
+  const j = await r.json().catch(() => null) as { id?: unknown; name?: unknown } | null;
+  // Con locale, la API devuelve el nombre como texto. Si no coincide el ID o no hay nombre, no se guarda nada.
+  if (!j || j.id !== id || typeof j.name !== "string" || !j.name.trim()) return { tipo: "no" };
+  return { tipo: "ok", nombre: j.name.trim() };
+}
+
+export async function actualizarNombresEs(db: Db, o: { fetch: typeof fetch; clientId?: string; secreto?: string;
+                                                      ahora?: () => Date; lote?: number; paralelo?: number }) {
+  const ahora = o.ahora ?? (() => new Date());
+  const t = () => ahora().toISOString();
+  const turno = (await db.consulta("select tomar_turno_nombres_es(300, $1::timestamptz) as r", [t()]))[0]?.r;
+  if (!turno) return { estado: "omitido", motivo: "en_curso" };
+  let pausa = 0;   // segundos que se deja el turno bloqueado al terminar (0 = libre)
+  try {
+    if (!o.clientId || !o.secreto) { pausa = 6 * 3600; return { estado: "omitido", motivo: "sin_credenciales" }; }
+    const pendientes = ((await db.consulta("select nombres_es_pendientes('forever', $1, $2::timestamptz) as r",
+      [o.lote ?? 400, t()]))[0]?.r ?? []) as number[];
+    if (!pendientes.length) return { estado: "ok", motivo: "al_dia" };
+
+    // 1. Token (credenciales de cliente).
+    let token: string;
+    try {
+      const r = await o.fetch(URL_TOKEN_BLIZZARD, {
+        method: "POST",
+        headers: { Authorization: "Basic " + btoa(`${o.clientId}:${o.secreto}`), "Content-Type": "application/x-www-form-urlencoded" },
+        body: "grant_type=client_credentials", signal: AbortSignal.timeout(15_000),
+      });
+      if (r.status === 401 || r.status === 400) { await r.body?.cancel(); pausa = 6 * 3600; return { estado: "error", motivo: "credenciales_rechazadas" }; }
+      if (r.status !== 200) { await r.body?.cancel(); pausa = 900; return { estado: "error", motivo: `token: HTTP ${r.status}` }; }
+      token = String((await r.json())?.access_token ?? "");
+      if (!token) { pausa = 900; return { estado: "error", motivo: "token vacío" }; }
+    } catch (e) { pausa = 900; return { estado: "error", motivo: `token: ${(e as Error).message ?? e}` }; }
+
+    // 2. Espacio de datos comprobado con un objeto conocido (mismo ID y mismo nombre en inglés que el catálogo).
+    let ns: string | null = null;
+    for (const cand of NAMESPACES_BLIZZARD) {
+      const c = await pedirItemBlizzard(o.fetch, token, cand, "en_US", CONTROL_BLIZZARD.id);
+      if (c.tipo === "parar") { pausa = 900; return { estado: "error", motivo: c.motivo }; }
+      if (c.tipo === "ok" && c.nombre === CONTROL_BLIZZARD.nombre_en) { ns = cand; break; }
+    }
+    if (!ns) { pausa = 24 * 3600; return { estado: "error", motivo: "ningun_espacio_de_datos_coincide" }; }
+
+    // 3. Nombres en español, con pocas peticiones a la vez (muy por debajo del límite de la API).
+    const encontrados: { id: number; nombre: string }[] = [];
+    const sinNombre: number[] = [];
+    let parado: string | null = null;
+    let k = 0;
+    const trabajador = async () => {
+      while (!parado && k < pendientes.length) {
+        const id = pendientes[k++];
+        const r = await pedirItemBlizzard(o.fetch, token, ns!, LOCALE_ES, id);
+        if (r.tipo === "ok") encontrados.push({ id, nombre: r.nombre });
+        else if (r.tipo === "no") sinNombre.push(id);
+        else parado = r.motivo;
+      }
+    };
+    await Promise.all(Array.from({ length: o.paralelo ?? 5 }, trabajador));
+    if (parado) pausa = 900;
+    const g = (await db.consulta(
+      "select guardar_nombres_es('forever', $1::text::jsonb, $2::integer[], $3, $4::timestamptz) as r",
+      [JSON.stringify(encontrados), sinNombre, `blizzard:${ns}:${LOCALE_ES}`, t()]))[0]?.r;
+    return { estado: "ok", espacio: ns, pedidos: pendientes.length, ...(g as object), parado };
+  } finally {
+    await db.consulta("select soltar_turno_nombres_es($1, $2::timestamptz)", [pausa, t()]);
+  }
+}
+
 export async function actualizarRecetas(db: Db, o: { fetch: typeof fetch; ahora?: () => Date;
                                                     userAgent?: string }) {
   const ahora = o.ahora ?? (() => new Date());

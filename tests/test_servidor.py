@@ -1,4 +1,4 @@
-﻿"""Pruebas del servidor Python: configuración, estado y botón manual.
+"""Pruebas del servidor Python: configuración, estado y botón manual.
 
 La lógica SQL y la actualización horaria se prueban en supabase/pruebas (Node + PGlite).
 Aquí la base de datos se sustituye por respuestas preparadas.
@@ -79,7 +79,7 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:32] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:34] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
                            "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
@@ -89,7 +89,8 @@ def test_migraciones_en_orden():
                            "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                            "0026_region.sql", "0027_region_cron.sql", "0028_recetas_tsm.sql",
                            "0029_mapa_casa.sql", "0030_listas_alertas.sql",
-                           "0031_intervalo_30.sql", "0032_favoritos_ids.sql"]
+                           "0031_intervalo_30.sql", "0032_favoritos_ids.sql",
+                           "0033_nombres_es.sql", "0034_nombres_es_cron.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------

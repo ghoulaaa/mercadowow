@@ -2811,6 +2811,17 @@ function crearApi(db2, o) {
         return fallaBd(e);
       }
     },
+    /** Nombres oficiales en español ({id: nombre}) y cuántos hay (API de Blizzard). */
+    async nombresEs(req) {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+      try {
+        return json(200, await llamar(db2, "select nombres_es($1) as r", [mercado]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
     /** Listas propias (X6). GET ?objeto=ID: listas (y si lo contienen). POST {accion, …}: gestionar. */
     async listas(req) {
       if (!configurada) return sinConfigurar();
@@ -3001,6 +3012,7 @@ var RUTAS = {
   logout: "logout",
   mapa: "mapa",
   mercado: "mercado",
+  "nombres-es": "nombresEs",
   objeto: "objeto",
   "perfil-subasta": "perfilSubasta",
   precios: "precios",

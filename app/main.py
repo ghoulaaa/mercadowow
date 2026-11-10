@@ -434,6 +434,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return JSONResponse(r, headers=SIN_CACHE)
 
+    @app.get("/api/nombres-es")
+    def nombres_es(mercado: str | None = Query(default=None, max_length=100)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select nombres_es(%s) as r", (mercado or settings.market,)).fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer los nombres en español: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
     @app.get("/api/listas")
     def listas_leer(objeto: int | None = Query(default=None, gt=0, le=2147483647)):
         try:

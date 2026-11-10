@@ -39,6 +39,9 @@ const local = {
 };
 const nombreCat = (c) => NOMBRE_CATEGORIA[c] ?? c;
 const nombreSub = nombreSubcategoria;   // subcategoría en español (solo para mostrar)
+/** Nombres oficiales en español (API de Blizzard) por ID. Sin nombre oficial, el de la fuente (inglés). */
+let nombresEs = new Map();
+const nom = (id, en) => nombresEs.get(Number(id)) ?? en;
 const nombreProf = (p) => NOMBRE_PROFESION[p] ?? p;
 const urlMercado = () => encodeURIComponent(ultimo.mercado.clave);
 
@@ -461,14 +464,15 @@ function pintarTabla() {
     b.type = "button"; b.dataset.detalle = x.id;
     const txt = el("span", "objeto-txt");
     const sf = sinFicha(x.nombre);
-    txt.append(el("span", "objeto-nombre" + (x.calidad ? ` q-${x.calidad}` : ""), x.nombre),
+    const nombreVisible = nom(x.id, x.nombre);
+    txt.append(el("span", "objeto-nombre" + (x.calidad ? ` q-${x.calidad}` : ""), nombreVisible),
       el("span", "objeto-id" + (sf ? " sin-ficha" : ""), sf ? TEXTO_SIN_FICHA
           : [nombreSub(x.subcategoria) || nombreCat(x.categoria), x.nivel ? `nivel ${x.nivel}` : null].filter(Boolean).join(" · ")));
     if (x.ganga) txt.firstChild.append(el("span", "marca-op", "Ganga"));
     if (x.bajo_npc) txt.firstChild.append(el("span", "marca-op", "< NPC"));
-    b.append(iconoNodo(x.icono, x.nombre, x.calidad), txt);
+    b.append(iconoNodo(x.icono, nombreVisible, x.calidad), txt);
     b.title = sf ? `#${x.id} · ni AHledger ni TSM publican su nombre, calidad ni icono`
-      : `#${x.id} · ${NOMBRE_CALIDAD[x.calidad] ?? "calidad desconocida"}`;
+      : `#${x.id} · ${NOMBRE_CALIDAD[x.calidad] ?? "calidad desconocida"}` + (nombreVisible !== x.nombre ? ` · ${x.nombre}` : "");
     if (x.id === objetoActual) b.setAttribute("aria-current", "true");
     tdObj.append(botonEstrella(x), b);
 
@@ -543,7 +547,7 @@ function botonEstrella(x) {
   b.type = "button";
   const es = favoritos.has(x.id);
   b.setAttribute("aria-pressed", String(es));
-  b.setAttribute("aria-label", `${es ? "Quitar de" : "Añadir a"} favoritos: ${x.nombre}`);
+  b.setAttribute("aria-label", `${es ? "Quitar de" : "Añadir a"} favoritos: ${nom(x.id, x.nombre)}`);
   b.title = es ? "Quitar de favoritos" : "Añadir a favoritos";
   b.dataset.fav = x.id;
   b.innerHTML = '<svg aria-hidden="true"><use href="#i-estrella" /></svg>';
@@ -711,7 +715,7 @@ $("tbody").addEventListener("click", (ev) => {
   const fav = ev.target.closest("[data-fav]");
   if (fav) {
     const id = Number(fav.dataset.fav);
-    const nombre = pagina?.filas.find((x) => x.id === id)?.nombre ?? `#${id}`;
+    const nombre = nom(id, pagina?.filas.find((x) => x.id === id)?.nombre ?? `#${id}`);
     fav.disabled = true;
     alternarFavorito(id, nombre).catch((e) => avisar("No se pudo guardar el favorito: " + e.message, "bad"))
       .finally(() => { fav.disabled = false; });
@@ -1018,7 +1022,7 @@ function pintarListaNpc(lista) {
   $("npc-total").textContent = lista.length ? String(lista.length) : "";
   $("npc-lista").replaceChildren(...lista.map((x) => {
     const li = el("li");
-    const b = el("button", "enlace", x.nombre);
+    const b = el("button", "enlace", nom(x.id, x.nombre));
     b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${x.id}`; });
     li.append(b, " ", monedaNodo(x.precio));
     return li;
@@ -1055,7 +1059,7 @@ $("form-npc").addEventListener("submit", async (ev) => {
   try {
     const d = await enviarNpc(filas, false);
     const mal = [...errores, ...d.rechazadas.map((x) => `Fila ${x.fila} (${x.id}): ${x.motivo}`)];
-    const ok = d.aceptadas.map((x) => `${x.nombre}: ${x.borrar ? "borrar" : formatearMoneda(x.precio)}`);
+    const ok = d.aceptadas.map((x) => `${nom(x.id, x.nombre)}: ${x.borrar ? "borrar" : formatearMoneda(x.precio)}`);
     msg.className = "small " + (mal.length ? "bad" : "ok");
     msg.textContent = (ok.length ? `Se guardarían ${ok.length}: ${ok.slice(0, 6).join(" · ")}${ok.length > 6 ? "…" : ""}. ` : "Nada que guardar. ") +
       (mal.length ? `${mal.length} rechazadas: ${mal.slice(0, 3).join("; ")}${mal.length > 3 ? "…" : ""}` : "");
@@ -1252,7 +1256,7 @@ function pintarMapaCasa(d, cont, ancho) {
 
 /** Texto completo de un bloque (tooltip y lector de pantalla). */
 function textoBloque(o, d) {
-  const partes = [o.nombre];
+  const partes = [nom(o.id, o.nombre)];
   if (o.estado === "con_ofertas") partes.push(`Compra mínima ${formatearMoneda(o.precio)}`);
   else partes.push(ESTADO[o.estado]);
   if (o.variacion != null) {
@@ -1275,9 +1279,9 @@ function bloqueMapa(o, d, r) {
   b.dataset.tip = texto;
   b.dataset.id = o.id;
   // Contenido según el espacio: icono, nombre abreviado y variación con signo.
-  if (r.w >= 30 && r.h >= 28) b.append(iconoNodo(o.icono, o.nombre, o.calidad));
+  if (r.w >= 30 && r.h >= 28) b.append(iconoNodo(o.icono, nom(o.id, o.nombre), o.calidad));
   else if (o.variacion != null) b.append(el("span", "m-var", o.variacion > 0 ? "▲" : o.variacion < 0 ? "▼" : "▬"));
-  if (r.w >= 64 && r.h >= 44) b.append(el("span", "m-nombre", abreviar(o.nombre, Math.floor((r.w - 8) / 6.2))));
+  if (r.w >= 64 && r.h >= 44) b.append(el("span", "m-nombre", abreviar(nom(o.id, o.nombre), Math.floor((r.w - 8) / 6.2))));
   // Variación con flecha y signo (el color nunca va solo). En bloques estrechos, en formato compacto.
   if (r.w >= 40 && r.h >= 36) {
     const flecha = o.variacion > 0 ? "▲" : o.variacion < 0 ? "▼" : "▬";
@@ -1450,7 +1454,8 @@ function kv(filas) {
 
 function cabeceraObjeto(f) {
   const cab = el("div", "det-objeto");
-  cab.append(iconoNodo(f.icono, f.nombre, f.calidad, true));
+  const es = nombresEs.get(f.id);
+  cab.append(iconoNodo(f.icono, es ?? f.nombre, f.calidad, true));
   const t = el("div");
   // Acciones discretas: copiar nombre o ID y abrir Wowhead.
   const copiar = (texto, valor, etiqueta) => {
@@ -1465,7 +1470,8 @@ function cabeceraObjeto(f) {
     return b;
   };
   const acciones = el("div", "det-acciones");
-  if (!sinFicha(f.nombre)) acciones.append(copiar("Nombre", f.nombre, `Copiar el nombre: ${f.nombre}`));
+  if (es) acciones.append(copiar("Nombre", es, `Copiar el nombre: ${es}`), copiar("Inglés", f.nombre, `Copiar el nombre en inglés: ${f.nombre}`));
+  else if (!sinFicha(f.nombre)) acciones.append(copiar("Nombre", f.nombre, `Copiar el nombre: ${f.nombre}`));
   acciones.append(copiar(`#${f.id}`, String(f.id), `Copiar el ID ${f.id}`));
   if (f.wowhead_url) {
     const a = el("a", "btn-mini wowhead", "Wowhead ↗");
@@ -1477,6 +1483,7 @@ function cabeceraObjeto(f) {
     ? el("div", "det-sub sin-ficha", `${TEXTO_SIN_FICHA}: ni AHledger ni TSM publican su nombre, calidad ni icono.`)
     : el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), nombreSub(f.subclase)]
       .filter((x) => x && x !== nombreCat(SIN_CATEGORIA)).join(" › "), f.nivel ? `nivel ${f.nivel}` : null].filter(Boolean).join(" · ")),
+    es ? el("div", "det-sub", `En inglés: ${f.nombre}`) : "",
     acciones);
   cab.append(t);
   return cab;
@@ -1557,7 +1564,7 @@ function seccionRecetas(id) {
           const ul = el("ul", "det-lista");
           for (const x of r.reactivos) {
             const li = el("li");
-            const b = el("button", "enlace" + (x.calidad ? ` q-${x.calidad}` : ""), `${x.cantidad} × ${x.nombre}`);
+            const b = el("button", "enlace" + (x.calidad ? ` q-${x.calidad}` : ""), `${x.cantidad} × ${nom(x.id, x.nombre)}`);
             b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${x.id}`; });
             li.append(b, " ", x.precio == null ? el("span", "muted", "sin precio") : monedaNodo(x.coste));
             if (x.origen) {
@@ -1584,7 +1591,7 @@ function seccionRecetas(id) {
           const ul = el("ul", "det-lista");
           for (const u of d.usos.slice(0, 15)) {
             const li = el("li");
-            const b = el("button", "enlace", u.resultado_nombre);
+            const b = el("button", "enlace", nom(u.resultado_id, u.resultado_nombre));
             b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${u.resultado_id}`; });
             li.append(b, el("span", "muted", ` · ${nombreProf(u.profesion)}${u.nivel != null ? " " + u.nivel : ""} · ×${u.cantidad}`));
             ul.append(li);
@@ -1884,7 +1891,7 @@ function ponerListas(listas, favs) {
     // Las estrellas de la tabla se actualizan sin volver a pedir la página.
     for (const b of $("tbody").querySelectorAll("[data-fav]")) {
       const id = Number(b.dataset.fav), es = favoritos.has(id);
-      const nombre = pagina?.filas.find((x) => x.id === id)?.nombre ?? `#${id}`;
+      const nombre = nom(id, pagina?.filas.find((x) => x.id === id)?.nombre ?? `#${id}`);
       b.setAttribute("aria-pressed", String(es));
       b.setAttribute("aria-label", `${es ? "Quitar de" : "Añadir a"} favoritos: ${nombre}`);
       b.title = es ? "Quitar de favoritos" : "Añadir a favoritos";
@@ -1905,6 +1912,13 @@ function ponerListas(listas, favs) {
   listaPendiente = "";
   $("btn-favoritos").setAttribute("aria-pressed", String(!!listaFavoritos() && $("f-lista").value === String(listaFavoritos()?.id)));
 }
+async function cargarNombresEs() {
+  try {
+    const r = await fetch(`/api/nombres-es?mercado=${urlMercado()}`, { cache: "no-store" });
+    if (r.ok) nombresEs = new Map(Object.entries(await r.json()).map(([k, v]) => [Number(k), v]));
+  } catch { /* sin nombres en español se muestran los de la fuente */ }
+}
+
 async function cargarListas() {
   try {
     const r = await fetch("/api/listas", { cache: "no-store" });
@@ -1921,7 +1935,7 @@ function pintarAvisos(d) {
   const ul = el("ul");
   for (const a of nuevos.slice(0, 10)) {
     const li = el("li");
-    const b = el("button", "enlace", a.nombre);
+    const b = el("button", "enlace", nom(a.objeto, a.nombre));
     b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${a.objeto}`; });
     li.append(b, ` ${textoAlerta(a, formatearMoneda)}: `, monedaNodo(a.precio), el("span", "muted", ` · escaneo del ${fecha(a.escaneo)}`));
     ul.append(li);
@@ -2082,7 +2096,7 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
   const scroll = $("panel-ficha").scrollTop;
   if (!silencioso) {
     const filaPagina = pagina?.filas.find((x) => x.id === id);
-    $("det-titulo").textContent = filaPagina?.nombre ?? `#${id}`;
+    $("det-titulo").textContent = nom(id, filaPagina?.nombre ?? `#${id}`);
     $("det-titulo").className = filaPagina?.calidad ? `q-${filaPagina.calidad}` : "";
     cuerpo.replaceChildren(el("div", "esq-grafico"));
     abrirPanel();
@@ -2095,7 +2109,7 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     if (n !== objetoN) return;
     const rec = f.estado === "sin_datos" ? null : await bloqueRecomendacion(id);
     if (n !== objetoN) return;
-    $("det-titulo").textContent = f.nombre;
+    $("det-titulo").textContent = nom(f.id, f.nombre);
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
     fichaActual = f;
     // Primero lo esencial: objeto, precio y disponibilidad, gráfico y una recomendación breve.
@@ -2151,10 +2165,11 @@ function pintarSugerencias() {
     li.setAttribute("aria-selected", String(k === ac.activo));
     li.dataset.k = k;
     const txt = el("span", "sug-txt");
-    txt.append(el("span", s.calidad ? `q-${s.calidad}` : "", s.nombre),
+    const visible = nom(s.id, s.nombre);
+    txt.append(el("span", s.calidad ? `q-${s.calidad}` : "", visible),
       el("span", "sug-sub", [NOMBRE_CALIDAD[s.calidad], nombreSub(s.subclase) || nombreCat(s.clase), s.en_mercado ? null : "sin precio aquí"]
         .filter(Boolean).join(" · ")));
-    li.append(iconoNodo(s.icono, s.nombre, s.calidad), txt);
+    li.append(iconoNodo(s.icono, visible, s.calidad), txt);
     lista.append(li);
   });
   lista.hidden = !ac.abierto || sugerencias.length === 0;
@@ -2183,7 +2198,7 @@ async function pedirSugerencias() {
 function confirmarSugerencia(k) {
   const s = sugerencias[k];
   if (!s) return;
-  $("buscador").value = s.nombre;     // el texto solo cambia al confirmar
+  $("buscador").value = nom(s.id, s.nombre);     // el texto solo cambia al confirmar
   $("btn-borrar-busqueda").hidden = false;
   ac = { ...ac, abierto: false, activo: -1 };
   pintarSugerencias();
@@ -2213,7 +2228,7 @@ function mostrarRecientes() {
     const li = el("li");
     const b = el("button", "reciente");
     b.type = "button"; b.dataset.reciente = k;
-    if (x.id != null) b.append(iconoNodo(x.icono, x.nombre, x.calidad), el("span", x.calidad ? `q-${x.calidad}` : "", x.nombre));
+    if (x.id != null) b.append(iconoNodo(x.icono, nom(x.id, x.nombre), x.calidad), el("span", x.calidad ? `q-${x.calidad}` : "", nom(x.id, x.nombre)));
     else b.append(el("span", "muted", "Buscar: "), el("span", "", x.texto));
     li.append(b);
     return li;
@@ -2227,7 +2242,7 @@ $("lista-recientes").addEventListener("click", (ev) => {
   if (!x) return;
   ocultarRecientes();
   if (x.id != null) {
-    $("buscador").value = x.nombre; $("btn-borrar-busqueda").hidden = false;
+    $("buscador").value = nom(x.id, x.nombre); $("btn-borrar-busqueda").hidden = false;
     guardarReciente(x);
     location.hash = `#/objeto/${x.id}`;
   } else {
@@ -2426,7 +2441,7 @@ window.addEventListener("online", () => { if (sinConexion) vigilar(); });
 
 async function refrescar() {
   if (!(await cargar())) return;
-  await Promise.all([cargarPerfilSubasta(), cargarListas()]);   // bandas y comisiones antes de abrir un objeto
+  await Promise.all([cargarPerfilSubasta(), cargarListas(), cargarNombresEs()]);   // antes de pintar la tabla o un objeto
   cargarAvisos();         // alertas cumplidas desde la última vez (sin bloquear la tabla)
   aplicarRuta();          // un objeto pedido en la dirección se abre sin esperar a la tabla
   await cargarPagina();
