@@ -68,7 +68,14 @@ propia** de la lógica de TSM a precios agregados, no el código de TSM, así qu
    - **Filtro opcional** «Se vende en la región», por ventas al día.
    - **No entra en el motor de recomendaciones,** como decidió el plan original.
 
-4. **X4 · Recetas al estilo TSM** (función 4):
+4. **X4 · Recetas al estilo TSM** ✅ (2026-11-10; migración 0028). Lo que quedó hecho:
+   - Base de precio nueva `tsm` para las recetas del detalle (las bases `mediana` y `minimo` siguen igual).
+   - Cada material dice de dónde sale su coste («subasta», «fabricado» o «NPC») y, al pasar el cursor, las tres alternativas. Fabricar se calcula por rondas acotadas (máximo 6), así que los ciclos de recetas no cuelgan nada.
+   - Ejemplo real (escaneo del 2026-11-10): Transmute: Iron to Gold usa Iron Bar fundida (4p 40c) en vez de comprada (4p 88c).
+   - Valor del producto: compra mínima o, sin ofertas, valor de mercado, con tope del 150 % del valor de mercado (ajuste `recetas.tope_valor_pct`; 0 = sin tope).
+   - «Compra al NPC» en la barra lateral: pegar o subir un CSV «ID,precio», **Comprobar** (vista previa, no guarda) y **Guardar**. Rechaza IDs fuera del catálogo y precios menores o iguales que la venta al NPC. Todavía no hay ningún precio guardado: los pones tú.
+
+   Plan original:
    - **Coste de cada material:** el más barato entre comprarlo en subasta, fabricarlo (si es fabricable, cortando los ciclos) o comprarlo al NPC (si se conoce).
    - **Valor del producto:** su compra mínima y, si no hay, su valor de mercado. Con un tope opcional del 150 % del valor de mercado para descartar precios absurdos.
    - **Importación verificable** de precios de compra al NPC (CSV de ID y precio), marcados como «introducido por ti».

@@ -128,6 +128,22 @@
         </form>
       </details>
 
+      <details class="lat-grupo lat-catalogo" id="grupo-npc">
+        <summary><span class="lat-tit">Compra al NPC</span> <span id="npc-total" class="arbol-n"></span></summary>
+        <form id="form-npc" class="form-ids" autocomplete="off">
+          <label for="npc-texto" class="lab">Precios que tú conoces (viales, hilos…)</label>
+          <textarea id="npc-texto" rows="3" placeholder="3371,4c&#10;2324,25c"
+                    title="Una línea por objeto: ID,precio. El precio en cobre (25) o con monedas (1o 2p 3c). Precio vacío = borrar. Ninguna fuente permitida publica estos precios: los introduces tú y se marcan así."></textarea>
+          <input id="npc-archivo" type="file" accept=".csv,.txt,text/csv,text/plain" aria-label="Archivo CSV con ID y precio">
+          <div class="trio">
+            <button type="submit" class="btn btn-piedra btn-small">Comprobar</button>
+            <button id="npc-guardar" type="button" class="btn btn-piedra btn-small" disabled>Guardar</button>
+          </div>
+          <p id="npc-msg" class="small" role="status" hidden></p>
+          <ul id="npc-lista" class="det-lista small"></ul>
+        </form>
+      </details>
+
       <details class="lat-grupo lat-catalogo" id="grupo-catalogo">
         <summary><span class="lat-tit">Catálogo</span> <span id="cat-total" class="arbol-n"></span></summary>
         <dl id="cat-cobertura" class="cobertura"></dl>

@@ -2759,7 +2759,7 @@ function crearApi(db2, o) {
       const u = new URL(req.url).searchParams;
       const mercado = u.get("mercado") || o.mercado;
       const base = u.get("base") || "mediana";
-      if (!["mediana", "minimo"].includes(base)) return json(400, { error: "base debe ser mediana o minimo" });
+      if (!["mediana", "minimo", "tsm"].includes(base)) return json(400, { error: "base debe ser mediana, minimo o tsm" });
       const profesion = u.get("profesion");
       const objeto = u.get("objeto");
       try {
@@ -2772,6 +2772,34 @@ function crearApi(db2, o) {
           return json(200, await llamar(db2, "select recetas_profesion($1, $2, $3) as r", [mercado, profesion.slice(0, 40), base]));
         }
         return json(200, await llamar(db2, "select profesiones_recetas($1) as r", [mercado]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+    /**
+     * Precios de compra al NPC introducidos por ti (X4). GET: lista. POST {filas: [{id, precio}], aplicar}:
+     * comprueba cada fila (vista previa) y, con aplicar = true, guarda las aceptadas.
+     */
+    async compraNpc(req) {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const mercado = new URL(req.url).searchParams.get("mercado") || o.mercado;
+      try {
+        if (req.method === "GET") return json(200, await llamar(db2, "select listar_compra_npc($1) as r", [mercado]));
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c;
+        try {
+          c = await leerJson(req, 2e5);
+        } catch {
+          return json(400, { error: "Petición mal formada" });
+        }
+        if (!Array.isArray(c?.filas) || typeof c?.aplicar !== "boolean") return json(400, { error: "Faltan filas o aplicar" });
+        if (c.filas.length > 2e3) return json(400, { error: "Máximo 2000 filas por importación" });
+        return json(200, await llamar(
+          db2,
+          "select importar_compra_npc($1, $2::text::jsonb, $3::boolean, $4::timestamptz) as r",
+          [mercado, JSON.stringify(c.filas), c.aplicar, ahora().toISOString()]
+        ));
       } catch (e) {
         return fallaBd(e);
       }
@@ -2901,6 +2929,7 @@ var RUTAS = {
   catalogo: "catalogo",
   categorias: "categorias",
   cobertura: "cobertura",
+  "compra-npc": "compraNpc",
   demo: "demo",
   estado: "estado",
   explicacion: "explicacion",

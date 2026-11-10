@@ -1,5 +1,7 @@
 // Tabla del Mercado (V2): parámetros de la petición y minigráfico. Sin DOM, para probarlo en Node.
 
+import { parsearMoneda } from "./moneda.js";
+
 export const POR_PAGINA = 100;
 export const TRAMO_SPARK_MS = 6 * 3600e3;
 
@@ -111,6 +113,30 @@ export function leerIds(texto) {
     }
   });
   return { ids: [...ids], errores };
+}
+
+/**
+ * Precios de COMPRA al NPC (X4) desde un texto: una línea por objeto, «ID,precio» (también ; o tabulador).
+ * El precio va en cobre («25») o con monedas («1o 2p 3c»); vacío = borrar el precio guardado.
+ * Una cabecera (primera línea sin ID numérico) se ignora. Lo que no se entiende es un error con su línea.
+ * @returns {{filas: {id: number, precio: number|null}[], errores: string[]}}
+ */
+export function leerPreciosNpc(texto) {
+  const filas = [], errores = [];
+  String(texto ?? "").replace(/^﻿/, "").split(/\r?\n/).forEach((l, k) => {
+    if (!l.trim()) return;
+    const [a = "", b = "", ...resto] = l.split(/[;,\t]/).map((x) => x.trim().replace(/^"|"$/g, ""));
+    if (k === 0 && !/^\d+$/.test(a)) return;   // cabecera
+    if (!/^\d{1,9}$/.test(a) || Number(a) <= 0 || resto.some((x) => x !== "")) {
+      errores.push(`Línea ${k + 1}: «${l.trim()}» no es «ID,precio»`); return;
+    }
+    try {
+      const precio = parsearMoneda(b);
+      if (precio === 0) throw new Error("el precio no puede ser 0");
+      filas.push({ id: Number(a), precio });
+    } catch (e) { errores.push(`Línea ${k + 1}: ${e.message}`); }
+  });
+  return { filas, errores };
 }
 
 /**

@@ -417,7 +417,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def recetas(mercado: str | None = Query(default=None, max_length=100),
                 profesion: str | None = Query(default=None, max_length=40),
                 objeto: int | None = Query(default=None, gt=0),
-                base: str = Query(default="mediana", pattern="^(mediana|minimo)$")):
+                base: str = Query(default="mediana", pattern="^(mediana|minimo|tsm)$")):
         clave = mercado or settings.market
         try:
             with db.connect(settings.database_url) as conn:
@@ -428,6 +428,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("Fallo al leer recetas: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.get("/api/compra-npc")
+    def compra_npc_leer(mercado: str | None = Query(default=None, max_length=100)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select listar_compra_npc(%s) as r", (mercado or settings.market,)).fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer precios de compra al NPC: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/compra-npc")
+    def compra_npc_importar(c: dict = Body(...), mercado: str | None = Query(default=None, max_length=100)):
+        if not isinstance(c.get("filas"), list) or not isinstance(c.get("aplicar"), bool):
+            return JSONResponse(status_code=400, content={"error": "Faltan filas o aplicar"})
+        if len(c["filas"]) > 2000:
+            return JSONResponse(status_code=400, content={"error": "Máximo 2000 filas por importación"})
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                r = conn.execute("select importar_compra_npc(%s, %s::jsonb, %s) as r",
+                                 (mercado or settings.market, Jsonb(c["filas"]), c["aplicar"])).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al importar precios de compra al NPC: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return r
 
     @app.get("/api/tasas")
     def tasas_leer():

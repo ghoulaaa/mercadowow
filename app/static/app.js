@@ -9,7 +9,7 @@ import { abreviar, pesoBloque, squarify, textoVariacion, tonoVariacion } from ".
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
-  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, paginas,
+  ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, leerPreciosNpc, paginas,
   paramsMercado, segmentosSpark, sinFicha, textoReglaGanga, textoTasa, textoVentasDia, verMargen,
 } from "./mercado.js";
 
@@ -789,6 +789,75 @@ $("form-ids").addEventListener("submit", async (ev) => {
   }
 });
 
+// ---------- precios de compra al NPC (X4): importación verificable ----------
+let npcPendiente = null;   // filas comprobadas, a la espera de «Guardar»
+
+function pintarListaNpc(lista) {
+  $("npc-total").textContent = lista.length ? String(lista.length) : "";
+  $("npc-lista").replaceChildren(...lista.map((x) => {
+    const li = el("li");
+    const b = el("button", "enlace", x.nombre);
+    b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${x.id}`; });
+    li.append(b, " ", monedaNodo(x.precio));
+    return li;
+  }));
+}
+async function cargarListaNpc() {
+  try {
+    const r = await fetch(`/api/compra-npc?mercado=${urlMercado()}`, { cache: "no-store" });
+    if (r.ok) pintarListaNpc(await r.json());
+  } catch { /* la lista es solo informativa */ }
+}
+$("grupo-npc").addEventListener("toggle", () => { if ($("grupo-npc").open) cargarListaNpc(); });
+$("npc-archivo").addEventListener("change", async () => {
+  const f = $("npc-archivo").files[0];
+  if (f) $("npc-texto").value = await f.text();
+});
+$("npc-texto").addEventListener("input", () => { npcPendiente = null; $("npc-guardar").disabled = true; });
+
+async function enviarNpc(filas, aplicar) {
+  const r = await fetch(`/api/compra-npc?mercado=${urlMercado()}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filas, aplicar }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+  return d;
+}
+$("form-npc").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("npc-msg");
+  msg.hidden = false;
+  npcPendiente = null; $("npc-guardar").disabled = true;
+  const { filas, errores } = leerPreciosNpc($("npc-texto").value);
+  if (!filas.length) { msg.className = "small bad"; msg.textContent = errores[0] ?? "Escribe al menos una línea «ID,precio»."; return; }
+  try {
+    const d = await enviarNpc(filas, false);
+    const mal = [...errores, ...d.rechazadas.map((x) => `Fila ${x.fila} (${x.id}): ${x.motivo}`)];
+    const ok = d.aceptadas.map((x) => `${x.nombre}: ${x.borrar ? "borrar" : formatearMoneda(x.precio)}`);
+    msg.className = "small " + (mal.length ? "bad" : "ok");
+    msg.textContent = (ok.length ? `Se guardarían ${ok.length}: ${ok.slice(0, 6).join(" · ")}${ok.length > 6 ? "…" : ""}. ` : "Nada que guardar. ") +
+      (mal.length ? `${mal.length} rechazadas: ${mal.slice(0, 3).join("; ")}${mal.length > 3 ? "…" : ""}` : "");
+    if (d.aceptadas.length) { npcPendiente = d.aceptadas.map((x) => ({ id: x.id, precio: x.borrar ? null : x.precio })); $("npc-guardar").disabled = false; }
+  } catch (e) {
+    msg.className = "small bad"; msg.textContent = "No se pudo comprobar: " + e.message;
+  }
+});
+$("npc-guardar").addEventListener("click", async () => {
+  if (!npcPendiente) return;
+  const msg = $("npc-msg");
+  try {
+    const d = await enviarNpc(npcPendiente, true);
+    msg.className = "small ok";
+    msg.textContent = `Guardados ${d.aceptadas.length}. Las recetas ya los usan como «introducido por ti».`;
+    npcPendiente = null; $("npc-guardar").disabled = true;
+    $("npc-texto").value = ""; $("npc-archivo").value = "";
+    cargarListaNpc();
+    if (objetoActual) abrirObjeto(objetoActual, { silencioso: true });
+  } catch (e) {
+    msg.className = "small bad"; msg.textContent = "No se pudo guardar: " + e.message;
+  }
+});
+
 // ---------- vista «Mapa»: treemap de materiales por familia ----------
 let vista = local.leer("mw_vista", "lista") === "mapa" ? "mapa" : "lista";
 let periodoMapa = "24h";
@@ -1106,7 +1175,7 @@ function seccionRecetas(id) {
   sec.addEventListener("toggle", () => {
     if (!sec.open || pedido) return;
     pedido = true;
-    fetch(`/api/recetas?mercado=${urlMercado()}&objeto=${id}`, { cache: "no-store" })
+    fetch(`/api/recetas?mercado=${urlMercado()}&objeto=${id}&base=tsm`, { cache: "no-store" })
       .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "HTTP " + r.status); return d; })
       .then((d) => {
         const nodos = [];
@@ -1131,12 +1200,22 @@ function seccionRecetas(id) {
             const b = el("button", "enlace" + (x.calidad ? ` q-${x.calidad}` : ""), `${x.cantidad} × ${x.nombre}`);
             b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${x.id}`; });
             li.append(b, " ", x.precio == null ? el("span", "muted", "sin precio") : monedaNodo(x.coste));
+            if (x.origen) {
+              const o = el("span", "muted small", ` · ${ORIGEN_MATERIAL[x.origen]}${x.origen === "npc" && x.npc_tuyo ? " (introducido por ti)" : ""}`);
+              o.title = [["Subasta", x.subasta], ["Fabricar", x.fabricar], ["NPC", x.npc]]
+                .map(([k, v]) => `${k}: ${v == null ? "—" : formatearMoneda(v) + " c/u"}`).join(" · ");
+              li.append(o);
+            }
             ul.append(li);
           }
           nodos.push(ul);
+          const vr = r.resultado ?? {};
           nodos.push(kv([
             ["Coste de materiales", r.completa ? monedaNodo(r.coste) : `incompleto (falta ${r.faltan.join(", ")})`],
             ["Valor neto fabricado", r.neto == null ? "sin precio del resultado" : monedaNodo(r.neto)],
+            ["Valor usado", vr.fuente_valor == null ? null
+              : (vr.fuente_valor === "compra_minima" ? "compra mínima" : "valor de mercado (sin ofertas)") +
+                (vr.tope_aplicado ? ` · con tope del ${d.tope_valor_pct} % del valor de mercado` : "")],
             ["Margen", r.margen == null ? null : monedaNodo(r.margen), r.margen == null ? "" : r.margen >= 0 ? "sube" : "baja"],
           ]));
         }
@@ -1154,6 +1233,12 @@ function seccionRecetas(id) {
           nodos.push(ul);
         }
         if (!nodos.length) nodos.push(el("p", "muted small", "Ninguna receta conocida lo fabrica ni lo usa."));
+        else if (d.fabricacion.length) {
+          nodos.push(el("p", "muted small",
+            "Estimación al estilo TSM: cada material cuenta al más barato entre comprarlo en subasta (compra mínima o, " +
+            "sin ofertas, valor de mercado), fabricarlo o comprarlo al NPC si has introducido ese precio. " +
+            "Pasa el cursor por el origen para ver las tres alternativas."));
+        }
         cuerpo.replaceChildren(...nodos);
       })
       .catch((e) => cuerpo.replaceChildren(el("p", "bad small", "No se pudieron cargar las recetas: " + e.message)));
@@ -1187,9 +1272,13 @@ function seccionRegion(f) {
   return sec;
 }
 
+const ORIGEN_MATERIAL = { subasta: "subasta", fabricar: "fabricado", npc: "NPC" };
+
 function seccionPropiedades(f) {
   const sec = seccion("Propiedades");
   sec.append(kv([
+    ["Compra al NPC", f.compra_npc == null ? null
+      : el("span", "", formatearMoneda(f.compra_npc) + (f.compra_npc_origen === "usuario" ? " (introducido por ti)" : ""))],
     ["Clase", [f.clase, f.subclase].filter(Boolean).join(" › ") || "desconocida"],
     ["Nivel del objeto", f.nivel ?? "desconocido"],
     ["Nivel requerido", f.nivel_requerido ?? "—"],

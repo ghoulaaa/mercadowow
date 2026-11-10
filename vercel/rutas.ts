@@ -7,7 +7,7 @@ export type Api = Record<string, Manejador>;
 // ruta pública → método de la API (los mismos nombres que netlify/functions/*.ts).
 export const RUTAS: Record<string, string> = {
   actualizar: "actualizar", ajustes: "ajustes", catalogo: "catalogo", categorias: "categorias",
-  cobertura: "cobertura", demo: "demo", estado: "estado", explicacion: "explicacion",
+  cobertura: "cobertura", "compra-npc": "compraNpc", demo: "demo", estado: "estado", explicacion: "explicacion",
   favorito: "favorito", "historial-fuente": "historialFuente", historial: "historial",
   importar: "importar", inventario: "inventario", login: "login", logout: "logout", mapa: "mapa",
   mercado: "mercado", objeto: "objeto", "perfil-subasta": "perfilSubasta", precios: "precios",
