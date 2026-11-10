@@ -676,6 +676,82 @@ export async function actualizarNombresEs(db: Db, o: { fetch: typeof fetch; clie
   }
 }
 
+/** Segunda pasada: otros espacios de datos para los objetos nuevos de Forever (comprobando el nombre en inglés). */
+export const NAMESPACES_EXTRA = ["static-classic-us", "static-us"];
+
+async function tokenBlizzard(f: typeof fetch, clientId: string, secreto: string):
+    Promise<{ token: string } | { motivo: string; pausa: number }> {
+  try {
+    const r = await f(URL_TOKEN_BLIZZARD, {
+      method: "POST",
+      headers: { Authorization: "Basic " + btoa(`${clientId}:${secreto}`), "Content-Type": "application/x-www-form-urlencoded" },
+      body: "grant_type=client_credentials", signal: AbortSignal.timeout(15_000),
+    });
+    if (r.status === 401 || r.status === 400) { await r.body?.cancel(); return { motivo: "credenciales_rechazadas", pausa: 6 * 3600 }; }
+    if (r.status !== 200) { await r.body?.cancel(); return { motivo: `token: HTTP ${r.status}`, pausa: 900 }; }
+    const token = String((await r.json())?.access_token ?? "");
+    return token ? { token } : { motivo: "token vacío", pausa: 900 };
+  } catch (e) { return { motivo: `token: ${(e as Error).message ?? e}`, pausa: 900 }; }
+}
+
+export async function actualizarNombresEsExtra(db: Db, o: { fetch: typeof fetch; clientId?: string; secreto?: string;
+                                                           ahora?: () => Date; lote?: number; paralelo?: number }) {
+  const ahora = o.ahora ?? (() => new Date());
+  const t = () => ahora().toISOString();
+  const turno = (await db.consulta("select tomar_turno_nombres_es(300, $1::timestamptz) as r", [t()]))[0]?.r;
+  if (!turno) return { estado: "omitido", motivo: "en_curso" };
+  let pausa = 0;
+  try {
+    if (!o.clientId || !o.secreto) { pausa = 6 * 3600; return { estado: "omitido", motivo: "sin_credenciales" }; }
+    const pendientes = ((await db.consulta("select nombres_es_pendientes_extra('forever', $1, $2::timestamptz) as r",
+      [o.lote ?? 200, t()]))[0]?.r ?? []) as { id: number; nombre: string }[];
+    if (!pendientes.length) return { estado: "ok", motivo: "al_dia" };
+    const tk = await tokenBlizzard(o.fetch, o.clientId, o.secreto);
+    if (!("token" in tk)) { pausa = tk.pausa; return { estado: "error", motivo: tk.motivo }; }
+    const token = tk.token;
+
+    const encontrados: { id: number; nombre: string; fuente: string }[] = [];
+    const sinNombre: number[] = [];
+    const conError: number[] = [];
+    let parado: string | null = null;
+    let erroresSeguidos = 0;
+    let k = 0;
+    const pedir = async (ns: string, locale: string, id: number) => {
+      let r = await pedirItemBlizzard(o.fetch, token, ns, locale, id);
+      if (r.tipo === "error") r = await pedirItemBlizzard(o.fetch, token, ns, locale, id);
+      return r;
+    };
+    const trabajador = async () => {
+      while (!parado && k < pendientes.length) {
+        const { id, nombre } = pendientes[k++];
+        let resultado: "ok" | "no" | "error" = "no";
+        for (const ns of NAMESPACES_EXTRA) {
+          const en = await pedir(ns, "en_US", id);
+          if (en.tipo === "parar") { parado = en.motivo; return; }
+          if (en.tipo === "error") { resultado = "error"; continue; }
+          // Mismo ID pero otro objeto en esa versión del juego: no vale.
+          if (en.tipo !== "ok" || en.nombre !== nombre) continue;
+          const es = await pedir(ns, LOCALE_ES, id);
+          if (es.tipo === "parar") { parado = es.motivo; return; }
+          if (es.tipo === "ok") { encontrados.push({ id, nombre: es.nombre, fuente: `blizzard:${ns}:${LOCALE_ES}` }); resultado = "ok"; break; }
+          if (es.tipo === "error") resultado = "error";
+        }
+        if (resultado === "ok") erroresSeguidos = 0;
+        else if (resultado === "no") { sinNombre.push(id); erroresSeguidos = 0; }
+        else { conError.push(id); if (++erroresSeguidos >= 10) parado = `errores en ${erroresSeguidos} objetos seguidos`; }
+      }
+    };
+    await Promise.all(Array.from({ length: o.paralelo ?? 4 }, trabajador));
+    if (parado) pausa = 900;
+    const g = (await db.consulta(
+      "select guardar_nombres_es_extra('forever', $1::text::jsonb, $2::integer[], $3::integer[], $4::timestamptz) as r",
+      [JSON.stringify(encontrados), sinNombre, conError, t()]))[0]?.r;
+    return { estado: "ok", pedidos: pendientes.length, ...(g as object), parado };
+  } finally {
+    await db.consulta("select soltar_turno_nombres_es($1, $2::timestamptz)", [pausa, t()]);
+  }
+}
+
 export async function actualizarRecetas(db: Db, o: { fetch: typeof fetch; ahora?: () => Date;
                                                     userAgent?: string }) {
   const ahora = o.ahora ?? (() => new Date());

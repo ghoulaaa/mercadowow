@@ -4,7 +4,7 @@ import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { actualizarNombresEs, type Db } from "../../supabase/functions/actualizar-mercado/nucleo.ts";
+import { actualizarNombresEs, actualizarNombresEsExtra, type Db } from "../../supabase/functions/actualizar-mercado/nucleo.ts";
 
 const TSM = "tsm:forever:us:pvp-horde";
 
@@ -17,7 +17,7 @@ describe("nombres en español", () => {
 
   /** API de Blizzard simulada: token, objeto de control y nombres es_MX. */
   function blizzard(o: { tokenStatus?: number; controlEn?: string; nombres?: Record<number, string>; caida?: boolean;
-                     error500?: number[] } = {}) {
+                     error500?: number[]; extra?: Record<string, Record<number, { en: string; es: string }>> } = {}) {
     const pedidas: string[] = [];
     const f = (async (url: string) => {
       pedidas.push(url);
@@ -26,7 +26,11 @@ describe("nombres en español", () => {
           : Response.json({ access_token: "t0k3n" });
       }
       const m = url.match(/\/data\/wow\/item\/(\d+)\?namespace=([^&]+)&locale=(\w+)/)!;
-      const id = Number(m[1]), locale = m[3];
+      const id = Number(m[1]), ns = m[2], locale = m[3];
+      if (ns !== "static-classic1x-us") {
+        const x = o.extra?.[ns]?.[id];
+        return x ? Response.json({ id, name: locale === "en_US" ? x.en : x.es }) : new Response("", { status: 404 });
+      }
       if (o.caida) return new Response("", { status: 503 });
       if (locale === "en_US") return id === 2589 ? Response.json({ id, name: o.controlEn ?? "Linen Cloth" }) : new Response("", { status: 404 });
       if ((o.error500 ?? []).includes(id)) return new Response("", { status: 500 });
@@ -45,7 +49,7 @@ describe("nombres en español", () => {
                      "0008_ventas.sql", "0009_ahledger.sql", "0010_catalogo.sql", "0012_busqueda_mercado.sql",
                      "0013_textos_fuente.sql", "0014_tasas.sql", "0015_recetas.sql", "0017_mercado_pagina.sql",
                      "0018_evidencia.sql", "0019_catalogo_ampliado.sql", "0020_precios_tsm.sql", "0023_catalogo_informe.sql",
-                     "0033_nombres_es.sql", "0035_nombres_es_errores.sql"]) await pg.exec(leer(n));
+                     "0033_nombres_es.sql", "0035_nombres_es_errores.sql", "0036_nombres_es_extra.sql"]) await pg.exec(leer(n));
     const cat = [[2589, "Linen Cloth"], [2840, "Copper Bar"], [99001, "New Forever Item"]]
       .map(([id, name]) => ({ id, name, itemClass: "Trade Goods", itemSubclass: "Cloth", quality: "COMMON" }));
     await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify(cat)]);
@@ -102,6 +106,22 @@ describe("nombres en español", () => {
     assert.equal((await uno("select value from settings where key = 'nombres_es_turno_hasta'")).value, "-infinity");   // sin pausa
     assert.deepEqual((await uno("select nombres_es_pendientes('forever', 10, $1::timestamptz) as r", ["2026-11-10T13:00:00Z"])).r, []);
     assert.deepEqual((await uno("select nombres_es_pendientes('forever', 10, $1::timestamptz) as r", ["2026-11-11T13:00:00Z"])).r, [2840]);
+  });
+
+  test("segunda pasada: objetos nuevos de Forever solo si el nombre en inglés coincide", async () => {
+    await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify([{ id: 99002, name: "Another New Item", itemClass: "Armor" }])]);
+    await actualizarNombresEs(db, { fetch: blizzard({ nombres: { 2589: "Tela de lino", 2840: "Barra de cobre" } }).f, clientId: "a", secreto: "b", ahora });
+    const { f } = blizzard({ extra: {
+      "static-classic-us": { 99002: { en: "Some Other Item", es: "Otro objeto distinto" } },   // mismo ID, otro objeto
+      "static-us": { 99001: { en: "New Forever Item", es: "Objeto nuevo de Forever" } },
+    } });
+    const r: any = await actualizarNombresEsExtra(db, { fetch: f, clientId: "a", secreto: "b", ahora });
+    assert.deepEqual([r.estado, r.guardados, r.sin_nombre, r.parado], ["ok", 1, 1, null]);
+    const c = await uno("select nombre_es, nombre_es_fuente from catalogo where item_id = 99001");
+    assert.deepEqual([c.nombre_es, c.nombre_es_fuente], ["Objeto nuevo de Forever", "blizzard:static-us:es_MX"]);
+    assert.equal((await uno("select nombre_es from catalogo where item_id = 99002")).nombre_es, null);
+    assert.deepEqual((await uno("select nombres_es_pendientes_extra('forever', 10, $1::timestamptz) as r", ["2026-11-12T00:00:00Z"])).r, []);
+    assert.equal((await uno("select nombres_es_estado('forever') as r")).r.pendientes_extra, 0);
   });
 
   test("si la API se cae a mitad, se para, guarda lo que tenga y se pausa", async () => {
