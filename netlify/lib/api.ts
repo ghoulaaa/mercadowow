@@ -154,9 +154,11 @@ export function crearApi(db: Db, o: OpcionesApi) {
   const historialPropio = async (mercado: string, id: number, rango: string) => {
     const dias = { "24h": 1, "7d": 7, "30d": 30, "90d": 60 }[rango]!;
     const h = await llamar(db, "select historial_objeto($1, $2::integer, $3::integer) as r", [mercado, id, dias]);
+    // Unidades de los escaneos guardados (las mismas que la tabla del Mercado); null si la fuente no las publica.
+    const cant = await llamar(db, "select coalesce(jsonb_agg(jsonb_build_array((extract(epoch from p.hour) * 1000)::bigint, p.quantity) order by p.hour), '[]'::jsonb) as r from price_hourly p join markets m on m.id = p.market_id where m.key = $1 and p.item_id = $2::integer and p.quantity is not null and p.hour > now() - make_interval(days => $3::integer)", [mercado, id, dias]);
     return {
       fuente: "propio", rango, paso_ms: null, nombres: ["Compra mínima", "Valor de mercado"],
-      puntos: h?.puntos ?? [], cantidad: null, med7: h?.med7 ?? null, med30: h?.med30 ?? null, ultimo: null,
+      puntos: h?.puntos ?? [], cantidad: cant?.length ? cant : null, med7: h?.med7 ?? null, med30: h?.med30 ?? null, ultimo: null,
       nota: rango === "90d" ? "El historial propio se guarda como máximo 60 días." : null,
     };
   };
@@ -435,7 +437,9 @@ export function crearApi(db: Db, o: OpcionesApi) {
       try {
         const m = (await db.consulta("select provider, source_url from markets where key = $1", [mercado]))[0];
         if (!m) return json(404, { error: `Mercado ${mercado} no registrado` });
-        return json(200, m.provider === "ahledger"
+        // guardado=1: los escaneos guardados en la base de datos (p. ej. las unidades de la pestaña «Precios»),
+        // en vez del historial que publica AHledger en su servicio.
+        return json(200, m.provider === "ahledger" && u.get("guardado") !== "1"
           ? await historialAhledger(o.fetch ?? fetch, String(m.source_url), id, rango)
           : await historialPropio(mercado, id, rango));
       } catch (e) {

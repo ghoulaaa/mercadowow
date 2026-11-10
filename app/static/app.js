@@ -1679,7 +1679,8 @@ async function cargarHistorialEn(cont, id, rango) {
     const comp = mercadoCantidades();
     if (comp && !(h.cantidad ?? []).some(([, q]) => q != null)) {
       try {
-        const r2 = await fetch(`/api/historial-fuente?mercado=${encodeURIComponent(comp)}&id=${id}&rango=${rango}`);
+        // Las unidades guardadas (las mismas que la tabla del Mercado), no el historial del servicio de AHledger.
+        const r2 = await fetch(`/api/historial-fuente?mercado=${encodeURIComponent(comp)}&id=${id}&rango=${rango}&guardado=1`);
         const h2 = r2.ok ? await r2.json() : null;
         if (cont.dataset.token !== token || !cont.isConnected) return;
         if (h2?.cantidad?.some(([, q]) => q != null)) cont._cantRef = { proveedor: "AHledger", cantidad: h2.cantidad };

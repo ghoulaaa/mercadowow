@@ -2280,13 +2280,14 @@ function crearApi(db2, o) {
   const historialPropio = async (mercado, id, rango) => {
     const dias = { "24h": 1, "7d": 7, "30d": 30, "90d": 60 }[rango];
     const h = await llamar(db2, "select historial_objeto($1, $2::integer, $3::integer) as r", [mercado, id, dias]);
+    const cant = await llamar(db2, "select coalesce(jsonb_agg(jsonb_build_array((extract(epoch from p.hour) * 1000)::bigint, p.quantity) order by p.hour), '[]'::jsonb) as r from price_hourly p join markets m on m.id = p.market_id where m.key = $1 and p.item_id = $2::integer and p.quantity is not null and p.hour > now() - make_interval(days => $3::integer)", [mercado, id, dias]);
     return {
       fuente: "propio",
       rango,
       paso_ms: null,
       nombres: ["Compra mínima", "Valor de mercado"],
       puntos: h?.puntos ?? [],
-      cantidad: null,
+      cantidad: cant?.length ? cant : null,
       med7: h?.med7 ?? null,
       med30: h?.med30 ?? null,
       ultimo: null,
@@ -2594,7 +2595,7 @@ function crearApi(db2, o) {
       try {
         const m = (await db2.consulta("select provider, source_url from markets where key = $1", [mercado]))[0];
         if (!m) return json(404, { error: `Mercado ${mercado} no registrado` });
-        return json(200, m.provider === "ahledger" ? await historialAhledger(o.fetch ?? fetch, String(m.source_url), id, rango) : await historialPropio(mercado, id, rango));
+        return json(200, m.provider === "ahledger" && u.get("guardado") !== "1" ? await historialAhledger(o.fetch ?? fetch, String(m.source_url), id, rango) : await historialPropio(mercado, id, rango));
       } catch (e) {
         if (e instanceof ErrorFuente) return json(502, { error: e.message });
         return fallaBd(e);

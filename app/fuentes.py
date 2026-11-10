@@ -66,10 +66,10 @@ def historial_ahledger(http_get, url_tabla: str, item_id: int, rango: str) -> di
     }
 
 
-def historial_propio(h: dict | None, rango: str) -> dict:
+def historial_propio(h: dict | None, rango: str, cantidad: list | None = None) -> dict:
     return {
         "fuente": "propio", "rango": rango, "paso_ms": None, "nombres": ["Compra mínima", "Valor de mercado"],
-        "puntos": (h or {}).get("puntos") or [], "cantidad": None, "med7": (h or {}).get("med7"),
+        "puntos": (h or {}).get("puntos") or [], "cantidad": cantidad or None, "med7": (h or {}).get("med7"),
         "med30": (h or {}).get("med30"), "ultimo": None,
         "nota": "El historial propio se guarda como máximo 60 días." if rango == "90d" else None,
     }

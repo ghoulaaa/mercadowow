@@ -267,7 +267,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/historial-fuente")
     def historial_fuente(id: int = Query(gt=0), rango: str = Query(default="7d"),
-                         mercado: str | None = Query(default=None, max_length=100)):
+                         mercado: str | None = Query(default=None, max_length=100),
+                         guardado: str | None = Query(default=None, max_length=1)):
         clave = mercado or settings.market
         if rango not in fuentes.RANGOS:
             return JSONResponse(status_code=400, content={"error": f"rango debe ser {', '.join(fuentes.RANGOS)}"})
@@ -276,11 +277,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 m = conn.execute("select provider, source_url from markets where key = %s", (clave,)).fetchone()
                 if m is None:
                     return JSONResponse(status_code=404, content={"error": f"Mercado {clave} no registrado"})
-                if m["provider"] == "ahledger":
+                if m["provider"] == "ahledger" and guardado != "1":
                     datos = fuentes.historial_ahledger(_http_get, m["source_url"], id, rango)
                 else:
                     dias = {"24h": 1, "7d": 7, "30d": 30, "90d": 60}[rango]
-                    datos = fuentes.historial_propio(db.price_history(conn, clave, id, dias), rango)
+                    cant = conn.execute("select coalesce(jsonb_agg(jsonb_build_array((extract(epoch from p.hour) * 1000)::bigint, p.quantity) order by p.hour), '[]'::jsonb) as r from price_hourly p join markets m on m.id = p.market_id where m.key = %s and p.item_id = %s and p.quantity is not null and p.hour > now() - make_interval(days => %s)", (clave, id, dias)).fetchone()["r"]
+                    datos = fuentes.historial_propio(db.price_history(conn, clave, id, dias), rango, cant)
         except fuentes.ErrorFuente as exc:
             return JSONResponse(status_code=502, content={"error": str(exc)})
         except Exception as exc:
