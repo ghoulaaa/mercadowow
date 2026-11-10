@@ -2262,7 +2262,9 @@ function crearApi(db2, o) {
   const ahora = o.ahora ?? (() => /* @__PURE__ */ new Date());
   const segura = o.segura ?? true;
   const configurada = typeof o.clave === "string" && o.clave.length >= CLAVE_MINIMA;
-  const sinConfigurar = () => json(500, { error: `Falta CLAVE_ACCESO en Netlify (mínimo ${CLAVE_MINIMA} caracteres).` });
+  const sinConfigurar = () => json(500, {
+    error: typeof o.clave === "string" && o.clave.length > 0 ? `CLAVE_ACCESO es demasiado corta: necesita al menos ${CLAVE_MINIMA} caracteres. Cámbiala en las variables de entorno del alojamiento y vuelve a desplegar.` : `Falta CLAVE_ACCESO en las variables de entorno del alojamiento (mínimo ${CLAVE_MINIMA} caracteres). Añádela para el entorno de producción y vuelve a desplegar.`
+  });
   const autenticado = (req) => configurada && tokenValido(o.clave, leerCookie(req, COOKIE), ahora());
   const cookie = (valor, maxAge) => `${COOKIE}=${valor}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${segura ? "; Secure" : ""}`;
   const fallaBd = (e) => {
@@ -2878,7 +2880,7 @@ var sql = null;
 var db = {
   consulta(q, p) {
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("Falta DATABASE_URL en Netlify");
+    if (!url) throw new Error("Falta DATABASE_URL en las variables de entorno del alojamiento");
     sql ??= src_default(url, { max: 1, idle_timeout: 20, connect_timeout: 15, prepare: false });
     return sql.unsafe(q, p);
   }

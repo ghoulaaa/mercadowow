@@ -49,7 +49,7 @@ Cada vez que se suba un cambio a GitHub (rama `main`), Netlify vuelve a publicar
 
 | Lo que ves | Qué hacer |
 |---|---|
-| «Falta CLAVE_ACCESO en Netlify» | Añade la variable y vuelve a desplegar (**Deploys → Trigger deploy**) |
+| «Falta CLAVE_ACCESO…» o «CLAVE_ACCESO es demasiado corta» | Añade la variable y vuelve a desplegar (**Deploys → Trigger deploy**) |
 | «No se pudo conectar con Supabase» | Revisa `DATABASE_URL` en Netlify y que el proyecto de Supabase no esté pausado |
 | «Faltan migraciones en Supabase» | Ejecuta `configurar.bat` en tu PC |
 | Página en blanco o 404 | Comprueba que *Publish directory* sea `app/static` |

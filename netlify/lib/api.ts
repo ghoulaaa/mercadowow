@@ -127,7 +127,11 @@ export function crearApi(db: Db, o: OpcionesApi) {
   const configurada = typeof o.clave === "string" && o.clave.length >= CLAVE_MINIMA;
 
   const sinConfigurar = () =>
-    json(500, { error: `Falta CLAVE_ACCESO en Netlify (mínimo ${CLAVE_MINIMA} caracteres).` });
+    json(500, {
+      error: typeof o.clave === "string" && o.clave.length > 0
+        ? `CLAVE_ACCESO es demasiado corta: necesita al menos ${CLAVE_MINIMA} caracteres. Cámbiala en las variables de entorno del alojamiento y vuelve a desplegar.`
+        : `Falta CLAVE_ACCESO en las variables de entorno del alojamiento (mínimo ${CLAVE_MINIMA} caracteres). Añádela para el entorno de producción y vuelve a desplegar.`,
+    });
 
   const autenticado = (req: Request) => configurada && tokenValido(o.clave!, leerCookie(req, COOKIE), ahora());
 

@@ -12,7 +12,7 @@ let sql: ReturnType<typeof postgres> | null = null;
 const db: Db = {
   consulta(q, p) {
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("Falta DATABASE_URL en Netlify");
+    if (!url) throw new Error("Falta DATABASE_URL en las variables de entorno del alojamiento");
     // Una conexión por instancia; se cierra sola si queda inactiva.
     sql ??= postgres(url, { max: 1, idle_timeout: 20, connect_timeout: 15, prepare: false });
     return sql.unsafe(q, p as never[]) as unknown as Promise<Record<string, unknown>[]>;
