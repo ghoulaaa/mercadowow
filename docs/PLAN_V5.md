@@ -81,7 +81,12 @@ propia** de la lógica de TSM a precios agregados, no el código de TSM, así qu
    - **Importación verificable** de precios de compra al NPC (CSV de ID y precio), marcados como «introducido por ti».
    - **Si falta un precio,** el coste sigue saliendo «incompleto», como ahora.
 
-5. **X5 · Mapa de toda la casa** (función 5):
+5. **X5 · Mapa de toda la casa** ✅ (2026-11-10; migración 0029). Lo que quedó hecho:
+   - En la vista «Mapa», selector «Materiales | Toda la casa». Toda la casa: clases → subclases → objetos, con migas para volver atrás.
+   - Grupos: tamaño = número de objetos (TSM) o unidades publicadas (AHledger); color = mediana de la variación de sus objetos (misma regla que el mapa de materiales: compra mínima contra compra mínima, sin inventar ceros).
+   - Nivel de objetos: máximo 400 bloques (se avisa si hay más). Con datos reales: 13 clases y 6.786 objetos; Armas › Sword, 139.
+
+   Plan original:
    - **El treemap de materiales se amplía a todas las categorías,** por clase › subclase.
    - **Tamaño de los bloques:** uniforme o número de objetos, porque TSM no publica cantidades. Con AHledger, la cantidad publicada.
    - **Al pulsar una categoría** se baja a su subclase y a sus objetos.

@@ -352,6 +352,9 @@ th[aria-sort="descending"] .th-orden::after { content: " ▼"; color: var(--gold
 .mapa-leyenda li { display: inline-flex; align-items: center; gap: 4px; }
 .m-muestra { display: inline-block; width: 14px; height: 12px; border-radius: 2px; }
 .m-familia { margin-bottom: 10px; }
+.mapa-migas { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; flex-basis: 100%; }
+.mapa-migas [aria-current] { color: var(--metal-claro); font-weight: 600; }
+.m-grupo { cursor: zoom-in; }
 .m-fam-tit { font-size: 13px; margin: 0 0 3px; color: var(--metal-claro); }
 .m-area { position: relative; width: 100%; }
 .m-franja { margin-top: 2px; }

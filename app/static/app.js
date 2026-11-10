@@ -5,7 +5,7 @@ import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
 import { leerRuta } from "./ruta.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
-import { abreviar, pesoBloque, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
+import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
@@ -863,6 +863,40 @@ let vista = local.leer("mw_vista", "lista") === "mapa" ? "mapa" : "lista";
 let periodoMapa = "24h";
 let mapaDatos = null;
 let mapaN = 0;
+// X5: mapa de toda la casa (clase › subclase › objetos).
+let ambitoMapa = local.leer("mw_mapa_ambito", "materiales") === "casa" ? "casa" : "materiales";
+const casaNivel = { clase: "", subclase: "" };
+
+function ponerAmbito(a) {
+  ambitoMapa = a;
+  local.escribir("mw_mapa_ambito", a);
+  for (const b of document.querySelectorAll("#mapa-ambito [data-ambito]")) b.setAttribute("aria-pressed", String(b.dataset.ambito === a));
+  cargarMapa();
+}
+for (const b of document.querySelectorAll("#mapa-ambito [data-ambito]")) b.addEventListener("click", () => ponerAmbito(b.dataset.ambito));
+for (const b of document.querySelectorAll("#mapa-ambito [data-ambito]")) b.setAttribute("aria-pressed", String(b.dataset.ambito === ambitoMapa));
+
+function irNivelCasa(clase, subclase = "") {
+  casaNivel.clase = clase; casaNivel.subclase = clase ? subclase : "";
+  cargarMapa();
+}
+
+/** Migas del mapa de la casa: «Toda la casa › Clase › Subclase», cada nivel anterior se puede pulsar. */
+function pintarMigas(d) {
+  const nav = $("mapa-migas");
+  nav.hidden = d?.ambito !== "casa";
+  if (nav.hidden) return;
+  const pasos = [["Toda la casa", "", ""]];
+  if (d.clase) pasos.push([nombreCat(d.clase), d.clase, ""]);
+  if (d.subclase) pasos.push([d.subclase, d.clase, d.subclase]);
+  nav.replaceChildren(...pasos.flatMap(([txt, c, s], i) => {
+    const ultimoPaso = i === pasos.length - 1;
+    const n = ultimoPaso ? el("span", "", txt) : el("button", "enlace", txt);
+    if (!ultimoPaso) { n.type = "button"; n.addEventListener("click", () => irNivelCasa(c, s)); }
+    else n.setAttribute("aria-current", "location");
+    return i ? [el("span", "muted", " › "), n] : [n];
+  }));
+}
 const PERIODO_TXT = { "24h": "24 h", "3d": "3 días", "7d": "7 días" };
 
 function ponerVista(v) {
@@ -887,11 +921,17 @@ for (const b of document.querySelectorAll("#mapa-periodos [data-periodo]")) {
 async function cargarMapa() {
   if (!ultimo?.mercado?.clave) return;
   const n = ++mapaN;
-  const q = new URLSearchParams({ mercado: ultimo.mercado.clave, periodo: periodoMapa });
-  if (filtro.profesion) q.set("profesion", filtro.profesion);
-  if ($("f-materiales").checked && filtro.familia) q.set("familia", filtro.familia);
-  if (filtro.calidad) q.set("calidad", filtro.calidad);
-  if ($("f-ofertas").checked) q.set("solo_ofertas", "true");
+  let q;
+  if (ambitoMapa === "casa") {
+    q = new URLSearchParams(paramsMapaCasa({ mercado: ultimo.mercado.clave, periodo: periodoMapa, clase: casaNivel.clase,
+      subclase: casaNivel.subclase, calidad: filtro.calidad, soloOfertas: $("f-ofertas").checked }));
+  } else {
+    q = new URLSearchParams({ mercado: ultimo.mercado.clave, periodo: periodoMapa });
+    if (filtro.profesion) q.set("profesion", filtro.profesion);
+    if ($("f-materiales").checked && filtro.familia) q.set("familia", filtro.familia);
+    if (filtro.calidad) q.set("calidad", filtro.calidad);
+    if ($("f-ofertas").checked) q.set("solo_ofertas", "true");
+  }
   $("mapa").classList.add("cargando");
   try {
     const r = await fetch("/api/mapa?" + q, { cache: "no-store" });
@@ -908,7 +948,77 @@ async function cargarMapa() {
 }
 
 const contadorMapa = (d) =>
-  `${d.total.toLocaleString("es")} materiales · ${d.con_variacion.toLocaleString("es")} con variación en ${PERIODO_TXT[d.periodo]}`;
+  `${d.total.toLocaleString("es")} ${d.ambito === "casa" ? "objetos" : "materiales"} · ` +
+  `${d.con_variacion.toLocaleString("es")} con variación en ${PERIODO_TXT[d.periodo]}` +
+  (d.limite && d.total > d.limite ? ` · se ven los ${d.limite.toLocaleString("es")} primeros` : "");
+
+/** Texto de un grupo del mapa de la casa (tooltip y lector de pantalla). */
+function textoGrupo(g, d) {
+  const nombre = d.nivel === "clases" ? nombreCat(g.clave) : g.clave;
+  const partes = [nombre, `${g.n.toLocaleString("es")} objetos (${g.con_ofertas.toLocaleString("es")} con ofertas)`];
+  partes.push(g.variacion != null
+    ? `mediana ${textoVariacion(Number(g.variacion))} en ${PERIODO_TXT[d.periodo]} (de ${g.con_variacion.toLocaleString("es")} con historial)`
+    : `sin historial comparable de hace ${PERIODO_TXT[d.periodo]}`);
+  if (d.tamano === "cantidad") partes.push(`${Number(g.cantidad).toLocaleString("es")} uds. publicadas`);
+  partes.push("pulsa para ver dentro");
+  return partes.join(" · ");
+}
+
+function bloqueGrupo(g, d, r) {
+  const v = g.variacion == null ? null : Number(g.variacion);
+  const b = el("button", "m-bloque m-grupo t-" + (g.con_ofertas ? tonoVariacion(v) : "nodato"));
+  b.type = "button";
+  b.style.left = `${r.x}px`; b.style.top = `${r.y}px`;
+  b.style.width = `${Math.max(0, r.w - 2)}px`; b.style.height = `${Math.max(0, r.h - 2)}px`;
+  const texto = textoGrupo(g, d);
+  b.setAttribute("aria-label", texto);
+  b.dataset.tip = texto;
+  b.dataset.grupo = g.clave;
+  const nombre = d.nivel === "clases" ? nombreCat(g.clave) : g.clave;
+  if (r.w >= 30 && r.h >= 28) b.append(iconoNodo(g.icono, nombre, null));
+  if (r.w >= 64 && r.h >= 44) b.append(el("span", "m-nombre", abreviar(`${nombre} · ${g.n}`, Math.floor((r.w - 8) / 6.2))));
+  if (r.w >= 40 && r.h >= 36) {
+    const flecha = v > 0 ? "▲" : v < 0 ? "▼" : "▬";
+    b.append(el("span", "m-var", v != null ? `${flecha} ${textoVariacion(v)}` : "s/h"));
+  }
+  return b;
+}
+
+/** Mapa de la casa: un solo treemap con los grupos (clases o subclases) o con los objetos de una subclase. */
+function pintarMapaCasa(d, cont, ancho) {
+  $("mapa-tamano").textContent = d.tamano === "cantidad"
+    ? "Tamaño: unidades publicadas en el último escaneo"
+    : d.nivel === "objetos" ? "Tamaño: igual para todos (esta fuente no publica cantidades)"
+      : "Tamaño: número de objetos (esta fuente no publica cantidades) · color: mediana de la variación";
+  $("titulo-resultados").textContent = "Mapa de la casa" + (d.clase ? ` · ${nombreCat(d.clase)}` : "") + (d.subclase ? ` · ${d.subclase}` : "");
+  const objetos = d.nivel === "objetos";
+  const lista = objetos ? d.objetos : d.grupos;
+  const peso = (x) => (objetos ? pesoBloque(x, d.tamano) : pesoGrupo(x, d.tamano));
+  const conPeso = lista.filter((x) => peso(x) > 0), sinPeso = lista.filter((x) => peso(x) === 0);
+  const pinta = (x, r) => (objetos ? bloqueMapa(x, d, r) : bloqueGrupo(x, d, r));
+  const nodos = [];
+  if (conPeso.length) {
+    const areaBloque = ancho < 560 ? 2500 : 3600;
+    const alto = Math.max(objetos ? 360 : 420, Math.round(window.innerHeight * 0.9),
+      objetos ? Math.ceil((conPeso.length * areaBloque) / ancho) : 0);
+    const area = el("div", "m-area");
+    area.style.height = `${alto}px`;
+    for (const r of squarify(conPeso.map((x) => ({ peso: peso(x) })), 0, 0, ancho, alto)) area.append(pinta(conPeso[r.i], r));
+    nodos.push(area);
+  }
+  if (sinPeso.length) {   // sin unidades publicadas (solo con cantidades): franja uniforme aparte
+    const sec = el("section", "m-familia");
+    sec.append(el("h3", "m-fam-tit", `Sin ofertas ahora · ${sinPeso.length}`));
+    const franja = el("div", "m-area m-franja");
+    const lado = objetos ? 34 : 64, porFila = Math.max(1, Math.floor(ancho / lado));
+    franja.style.height = `${Math.ceil(sinPeso.length / porFila) * lado}px`;
+    sinPeso.forEach((x, i) => franja.append(pinta(x, { x: (i % porFila) * lado, y: Math.floor(i / porFila) * lado, w: lado, h: lado })));
+    sec.append(franja);
+    nodos.push(sec);
+  }
+  if (!nodos.length) nodos.push(el("p", "muted vacio", "Ningún objeto coincide con los filtros."));
+  cont.replaceChildren(...nodos);
+}
 
 /** Texto completo de un bloque (tooltip y lector de pantalla). */
 function textoBloque(o, d) {
@@ -955,6 +1065,9 @@ function pintarMapa() {
   if (!d) return;
   const cont = $("mapa-familias");
   const ancho = Math.max(240, cont.clientWidth || 600);
+  pintarMigas(d);
+  $("contador").textContent = contadorMapa(d);
+  if (d.ambito === "casa") { pintarMapaCasa(d, cont, ancho); return; }
   $("mapa-tamano").textContent = d.tamano === "cantidad"
     ? "Tamaño: unidades publicadas en el último escaneo"
     : "Tamaño: igual para todos (esta fuente no publica cantidades)";
@@ -1022,7 +1135,14 @@ $("mapa-familias").addEventListener("focusin", (ev) => {
 $("mapa-familias").addEventListener("focusout", () => { $("mapa-tip").hidden = true; });
 $("mapa-familias").addEventListener("click", (ev) => {
   const b = ev.target.closest(".m-bloque");
-  if (b) location.hash = `#/objeto/${b.dataset.id}`;
+  if (!b) return;
+  $("mapa-tip").hidden = true;
+  if (b.dataset.grupo != null && mapaDatos?.ambito === "casa") {   // bajar un nivel
+    if (mapaDatos.nivel === "clases") irNivelCasa(b.dataset.grupo);
+    else irNivelCasa(mapaDatos.clase, b.dataset.grupo);
+    return;
+  }
+  location.hash = `#/objeto/${b.dataset.id}`;
 });
 let temporizadorMapa = null;
 new ResizeObserver(() => {

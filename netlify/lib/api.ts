@@ -537,16 +537,21 @@ export function crearApi(db: Db, o: OpcionesApi) {
       if (!autenticado(req)) return json(401, { error: "no_autenticado" });
       const u = new URL(req.url).searchParams;
       const mercado = u.get("mercado") || o.mercado;
+      // ambito=casa (X5): toda la casa por clase › subclase › objetos; si no, materiales por familia.
+      const casa = u.get("ambito") === "casa";
+      if (!["casa", "materiales", null].includes(u.get("ambito"))) return json(400, { error: "ambito debe ser materiales o casa" });
       const p: Record<string, string> = {};
-      for (const k of ["periodo", "profesion", "familia", "calidad", "solo_ofertas"]) {
+      for (const k of casa ? ["periodo", "clase", "subclase", "calidad", "solo_ofertas"]
+                           : ["periodo", "profesion", "familia", "calidad", "solo_ofertas"]) {
         const v = u.get(k);
-        if (v !== null && v !== "") p[k] = v.slice(0, 40);
+        if (v !== null && v !== "") p[k] = v.slice(0, 80);
       }
       if (p.solo_ofertas !== undefined && !["true", "false"].includes(p.solo_ofertas)) {
         return json(400, { error: "solo_ofertas debe ser true o false" });
       }
       try {
-        return json(200, await llamar(db, "select mapa_materiales($1, $2::text::jsonb) as r", [mercado, JSON.stringify(p)]));
+        return json(200, await llamar(db, `select ${casa ? "mapa_casa" : "mapa_materiales"}($1, $2::text::jsonb) as r`,
+          [mercado, JSON.stringify(p)]));
       } catch (e) {
         return fallaBd(e);
       }

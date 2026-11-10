@@ -74,6 +74,25 @@ export function abreviar(nombre, max) {
   return (espacio > max * 0.5 ? corte.slice(0, espacio) : corte).trimEnd() + "…";
 }
 
+/**
+ * Peso de un grupo del mapa de la casa (X5): unidades publicadas si la fuente las da (0 → franja aparte);
+ * si no, el número de objetos del grupo.
+ */
+export function pesoGrupo(g, tamano) {
+  if (tamano === "cantidad") return g.cantidad > 0 ? g.cantidad : 0;
+  return g.n > 0 ? g.n : 0;
+}
+
+/** Parámetros de /api/mapa para el mapa de toda la casa (solo los que tienen valor). */
+export function paramsMapaCasa({ mercado, periodo, clase, subclase, calidad, soloOfertas }) {
+  const q = { mercado, ambito: "casa", periodo };
+  if (clase) q.clase = clase;
+  if (clase && subclase) q.subclase = subclase;
+  if (calidad) q.calidad = calidad;
+  if (soloOfertas) q.solo_ofertas = "true";
+  return q;
+}
+
 /** Peso de cada bloque: cantidad publicada (si la fuente la da y hay ofertas) o 1 (tamaño uniforme). */
 export function pesoBloque(o, tamano) {
   if (tamano !== "cantidad") return 1;

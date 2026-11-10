@@ -205,7 +205,7 @@
           <div class="vistas" role="group" aria-label="Vista">
             <button type="button" class="btn-vista" data-modo="lista" aria-pressed="true">Lista</button>
             <button type="button" class="btn-vista" data-modo="mapa" aria-pressed="false"
-                    title="Mapa de los materiales de profesiones, agrupados por familia">Mapa</button>
+                    title="Mapa de variación: materiales por familia o toda la casa por clase y subclase">Mapa</button>
           </div>
           <label class="orden"><span class="sr-only">Ordenar por</span>
             <select id="f-orden">
@@ -221,6 +221,12 @@
         </div>
         <section id="mapa" class="mapa" aria-label="Mapa de materiales" hidden>
           <div class="mapa-cab">
+            <div class="periodos" role="group" aria-label="Qué mapa" id="mapa-ambito">
+              <button type="button" class="btn-periodo" data-ambito="materiales" aria-pressed="true">Materiales</button>
+              <button type="button" class="btn-periodo" data-ambito="casa" aria-pressed="false"
+                      title="Todas las categorías: clase › subclase › objetos">Toda la casa</button>
+            </div>
+            <nav id="mapa-migas" class="mapa-migas small" aria-label="Nivel del mapa" hidden></nav>
             <div class="periodos" role="group" aria-label="Periodo de comparación" id="mapa-periodos">
               <button type="button" class="btn-periodo" data-periodo="24h" aria-pressed="true">24 h</button>
               <button type="button" class="btn-periodo" data-periodo="3d" aria-pressed="false">3 d</button>

@@ -382,13 +382,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/mapa")
     def mapa(request: Request, mercado: str | None = Query(default=None, max_length=100)):
-        p = {k: v[:40] for k, v in request.query_params.items()
-             if k in ("periodo", "profesion", "familia", "calidad", "solo_ofertas") and v != ""}
+        ambito = request.query_params.get("ambito")
+        if ambito not in (None, "materiales", "casa"):
+            return JSONResponse(status_code=400, content={"error": "ambito debe ser materiales o casa"})
+        claves = (("periodo", "clase", "subclase", "calidad", "solo_ofertas") if ambito == "casa"
+                  else ("periodo", "profesion", "familia", "calidad", "solo_ofertas"))
+        p = {k: v[:80] for k, v in request.query_params.items() if k in claves and v != ""}
         if p.get("solo_ofertas") not in (None, "true", "false"):
             return JSONResponse(status_code=400, content={"error": "solo_ofertas debe ser true o false"})
+        funcion = "mapa_casa" if ambito == "casa" else "mapa_materiales"
         try:
             with db.connect(settings.database_url) as conn:
-                r = conn.execute("select mapa_materiales(%s, %s) as r", (mercado or settings.market, Jsonb(p))).fetchone()["r"]
+                r = conn.execute(f"select {funcion}(%s, %s) as r", (mercado or settings.market, Jsonb(p))).fetchone()["r"]
         except Exception as exc:
             if (resp := _error_validacion(exc)) is not None:
                 return resp
