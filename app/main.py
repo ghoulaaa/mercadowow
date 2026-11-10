@@ -434,6 +434,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return JSONResponse(r, headers=SIN_CACHE)
 
+    @app.get("/api/listas")
+    def listas_leer(objeto: int | None = Query(default=None, gt=0, le=2147483647)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select listar_listas(%s::integer) as r", (objeto,)).fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer listas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/listas")
+    def listas_gestionar(c: dict = Body(...)):
+        if not isinstance(c.get("accion"), str):
+            return JSONResponse(status_code=400, content={"error": "Falta accion"})
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                r = conn.execute("select gestionar_lista(%s::jsonb) as r", (Jsonb(c),)).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al gestionar listas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return r
+
+    @app.get("/api/alertas")
+    def alertas_leer(mercado: str | None = Query(default=None, max_length=100),
+                     objeto: int | None = Query(default=None, gt=0, le=2147483647)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select leer_alertas(%s, %s::integer) as r", (mercado or settings.market, objeto)).fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer alertas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/alertas")
+    def alertas_gestionar(c: dict = Body(...), mercado: str | None = Query(default=None, max_length=100)):
+        if not isinstance(c.get("accion"), str):
+            return JSONResponse(status_code=400, content={"error": "Falta accion"})
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                r = conn.execute("select gestionar_alerta(%s, %s::jsonb) as r", (mercado or settings.market, Jsonb(c))).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al gestionar alertas: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return r
+
     @app.get("/api/compra-npc")
     def compra_npc_leer(mercado: str | None = Query(default=None, max_length=100)):
         try:

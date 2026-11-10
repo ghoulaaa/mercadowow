@@ -73,6 +73,10 @@
           <option value="ganga">Gangas</option>
           <option value="npc">Bajo precio de NPC</option>
         </select>
+        <label class="lat-tit" for="f-lista">Mis listas</label>
+        <select id="f-lista" title="Solo los objetos de una de tus listas. Se añaden desde el detalle del objeto («Listas y alertas»).">
+          <option value="">Todos los objetos</option>
+        </select>
         <label class="lat-tit" for="f-region">Se vende en la región</label>
         <select id="f-region" title="Ventas al día en TODA la región US según TSM (no solo PvP Horda). Es una referencia: no cambia las recomendaciones.">
           <option value="">Sin filtrar</option>
@@ -106,6 +110,10 @@
         <summary><span class="lat-tit">Banda de precios</span></summary>
         <form id="form-banda" class="form-banda" autocomplete="off"
               title="Para «Qué hacer con este objeto»: mínimo, normal y máximo respecto al valor de mercado (como TSM)">
+          <label class="lab" for="b-ambito">Banda de</label>
+          <select id="b-ambito" title="La general vale para todo; una lista puede tener la suya (los objetos de esa lista la usan)">
+            <option value="">General (todos los objetos)</option>
+          </select>
           <span class="lab">% del valor de mercado</span>
           <div class="trio">
             <label><span>Mín.</span><input id="b-min_pct" type="number" min="10" max="500" step="1"></label>
@@ -123,7 +131,11 @@
             <label><span>Casa</span><select id="b-tipo_casa"><option value="faccion">Facción</option><option value="neutral">Neutral</option></select></label>
             <label><span>Duración</span><select id="b-duracion"><option value="2">2 h</option><option value="8">8 h</option><option value="24">24 h</option></select></label>
           </div>
-          <button type="submit" class="btn btn-piedra btn-small">Guardar banda</button>
+          <div class="trio">
+            <button type="submit" class="btn btn-piedra btn-small">Guardar banda</button>
+            <button id="b-usar-general" type="button" class="btn btn-piedra btn-small" hidden
+                    title="La lista deja de tener banda propia y usa la general">Usar la general</button>
+          </div>
           <p id="banda-msg" class="small" role="status" hidden></p>
         </form>
       </details>
@@ -199,6 +211,7 @@
       </section>
 
       <section id="vista-mercado" class="resultados" aria-labelledby="titulo-resultados" hidden>
+        <div id="avisos-alertas" class="avisos-alertas" role="status" hidden></div>
         <div class="res-cab">
           <h1 id="titulo-resultados">Todos los objetos</h1>
           <span id="contador" class="muted small" aria-live="polite"></span>

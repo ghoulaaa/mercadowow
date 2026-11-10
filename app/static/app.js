@@ -7,6 +7,7 @@ import { leerRuta } from "./ruta.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
+import { normalizarPerfil, perfilDeLista, textoAlerta } from "./listas.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, leerPreciosNpc, paginas,
@@ -239,7 +240,7 @@ function leerFiltros() {
   const f = {
     texto: filtro.texto, categoria: filtro.categoria, subcategoria: filtro.subcategoria, calidad: filtro.calidad,
     profesion: filtro.profesion, rol: filtro.rol, materiales: $("f-materiales").checked, familia: filtro.familia,
-    soloOfertas: $("f-ofertas").checked, oportunidad: $("f-oportunidad").value, ventasRegion: $("f-region").value, orden, dir, pagina: filtro.pagina,
+    soloOfertas: $("f-ofertas").checked, oportunidad: $("f-oportunidad").value, ventasRegion: $("f-region").value, lista: $("f-lista").value, orden, dir, pagina: filtro.pagina,
     nivel_min: enteroONull($("f-nivel-min").value), nivel_max: enteroONull($("f-nivel-max").value),
     precio_min: precioFiltro("f-precio-min", errores), precio_max: precioFiltro("f-precio-max", errores),
   };
@@ -450,6 +451,7 @@ function pintarTabla() {
   if (filtro.texto) partes.push(`«${filtro.texto}»`);
   if ($("f-oportunidad").value) partes.unshift(NOMBRE_OPORTUNIDAD[$("f-oportunidad").value]);
   if ($("f-region").value) partes.push(`se vende en la región (≥ ${$("f-region").value}/día)`);
+  if ($("f-lista").value) partes.unshift(`Lista «${misListas.find((l) => String(l.id) === $("f-lista").value)?.nombre ?? "?"}»`);
   const tit = partes.join(" · ");
   $("titulo-resultados").textContent = tit ? tit[0].toUpperCase() + tit.slice(1) : "Todos los objetos";
   // Oportunidades: cuántas hay con los demás filtros, y el aviso de que el dato puede ir con retraso.
@@ -520,6 +522,7 @@ for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"])
 }
 $("f-ofertas").addEventListener("change", repintar);
 $("f-region").addEventListener("change", () => { repintar(); if (estrecho()) cerrarLateral(); });
+$("f-lista").addEventListener("change", () => { repintar(); if (estrecho()) cerrarLateral(); });
 $("f-oportunidad").addEventListener("change", () => {
   // Al elegir una oportunidad, lo útil es ver primero la de mayor margen.
   if ($("f-oportunidad").value && !$("f-orden").value.startsWith("margen")) $("f-orden").value = "margen:desc";
@@ -682,6 +685,7 @@ $("btn-limpiar").addEventListener("click", () => {
   $("f-ofertas").checked = false;
   $("f-oportunidad").value = "";
   $("f-region").value = "";
+  $("f-lista").value = "";
   $("f-materiales").checked = false;
   $("f-orden").value = "nombre:asc";
   $("buscador").value = "";
@@ -1479,16 +1483,46 @@ async function cargarPerfilSubasta() {
   pintarFormBanda();
 }
 
-function reglaPerfil() {
-  const r = reglasTasas.find((x) => x.tipo_casa === perfilSubasta.tipo_casa && Number(x.duracion_horas) === Number(perfilSubasta.duracion));
+function reglaPerfil(perfil = perfilSubasta) {
+  const r = reglasTasas.find((x) => x.tipo_casa === perfil.tipo_casa && Number(x.duracion_horas) === Number(perfil.duracion));
   return r ? { ...r, comision_pct: Number(r.comision_pct), deposito_pct: Number(r.deposito_pct), deposito_minimo: Number(r.deposito_minimo) } : null;
 }
 
+/** Banda que se está editando: la general o la de una lista (si no tiene propia, parte de la general). */
+function perfilEnFormulario() {
+  const l = misListas.find((x) => String(x.id) === $("b-ambito").value);
+  return l?.perfil ? normalizarPerfil(l.perfil) : perfilSubasta;
+}
+
 function pintarFormBanda() {
+  const perfil = perfilEnFormulario();
   for (const k of ["min_pct", "normal_pct", "max_pct", "npc_min_mult", "npc_max_mult", "puja_pct", "tipo_casa", "duracion"]) {
-    $(`b-${k}`).value = String(perfilSubasta[k]);
+    $(`b-${k}`).value = String(perfil[k]);
   }
-  $("b-undercut").value = formatearMoneda(perfilSubasta.undercut);
+  $("b-undercut").value = formatearMoneda(perfil.undercut);
+  const l = misListas.find((x) => String(x.id) === $("b-ambito").value);
+  $("b-usar-general").hidden = !l?.perfil;
+}
+$("b-ambito").addEventListener("change", () => { $("banda-msg").hidden = true; pintarFormBanda(); });
+
+/** Tras cambiar una banda, solo se recalcula «Qué hacer» con la ficha que ya está en pantalla. */
+function recalcularQueHacer() {
+  const viejo = $("det-cuerpo").querySelector(".que-hacer");
+  if (viejo && fichaActual?.id === objetoActual) {
+    const nuevo = bloqueQueHacer(fichaActual);
+    if (nuevo) viejo.replaceWith(nuevo); else viejo.remove();
+  }
+}
+
+/** Guarda la banda de una lista (null = usar la general) y actualiza las listas y la ficha abierta. */
+async function guardarPerfilLista(id, perfil) {
+  const d = await postJson("/api/listas", { accion: "perfil", id: Number(id), perfil });
+  ponerListas(d.listas);
+  if (fichaActual) {
+    for (const l of fichaActual.listas ?? []) if (String(l.id) === String(id)) l.perfil = misListas.find((x) => x.id === l.id)?.perfil ?? null;
+  }
+  pintarFormBanda();
+  recalcularQueHacer();
 }
 
 $("form-banda").addEventListener("submit", async (ev) => {
@@ -1500,18 +1534,30 @@ $("form-banda").addEventListener("submit", async (ev) => {
     for (const k of ["min_pct", "normal_pct", "max_pct", "npc_min_mult", "npc_max_mult", "puja_pct", "duracion"]) ajustes[k] = Number($(`b-${k}`).value);
     ajustes.tipo_casa = $("b-tipo_casa").value;
     ajustes.undercut = parsearMoneda($("b-undercut").value) ?? 0;
+    const lista = $("b-ambito").value;
+    if (lista) {
+      await guardarPerfilLista(lista, ajustes);
+      msg.className = "small ok";
+      msg.textContent = `Banda de la lista «${misListas.find((x) => String(x.id) === lista)?.nombre}» guardada.`;
+      return;
+    }
     const r = await fetch("/api/perfil-subasta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ajustes }) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
-    perfilSubasta = { ...PERFIL_POR_DEFECTO, ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, k === "tipo_casa" ? v : Number(v)])) };
+    perfilSubasta = normalizarPerfil(d);
     pintarFormBanda();
     msg.className = "small ok"; msg.textContent = "Banda guardada.";
-    // Solo se recalcula el bloque «Qué hacer» con la ficha que ya está en pantalla (sin pedir nada).
-    const viejo = $("det-cuerpo").querySelector(".que-hacer");
-    if (viejo && fichaActual?.id === objetoActual) {
-      const nuevo = bloqueQueHacer(fichaActual);
-      if (nuevo) viejo.replaceWith(nuevo); else viejo.remove();
-    }
+    recalcularQueHacer();
+  } catch (e) {
+    msg.className = "small bad"; msg.textContent = e.message;
+  }
+});
+$("b-usar-general").addEventListener("click", async () => {
+  const msg = $("banda-msg");
+  msg.hidden = false;
+  try {
+    await guardarPerfilLista($("b-ambito").value, null);
+    msg.className = "small ok"; msg.textContent = "La lista usa ahora la banda general.";
   } catch (e) {
     msg.className = "small bad"; msg.textContent = e.message;
   }
@@ -1519,6 +1565,8 @@ $("form-banda").addEventListener("submit", async (ev) => {
 
 function bloqueQueHacer(f) {
   const p = f.mercado;
+  const { perfil: perfilSubasta, lista: listaBanda } = perfilDeLista(f.listas, perfilGeneral());
+  const reglaPerfil = () => reglaDe(perfilSubasta);
   const s = sugerencia({
     compraMinima: f.estado === "con_ofertas" ? p?.precio : null,
     mercado: p?.valor_mercado ?? null,
@@ -1550,8 +1598,167 @@ function bloqueQueHacer(f) {
     "No se puede saber si la subasta más barata es tuya: si lo es, no hace falta bajar el precio." +
     (regla && !regla.verificado ? " La comisión y el depósito están sin verificar." : ""));
   caja.append(nota);
+  if (listaBanda) caja.append(el("p", "muted small", `Usa la banda de tu lista «${listaBanda}».`));
   caja.title = "Banda: mínimo, normal y máximo. Ajústala en «Banda de precios» (barra lateral).";
   return caja;
+}
+const perfilGeneral = () => perfilSubasta;
+const reglaDe = (perfil) => reglaPerfil(perfil);
+
+// ---------- X6 · listas propias y alertas ----------
+let misListas = [];
+
+async function postJson(url, cuerpo) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
+  return d;
+}
+
+/** Guarda las listas y rehace los dos desplegables (filtro y banda) sin perder lo elegido. */
+function ponerListas(listas) {
+  misListas = listas ?? [];
+  for (const [id, primera] of [["f-lista", "Todos los objetos"], ["b-ambito", "General (todos los objetos)"]]) {
+    const s = $(id), antes = s.value;
+    const op0 = el("option", "", primera); op0.value = "";
+    s.replaceChildren(op0, ...misListas.map((l) => {
+      const o = el("option", "", id === "f-lista" ? `${l.nombre} (${l.n})` : `Lista «${l.nombre}»${l.perfil ? "" : " (usa la general)"}`);
+      o.value = String(l.id);
+      return o;
+    }));
+    s.value = misListas.some((l) => String(l.id) === antes) ? antes : "";
+    if (id === "f-lista" && antes && !s.value) repintar();   // la lista filtrada ya no existe
+  }
+}
+async function cargarListas() {
+  try {
+    const r = await fetch("/api/listas", { cache: "no-store" });
+    if (r.ok) { ponerListas((await r.json()).listas); pintarFormBanda(); }
+  } catch { /* las listas no bloquean la página */ }
+}
+
+/** Aviso al abrir la página: alertas que se han cumplido desde la última vez. */
+function pintarAvisos(d) {
+  const caja = $("avisos-alertas");
+  const nuevos = (d?.avisos ?? []).filter((a) => !a.visto);
+  caja.hidden = !nuevos.length;
+  if (!nuevos.length) { caja.replaceChildren(); return; }
+  const ul = el("ul");
+  for (const a of nuevos.slice(0, 10)) {
+    const li = el("li");
+    const b = el("button", "enlace", a.nombre);
+    b.type = "button"; b.addEventListener("click", () => { location.hash = `#/objeto/${a.objeto}`; });
+    li.append(b, ` ${textoAlerta(a, formatearMoneda)}: `, monedaNodo(a.precio), el("span", "muted", ` · escaneo del ${fecha(a.escaneo)}`));
+    ul.append(li);
+  }
+  const visto = el("button", "btn btn-piedra btn-small", "Marcar como vistos");
+  visto.type = "button";
+  visto.addEventListener("click", async () => {
+    try { pintarAvisos(await postJson(`/api/alertas?mercado=${urlMercado()}`, { accion: "visto", ids: "todos" })); }
+    catch (e) { avisar("No se pudieron marcar: " + e.message, "bad"); }
+  });
+  caja.replaceChildren(el("strong", "", `🔔 ${nuevos.length === 1 ? "Se ha cumplido 1 alerta" : `Se han cumplido ${nuevos.length} alertas`}`),
+    ul, nuevos.length > 10 ? el("p", "muted small", `y ${nuevos.length - 10} más`) : "", visto);
+}
+async function cargarAvisos() {
+  try {
+    const r = await fetch(`/api/alertas?mercado=${urlMercado()}`, { cache: "no-store" });
+    if (r.ok) pintarAvisos(await r.json());
+  } catch { /* el aviso no bloquea la página */ }
+}
+
+/** Detalle: a qué listas pertenece el objeto y sus alertas. */
+function seccionListasAlertas(f) {
+  const sec = seccion("Listas y alertas");
+  const id = f.id;
+  const cuerpo = el("div");
+  sec.append(cuerpo);
+  const msg = el("p", "small", ""); msg.hidden = true;
+  const error = (e) => { msg.hidden = false; msg.className = "small bad"; msg.textContent = e.message; };
+
+  const pintar = (alertasObj) => {
+    const nodos = [];
+    // Listas: una casilla por lista.
+    nodos.push(el("h4", "", "Listas"));
+    const chips = el("div", "listas-chips");
+    for (const l of misListas) {
+      const lab = el("label", "check");
+      const cb = el("input"); cb.type = "checkbox";
+      cb.checked = (f.listas ?? []).some((x) => x.id === l.id);
+      cb.addEventListener("change", async () => {
+        try {
+          const d = await postJson("/api/listas", { accion: "poner", id: l.id, objeto: id, dentro: cb.checked });
+          ponerListas(d.listas);
+          f.listas = d.listas.filter((x) => x.contiene).map((x) => ({ id: x.id, nombre: x.nombre, perfil: x.perfil }));
+          recalcularQueHacer();
+        } catch (e) { cb.checked = !cb.checked; error(e); }
+      });
+      lab.append(cb, ` ${l.nombre}${l.perfil ? " · banda propia" : ""}`);
+      chips.append(lab);
+    }
+    const nueva = el("form", "form-alerta");
+    const nom = el("input"); nom.placeholder = "Nueva lista"; nom.maxLength = 40; nom.setAttribute("aria-label", "Nombre de la lista nueva");
+    const bn = el("button", "btn btn-piedra btn-small", "Crear y añadir"); bn.type = "submit";
+    nueva.append(nom, bn);
+    nueva.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        const d = await postJson("/api/listas", { accion: "crear", nombre: nom.value, objeto: id });
+        ponerListas(d.listas);
+        f.listas = d.listas.filter((x) => x.contiene).map((x) => ({ id: x.id, nombre: x.nombre, perfil: x.perfil }));
+        pintar(alertasObj);
+      } catch (e) { error(e); }
+    });
+    nodos.push(chips, nueva);
+
+    // Alertas de este objeto en este mercado.
+    nodos.push(el("h4", "", "Alertas (compra mínima)"));
+    const ul = el("ul", "det-lista");
+    for (const a of alertasObj?.alertas ?? []) {
+      const li = el("li");
+      li.append(`Avísame si ${textoAlerta(a, formatearMoneda)}`,
+        el("span", "muted", a.cumplida ? " · se cumple ahora" : " · no se cumple ahora"));
+      const borrar = el("button", "enlace", "quitar"); borrar.type = "button";
+      borrar.addEventListener("click", async () => {
+        try { await postJson(`/api/alertas?mercado=${urlMercado()}`, { accion: "borrar", id: a.id }); cargar(); }
+        catch (e) { error(e); }
+      });
+      li.append(" ", borrar);
+      ul.append(li);
+    }
+    if (!ul.children.length) ul.append(el("li", "muted", "Ninguna alerta para este objeto."));
+    const fa = el("form", "form-alerta");
+    const cond = el("select"); cond.setAttribute("aria-label", "Condición");
+    for (const [v, t] of [["menor", "baja a"], ["mayor", "sube a"]]) { const o = el("option", "", t); o.value = v; cond.append(o); }
+    const umb = el("input"); umb.placeholder = "1o 50p"; umb.setAttribute("aria-label", "Precio");
+    const ba = el("button", "btn btn-piedra btn-small", "Crear alerta"); ba.type = "submit";
+    fa.append("Avísame si", cond, umb, ba);
+    fa.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        const umbral = parsearMoneda(umb.value);
+        if (!umbral) throw new Error("Escribe un precio, p. ej. 1o 50p o 150 (cobre).");
+        const d = await postJson(`/api/alertas?mercado=${urlMercado()}`, { accion: "crear", objeto: id, condicion: cond.value, umbral });
+        pintar(d);
+        msg.hidden = false; msg.className = "small ok";
+        msg.textContent = d.cumple_ahora
+          ? "Alerta creada. Ya se cumple con el último escaneo: avisará cuando vuelva a cumplirse tras dejar de hacerlo."
+          : "Alerta creada. Se comprueba con cada escaneo nuevo y avisa en esta página al abrirla.";
+      } catch (e) { error(e); }
+    });
+    nodos.push(ul, fa, msg,
+      el("p", "muted small", "Las alertas se revisan en la base de datos con cada consulta horaria y se ven al abrir la página. " +
+        "No hay aviso fuera de la página (correo o Discord): necesitaría un servicio y credenciales aparte."));
+    cuerpo.replaceChildren(...nodos);
+  };
+  const cargar = () => fetch(`/api/alertas?mercado=${urlMercado()}&objeto=${id}`, { cache: "no-store" })
+    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "HTTP " + r.status); return d; })
+    .then(pintar)
+    .catch((e) => cuerpo.replaceChildren(el("p", "bad small", "No se pudieron cargar las alertas: " + e.message)));
+  cuerpo.append(el("p", "muted small", "Cargando…"));
+  let pedido = false;
+  sec.addEventListener("toggle", () => { if (sec.open && !pedido) { pedido = true; cargar(); } });
+  return sec;
 }
 
 async function bloqueRecomendacion(id) {
@@ -1612,7 +1819,7 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
     fichaActual = f;
     cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f), bloqueQueHacer(f), rec,
-      f.estado === "sin_datos" ? null : seccionGrafico(id), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
+      f.estado === "sin_datos" ? null : seccionGrafico(id), seccionListasAlertas(f), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
     if (abiertos) {
       for (const d of cuerpo.querySelectorAll("details")) {
         if (abiertos.has(d.querySelector(":scope > summary")?.textContent)) d.open = true;
@@ -1800,7 +2007,8 @@ window.addEventListener("online", () => { if (sinConexion) vigilar(); });
 
 async function refrescar() {
   if (!(await cargar())) return;
-  await cargarPerfilSubasta();   // banda y comisiones (dos peticiones pequeñas) antes de abrir un objeto
+  await Promise.all([cargarPerfilSubasta(), cargarListas()]);   // bandas y comisiones antes de abrir un objeto
+  cargarAvisos();         // alertas cumplidas desde la última vez (sin bloquear la tabla)
   aplicarRuta();          // un objeto pedido en la dirección se abre sin esperar a la tabla
   await cargarPagina();
   if (vista === "mapa") cargarMapa();

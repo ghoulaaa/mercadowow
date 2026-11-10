@@ -33,6 +33,7 @@ export function paramsMercado(f) {
   if (f.soloOfertas) p.solo_ofertas = "true";
   if (OPORTUNIDADES.includes(f.oportunidad)) p.oportunidad = f.oportunidad;
   if (VENTAS_REGION.includes(Number(f.ventasRegion))) p.ventas_region_min = String(Number(f.ventasRegion));
+  if (/^\d{1,15}$/.test(String(f.lista ?? ""))) p.lista = String(f.lista);
   poner("orden", f.orden);
   poner("dir", f.dir);
   if (f.pagina > 1) p.pagina = String(f.pagina);

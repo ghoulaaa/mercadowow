@@ -91,7 +91,15 @@ propia** de la lógica de TSM a precios agregados, no el código de TSM, así qu
    - **Tamaño de los bloques:** uniforme o número de objetos, porque TSM no publica cantidades. Con AHledger, la cantidad publicada.
    - **Al pulsar una categoría** se baja a su subclase y a sus objetos.
 
-6. **X6 · Listas y alertas** (funciones 8 y 9):
+6. **X6 · Listas y alertas** ✅ (2026-11-10; migración 0030). Lo que quedó hecho:
+   - Listas propias (tablas `listas` y `lista_objetos`). Los favoritos de antes pasan a «Favoritos» (hoy estaba vacía). En el detalle, «Listas y alertas»: casillas para meter o sacar el objeto y «Crear y añadir».
+   - Filtro «Mis listas» en la barra lateral.
+   - Banda propia por lista: en «Banda de precios», selector «Banda de: General / Lista X» y «Usar la general». «Qué hacer» usa la banda de la primera lista del objeto que tenga una propia, y lo dice.
+   - Alertas «avísame si la compra mínima baja a X o menos / sube a X o más», por mercado. Las revisa la base de datos al guardar cada escaneo (disparador al final de la transacción; no hace falta tocar la Edge Function) y solo avisan cuando la condición PASA a cumplirse.
+   - Al abrir la página, aviso «Se ha cumplido N alertas» con «Marcar como vistos».
+   - **No hecho (opcional):** aviso fuera de la página (correo o Discord). Necesita un servicio y credenciales que tendrías que crear tú.
+
+   Plan original:
    - **Listas propias de objetos** (a partir de la tabla de favoritos), cada una con su banda de precios: así los materiales, el equipo y los consumibles pueden usar ajustes distintos.
    - **Alertas por umbral** («avísame si baja de X»):
      - se comprueban con cada consulta horaria;

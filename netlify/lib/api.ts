@@ -566,7 +566,7 @@ export function crearApi(db: Db, o: OpcionesApi) {
       const p: Record<string, string> = {};
       for (const k of ["q", "categoria", "subcategoria", "calidad", "profesion", "rol", "materiales", "familia",
                        "nivel_min", "nivel_max", "precio_min", "precio_max", "solo_ofertas", "oportunidad",
-                       "ventas_region_min", "orden", "dir", "pagina", "por_pagina"]) {
+                       "ventas_region_min", "lista", "orden", "dir", "pagina", "por_pagina"]) {
         const v = u.get(k);
         if (v !== null && v !== "") p[k] = v.slice(0, 80);
       }
@@ -622,6 +622,50 @@ export function crearApi(db: Db, o: OpcionesApi) {
         if (c.filas.length > 2000) return json(400, { error: "Máximo 2000 filas por importación" });
         return json(200, await llamar(db, "select importar_compra_npc($1, $2::text::jsonb, $3::boolean, $4::timestamptz) as r",
           [mercado, JSON.stringify(c.filas), c.aplicar, ahora().toISOString()]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    /** Listas propias (X6). GET ?objeto=ID: listas (y si lo contienen). POST {accion, …}: gestionar. */
+    async listas(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") {
+          const obj = new URL(req.url).searchParams.get("objeto");
+          const id = obj === null || obj === "" ? null : Number(obj);
+          if (id !== null && (!Number.isInteger(id) || id <= 0)) return json(400, { error: "objeto no válido" });
+          return json(200, await llamar(db, "select listar_listas($1::integer) as r", [id]));
+        }
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 5000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.accion !== "string") return json(400, { error: "Falta accion" });
+        return json(200, await llamar(db, "select gestionar_lista($1::text::jsonb) as r", [JSON.stringify(c)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
+    /** Alertas por umbral (X6). GET ?mercado&objeto: alertas y avisos. POST {accion, …}: crear, borrar, visto. */
+    async alertas(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      try {
+        if (req.method === "GET") {
+          const obj = u.get("objeto");
+          const id = obj === null || obj === "" ? null : Number(obj);
+          if (id !== null && (!Number.isInteger(id) || id <= 0)) return json(400, { error: "objeto no válido" });
+          return json(200, await llamar(db, "select leer_alertas($1, $2::integer) as r", [mercado, id]));
+        }
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 20_000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.accion !== "string") return json(400, { error: "Falta accion" });
+        return json(200, await llamar(db, "select gestionar_alerta($1, $2::text::jsonb) as r", [mercado, JSON.stringify(c)]));
       } catch (e) {
         return fallaBd(e);
       }
