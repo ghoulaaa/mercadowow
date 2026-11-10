@@ -1657,7 +1657,14 @@ function pintarAvisos(d) {
     try { pintarAvisos(await postJson(`/api/alertas?mercado=${urlMercado()}`, { accion: "visto", ids: "todos" })); }
     catch (e) { avisar("No se pudieron marcar: " + e.message, "bad"); }
   });
-  caja.replaceChildren(el("strong", "", `🔔 ${nuevos.length === 1 ? "Se ha cumplido 1 alerta" : `Se han cumplido ${nuevos.length} alertas`}`),
+  const titulo = el("strong", "", nuevos.length === 1 ? "Se ha cumplido 1 alerta" : `Se han cumplido ${nuevos.length} alertas`);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ic-aviso"); svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", "#i-campana");
+  svg.append(use);
+  titulo.prepend(svg);
+  caja.replaceChildren(titulo,
     ul, nuevos.length > 10 ? el("p", "muted small", `y ${nuevos.length - 10} más`) : "", visto);
 }
 async function cargarAvisos() {
