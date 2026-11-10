@@ -5,7 +5,7 @@ El plan completo y las fuentes verificadas están en [PLAN.md](PLAN.md).
 
 > **Estado: Hitos 1–7 terminados** (incluye registro de ventas reales y evaluación de aciertos). Tabla de precios con búsqueda, filtros, favoritos, refresco en vivo,
 > recomendaciones VENDER / GUARDAR / EN OBSERVACIÓN explicadas (reglas editables), inventario con valor neto,
-> beneficio y margen (solo con coste conocido) y gráfico histórico de cada objeto. Supabase descarga los datos reales de TSM cada hora.
+> beneficio y margen (solo con coste conocido) y gráfico histórico de cada objeto. Supabase consulta los datos reales de TSM cada 30 minutos.
 > Hay además un mercado de **importación manual (CSV)**, que sirve de plan B, y un mercado **DEMO** con datos ficticios. Los tres están separados.
 > Los datos y la consulta horaria a TSM viven en **Supabase**. La página web corre en tu PC.
 
@@ -32,7 +32,7 @@ El plan completo y las fuentes verificadas están en [PLAN.md](PLAN.md).
 | `MERCADO` | `tsm:forever:us:pvp-horde` |
 | `RUTA_LOGS` | Registro de la página local |
 
-Los ajustes de la consulta (intervalo de 60 min, protección de 5 min del botón manual, reintentos 5 → 10 → 20 → 40 → 60 min) están en la tabla `settings` de la base de datos.
+Los ajustes de la consulta (intervalo de 30 min desde la migración 0031, protección de 5 min del botón manual, reintentos 5 → 10 → 20 → 30 min) están en la tabla `settings` de la base de datos.
 
 ## Pruebas
 
