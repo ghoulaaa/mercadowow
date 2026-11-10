@@ -1533,15 +1533,53 @@ function cabeceraObjeto(f) {
     ? el("div", "det-sub sin-ficha", `${TEXTO_SIN_FICHA}: ni AHledger ni TSM publican su nombre, calidad ni icono.`)
     : el("div", "det-sub", [NOMBRE_CALIDAD[f.calidad] ?? f.calidad, [nombreCat(f.clase ?? SIN_CATEGORIA), nombreSub(f.subclase)]
       .filter((x) => x && x !== nombreCat(SIN_CATEGORIA)).join(" › "), f.nivel ? `nivel ${f.nivel}` : null].filter(Boolean).join(" · ")),
-    es ? el("div", "det-sub", `En inglés: ${f.nombre}`) : "",
     acciones);
   cab.append(t);
   return cab;
 }
 
+/** Pestaña del historial en el detalle: «grafico» o «precios» (tabla de precio por unidad). Se recuerda. */
+let vistaHistorial = local.leer("mw_vista_historial", "grafico") === "precios" ? "precios" : "grafico";
+
 function seccionGrafico(id) {
   const sec = el("section", "det-sec-fija");
   const graf = el("div", "det-grafico");
+  // Pestañas «Gráfico | Precios» (mismos datos y mismo periodo).
+  const pestanas = el("div", "pestanas");
+  pestanas.setAttribute("role", "tablist");
+  pestanas.setAttribute("aria-label", "Historial de precios");
+  const botonesTab = [["grafico", "Gráfico"], ["precios", "Precios"]].map(([v, txt]) => {
+    const b = el("button", "pestana", txt);
+    b.type = "button"; b.dataset.vista = v; b.id = `tab-hist-${v}`;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-controls", "panel-historial");
+    b.addEventListener("click", () => elegir(v, true));
+    return b;
+  });
+  graf.id = "panel-historial";
+  graf.setAttribute("role", "tabpanel");
+  const elegir = (v, recargar) => {
+    vistaHistorial = v;
+    local.escribir("mw_vista_historial", v);
+    for (const b of botonesTab) {
+      const sel = b.dataset.vista === v;
+      b.setAttribute("aria-selected", String(sel));
+      b.tabIndex = sel ? 0 : -1;
+    }
+    graf.setAttribute("aria-labelledby", `tab-hist-${v}`);
+    if (recargar) pintarHistorial(graf);
+  };
+  // Flechas para pasar de una pestaña a otra (patrón de pestañas accesible).
+  pestanas.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+    ev.preventDefault();
+    const otra = vistaHistorial === "grafico" ? "precios" : "grafico";
+    elegir(otra, true);
+    botonesTab.find((b) => b.dataset.vista === otra).focus();
+  });
+  pestanas.append(...botonesTab);
+  elegir(vistaHistorial, false);
+
   const grupo = el("div", "periodos");
   grupo.setAttribute("role", "group");
   grupo.setAttribute("aria-label", "Periodo del historial");
@@ -1556,9 +1594,61 @@ function seccionGrafico(id) {
     });
     grupo.append(b);
   }
-  sec.append(grupo, graf);
+  const cab = el("div", "hist-cab");
+  cab.append(pestanas, grupo);
+  sec.append(cab, graf);
   cargarHistorialEn(graf, id, rangoHistorial);
   return sec;
+}
+
+/** Dibuja la pestaña elegida con los últimos datos recibidos (sin volver a pedirlos). */
+function pintarHistorial(cont) {
+  const h = cont._historial;
+  if (!h) return;
+  if (!h.puntos?.some((p) => p[1] != null || p[2] != null)) {
+    cont.replaceChildren(el("p", "muted small", "Sin observaciones en este periodo."));
+    return;
+  }
+  if (vistaHistorial === "precios") { cont.replaceChildren(tablaPrecios(h)); return; }
+  dibujarGrafico(cont, { puntos: h.puntos, nombres: h.nombres, cantidad: h.cantidad, med7: h.med7, med30: h.med30, pasoMs: h.paso_ms });
+  if (h.nota) cont.append(el("p", "muted small", h.nota));
+}
+
+/**
+ * Tabla de precio por unidad, como la del juego pero con lo que publica la fuente: una fila por escaneo
+ * (no por subasta: ninguna fuente pública da las subastas una a una), la más reciente arriba.
+ */
+function tablaPrecios(h) {
+  const [n1, n2] = h.nombres ?? ["Compra mínima", "Valor de mercado"];
+  const cant = new Map((h.cantidad ?? []).map(([t, q]) => [t, q]));
+  const hayCant = [...cant.values()].some((q) => q != null);
+  const filas = h.puntos.filter((p) => p[1] != null || p[2] != null).slice().reverse();
+  const caja = el("div", "tabla-precios-wrap");
+  const t = el("table", "tabla tabla-precios");
+  const cap = el("caption", "sr-only", `${n1} por unidad en cada escaneo, del más reciente al más antiguo`);
+  const thead = el("thead"), trh = el("tr");
+  for (const [txt, num] of [["Precio por unidad", true], [n2, true], ...(hayCant ? [["Disponible", true]] : []), ["Escaneo", true]]) {
+    const th = el("th", num ? "num" : "", txt); th.scope = "col"; trh.append(th);
+  }
+  thead.append(trh);
+  const tb = el("tbody");
+  const fmt = (ms) => new Date(ms).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  for (const p of filas.slice(0, 300)) {
+    const tr = el("tr");
+    const a = el("td", "num"); a.append(p[1] == null ? sinDato() : monedaNodo(p[1]));
+    const b = el("td", "num"); b.append(p[2] == null ? sinDato() : monedaNodo(p[2]));
+    tr.append(a, b);
+    if (hayCant) {
+      const q = cant.get(p[0]);
+      const c = el("td", "num"); c.append(q == null ? sinDato() : document.createTextNode(q.toLocaleString("es")));
+      tr.append(c);
+    }
+    tr.append(el("td", "fecha-escaneo", fmt(p[0])));
+    tb.append(tr);
+  }
+  t.append(cap, thead, tb);
+  caja.append(t);
+  return caja;
 }
 
 async function cargarHistorialEn(cont, id, rango) {
@@ -1571,12 +1661,8 @@ async function cargarHistorialEn(cont, id, rango) {
     const h = await r.json();
     if (!r.ok) throw new Error(h.error || "HTTP " + r.status);
     if (cont.dataset.token !== token || !cont.isConnected) return;
-    if (!h.puntos?.some((p) => p[1] != null || p[2] != null)) {
-      cont.replaceChildren(el("p", "muted small", "Sin observaciones en este periodo."));
-      return;
-    }
-    dibujarGrafico(cont, { puntos: h.puntos, nombres: h.nombres, cantidad: h.cantidad, med7: h.med7, med30: h.med30, pasoMs: h.paso_ms });
-    if (h.nota) cont.append(el("p", "muted small", h.nota));
+    cont._historial = h;   // la otra pestaña se dibuja con estos mismos datos
+    pintarHistorial(cont);
   } catch (e) {
     if (cont.dataset.token === token) cont.replaceChildren(el("p", "bad small", "No se pudo cargar el historial: " + e.message));
   }
@@ -2178,16 +2264,18 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
     if (n !== objetoN) return;
     $("det-titulo").textContent = nom(f.id, f.nombre);
     $("det-titulo").className = f.calidad ? `q-${f.calidad}` : "";
+    $("det-titulo").title = nom(f.id, f.nombre) !== f.nombre ? `En inglés: ${f.nombre}` : "";
     // Sin recomendación respaldada (o sin poder pedirla), «Qué hacer» no da un precio como si lo estuviera.
     f.__sinEvidencia = !rec || rec.dataset.evidencia === "no";
     // Un solo aviso de «sin datos suficientes» (el de «Qué hacer»); la etiqueta repetida se quita y queda «Ver motivo».
     if (f.__sinEvidencia) rec?.querySelector(".etiqueta.sin-evidencia")?.remove();
     fichaActual = f;
     // Primero lo esencial: objeto, precio y disponibilidad, gráfico y una recomendación breve.
+    // Detalle sencillo: objeto, precios, historial (gráfico o tabla) y, solo si hay datos que la respalden,
+    // la sugerencia de publicación. Sin secciones plegables debajo.
     cuerpo.replaceChildren(...[cabeceraObjeto(f), bloquePrecios(f),
       f.estado === "sin_datos" ? null : seccionGrafico(id),
-      ...(f.__sinEvidencia ? [bloqueQueHacer(f), rec] : [rec, bloqueQueHacer(f)]),
-      seccionListasAlertas(f), seccionRegion(f), seccionPropiedades(f), seccionRecetas(id)].filter(Boolean));
+      f.__sinEvidencia ? null : bloqueQueHacer(f)].filter(Boolean));
     if (abiertos) {
       for (const d of cuerpo.querySelectorAll("details")) {
         if (abiertos.has(d.querySelector(":scope > summary")?.textContent)) d.open = true;

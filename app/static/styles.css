@@ -881,3 +881,22 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 
 /* Origen de las cantidades cuando no son de la fuente del mercado (p. ej. AHledger en TSM). */
 .th-fuente { display: block; font-size: var(--fs-min); font-weight: 500; color: var(--muted); text-align: right; line-height: 1.2; }
+/* Detalle: pestañas «Gráfico | Precios» y tabla de precio por unidad (como la del juego, una fila por escaneo). */
+.hist-cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-1); margin-bottom: var(--esp-2); }
+.pestanas { display: inline-flex; border: 1px solid var(--border-ctl); border-radius: 8px; overflow: hidden; }
+.pestana { font: inherit; font-size: var(--fs-sec); padding: 6px 14px; cursor: pointer; border: 0; background: var(--panel-2); color: var(--muted); }
+.pestana[aria-selected="true"] { background: var(--gold); color: var(--on-gold); font-weight: 700; }
+.pestana:focus-visible { outline-offset: -2px; }
+.tabla-precios-wrap { border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+.tabla-precios { width: 100%; font-size: var(--fs-sec); }
+.tabla-precios th { position: static; background: transparent; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.tabla-precios td { padding: 6px 10px; height: auto; border-bottom: 1px solid rgba(57, 65, 72, .6); font-size: var(--fs-sec); }
+.tabla-precios tbody tr:first-child td { background: rgba(214, 175, 88, .10); }
+.tabla-precios tbody tr:first-child td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+.tabla-precios tbody tr:last-child td { border-bottom: 0; }
+.tabla-precios .num { text-align: right; font-weight: 600; }
+.tabla-precios .fecha-escaneo { color: var(--muted); white-space: nowrap; text-align: right; }
+@media (pointer: coarse) { .pestana { min-height: 44px; } }.tabla-precios { table-layout: fixed; }
+.tabla-precios th { white-space: normal; line-height: 1.25; vertical-align: bottom; padding: 8px; }
+.tabla-precios td { padding: 6px 8px; }
+.tabla-precios th:last-child, .tabla-precios td:last-child { width: 34%; }.tabla-precios th.num { white-space: normal; }

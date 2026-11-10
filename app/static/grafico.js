@@ -234,20 +234,5 @@ export function dibujarGrafico(cont, datos) {
     cont.append(t, c.svg);
   }
 
-  // Vista de tabla (accesibilidad): las últimas 48 observaciones.
-  const det = html("details");
-  det.append(html("summary", "", "Ver los datos como tabla"));
-  const tb = html("table", "tabla mini");
-  const cab = html("tr");
-  for (const t of ["Hora", ...series.map((s) => s.nombre), ...(cant.length ? ["Unidades"] : [])]) cab.append(html("th", "", t));
-  tb.append(cab);
-  for (const p of pts.slice(-48).reverse()) {
-    const tr = html("tr");
-    tr.append(html("td", "", new Date(p[0]).toLocaleString("es", { dateStyle: "short", timeStyle: "short" })));
-    for (const s of series) tr.append(html("td", "num", formatearMoneda(p[s.i])));
-    if (cant.length) tr.append(html("td", "num", cantidadEn.get(p[0])?.toLocaleString("es") ?? "—"));
-    tb.append(tr);
-  }
-  det.append(tb);
-  cont.append(det);
+  // La vista de tabla (accesibilidad) es ahora la pestaña «Precios» del detalle, con los mismos datos.
 }
