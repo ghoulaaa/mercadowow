@@ -878,3 +878,6 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
   .tabla-mercado td.num { font-size: var(--fs-ctl); }
 }
 @media (max-width: 560px) { .estado-pref { display: none; } .estado-dato { padding: 8px; } }
+
+/* Origen de las cantidades cuando no son de la fuente del mercado (p. ej. AHledger en TSM). */
+.th-fuente { display: block; font-size: var(--fs-min); font-weight: 500; color: var(--muted); text-align: right; line-height: 1.2; }

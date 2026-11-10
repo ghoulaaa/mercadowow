@@ -490,8 +490,14 @@ function pintarTabla() {
     tdObj.append(botonEstrella(x), b);
 
     const tdCant = el("td", "num c-cant");
-    tdCant.append(x.cantidad == null ? sinDato(x.estado === "con_ofertas" ? "La fuente no publica la cantidad" : "Sin datos")
+    tdCant.append(x.cantidad == null ? sinDato(d.cantidad_fuente ? "Sin unidades en el último escaneo de AHledger"
+        : x.estado === "con_ofertas" ? "La fuente no publica la cantidad" : "Sin datos")
       : document.createTextNode(x.cantidad.toLocaleString("es")));
+    // Cantidad de otra fuente (AHledger) en un mercado que no la publica (TSM): se dice de dónde y de cuándo es.
+    if (x.cantidad_ref && d.cantidad_fuente) {
+      tdCant.classList.add("cant-ref");
+      tdCant.title = `Unidades según AHledger (escaneo ${fecha(d.cantidad_fuente.escaneo)}). El precio es de TSM.`;
+    }
     const tdPrecio = celdaPrecio(x);
     // En tablas estrechas la variación va bajo el precio (su columna se oculta): la misma cifra, otra posición.
     if (x.var24 != null) {
@@ -503,7 +509,13 @@ function pintarTabla() {
     frag.append(tr);
   }
   tbody.replaceChildren(frag);
-  // Sin cantidades en toda la página (TSM no las publica): la columna no ocupa sitio.
+  // Origen de las cantidades: propio, o AHledger (con la hora de su escaneo) si la fuente no las publica.
+  const cf = d?.cantidad_fuente;
+  $("th-cantidad-fuente").hidden = !cf;
+  $("th-cantidad-fuente").textContent = cf ? cf.proveedor : "";
+  $("th-cantidad").title = cf ? `Unidades a la venta según ${cf.proveedor} (escaneo ${fecha(cf.escaneo)}, ${hace(cf.escaneo)}). Los precios son de TSM.`
+    : "Unidades publicadas en el último escaneo";
+  // Sin cantidades en toda la página (ninguna fuente las tiene): la columna no ocupa sitio.
   $("tabla-mercado").classList.toggle("sin-cantidad", !!d && d.filas.length > 0 && d.filas.every((x) => x.cantidad == null));
   const total = d?.total ?? 0;
   const chips = pintarChips();
@@ -1758,6 +1770,12 @@ function bloquePreciosCompleto(f) {
     const c = cifra(m.nombre, valor, `${m.significado} (${m.clave_fuente} · ${origen})`,
       m.columna === "min_buyout" ? "principal" : m.columna === "market_value" || m.columna === "median" ? "precio-grande" : "");
     grid.append(METRICAS_PRINCIPALES.has(m.columna) ? marcar(c) : c);
+  }
+  // Cantidad de AHledger cuando la fuente del mercado no la publica (TSM): a la vista, con su origen.
+  const cr = f.cantidad_ref;
+  if (cr) {
+    grid.append(marcar(cifra(`Disponible (${cr.proveedor})`, cr.cantidad.toLocaleString("es"),
+      `Unidades a la venta según ${cr.proveedor}, escaneo del ${fecha(cr.escaneo)} (${hace(cr.escaneo)}). Los precios de arriba son de TSM.`)));
   }
   if (x) {
     grid.append(cifra("Mínimo 30 d", monedaNodo(x.minimo),
