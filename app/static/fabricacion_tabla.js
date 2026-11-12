@@ -144,11 +144,12 @@ export function desglosar(a, resolutor, precios, objetos = {}) {
 }
 
 /**
+ * nombreAlt: (id) => nombre en español o null, para buscar también por él.
  * f: {texto, profesiones (array; vacío = todas), roiMin, netaMin, nivelMin, nivelMax,
  *     soloCompletas, soloRentables, soloConVenta (el producto tiene ofertas ahora),
  *     soloMaterialesEnVenta (ningún material sin ofertas), soloConVentas (ventas/día > 0)}
  */
-export function filtrarFilas(filas, f = {}) {
+export function filtrarFilas(filas, f = {}, nombreAlt = null) {
   const t = sinTildes(f.texto).trim();
   const id = /^\d{1,9}$/.test(t) ? Number(t) : null;
   const profs = f.profesiones?.length ? new Set(f.profesiones) : null;
@@ -165,7 +166,9 @@ export function filtrarFilas(filas, f = {}) {
     if (f.soloConVentas && !((x.ventasDia ?? x.ventasRegion) > 0)) return false;
     if (!t) return true;
     if (id != null) return x.id === id || x.spell === id || x.a.materiales.some((m) => m.id === id);
-    return sinTildes(x.nombre).includes(t) || sinTildes(x.receta).includes(t);
+    // Nombre de la fuente (inglés), de la receta y, si se da, el nombre en español (nombreAlt(id)).
+    return sinTildes(x.nombre).includes(t) || sinTildes(x.receta).includes(t)
+      || (nombreAlt != null && sinTildes(nombreAlt(x.id)).includes(t));
   });
 }
 

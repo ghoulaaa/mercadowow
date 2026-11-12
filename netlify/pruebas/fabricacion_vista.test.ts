@@ -107,6 +107,10 @@ describe("tabla de fabricación (sin DOM)", () => {
     assert.deepEqual(ids({ texto: "2589" }), [1, 5]);          // ID de material
     assert.deepEqual(ids({ soloMaterialesEnVenta: true }).includes(4), false);
     assert.deepEqual(ids({ soloConVentas: true }), [1, 3]);
+    // Nombre en español (de Blizzard), sin tildes ni mayúsculas.
+    const es = (id: number) => ({ 5000: "Capa de paño", 1251: "Venda de lino" } as any)[id] ?? null;
+    assert.deepEqual(filtrarFilas(filas, { texto: "PANO" }, es).map((x: any) => x.spell), [5]);
+    assert.deepEqual(filtrarFilas(filas, { texto: "pano" }).map((x: any) => x.spell), []);
   });
   test("orden por ganancia neta y por ROI; desconocidos al final", () => {
     const conNull = [...filas, { ...filas[0], spell: 99, neta: null, roi: null }];

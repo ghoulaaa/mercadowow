@@ -2406,6 +2406,8 @@ function confirmarSugerencia(k) {
   ac = { ...ac, abierto: false, activo: -1 };
   pintarSugerencias();
   guardarReciente({ id: s.id, nombre: s.nombre, icono: s.icono, calidad: s.calidad });
+  // En «Fabricación», el objeto elegido se busca en sus recetas (con el desglose) sin salir de la sección.
+  if (enFab()) { vistaFab.buscarObjeto(s.id); return; }
   location.hash = `#/objeto/${s.id}`;
   if (leerRuta(location.hash).id === objetoActual) abrirObjeto(s.id);
 }
@@ -2417,6 +2419,7 @@ function buscarEnMercado() {
   pintarSugerencias();
   ocultarRecientes();
   if (filtro.texto) guardarReciente({ texto: filtro.texto });
+  if (enFab()) { vistaFab.buscarTexto(filtro.texto); return; }
   repintar();
 }
 
@@ -2447,7 +2450,8 @@ $("lista-recientes").addEventListener("click", (ev) => {
   if (x.id != null) {
     $("buscador").value = nom(x.id, x.nombre); $("btn-borrar-busqueda").hidden = false;
     guardarReciente(x);
-    location.hash = `#/objeto/${x.id}`;
+    if (enFab()) vistaFab.buscarObjeto(x.id);
+    else location.hash = `#/objeto/${x.id}`;
   } else {
     $("buscador").value = x.texto; $("btn-borrar-busqueda").hidden = false;
     buscarEnMercado();

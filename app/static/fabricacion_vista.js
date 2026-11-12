@@ -39,6 +39,7 @@ export function crearVistaFabricacion(d) {
   let orden = guardado.orden ?? { clave: "neta", dir: "desc" };
   let datos = null, datosMercado = null, filas = [], pagina = 1, cargando = null;
   let abierta = null;   // spell de la receta desplegada
+  const nombreEs = (id) => d.nom(id, null);   // para buscar también por el nombre en español
 
   const guardar = () => d.local.escribir(CLAVE_LOCAL, {
     profesiones: f.profesiones, orden, opciones: op,
@@ -130,7 +131,7 @@ export function crearVistaFabricacion(d) {
     guardar(); pagina = 1; pintarProfesiones(); pintar();
   });
   $("fab-csv").addEventListener("click", () => {
-    const lista = ordenarFilas(filtrarFilas(filas, f), orden.clave, orden.dir);
+    const lista = ordenarFilas(filtrarFilas(filas, f, nombreEs), orden.clave, orden.dir);
     const blob = new Blob(["﻿" + filasACsv(lista, (x) => d.nom(x.id, x.nombre))], { type: "text/csv;charset=utf-8" });
     const a = el("a");
     a.href = URL.createObjectURL(blob);
@@ -382,6 +383,8 @@ export function crearVistaFabricacion(d) {
       : `${mf.veces.toLocaleString("es")} veces` + (mf.limitante ? ` (limita ${nombreDe(mf.limitante, datos.objetos[mf.limitante]?.n ?? `#${mf.limitante}`)})` : ""));
 
     const avisos = el("ul", "d-avisos small muted");
+    if (!op.fabricarIntermedios) avisos.append(el("li", "", "«Fabricar materiales intermedios» está desactivado: todos los ingredientes se compran y no se compara con fabricarlos."));
+    if (!op.valorSinOfertas) avisos.append(el("li", "", "«Valor de mercado si no hay ofertas» está desactivado: un ingrediente sin ofertas ahora deja la receta incompleta."));
     for (const t of a.avisos) avisos.append(el("li", "", t));
     caja.append(cab, envoltura, res, avisos);
     td.append(caja);
@@ -400,7 +403,7 @@ export function crearVistaFabricacion(d) {
     est.textContent = datos.escaneo
       ? `Precios del escaneo del ${d.fecha(datos.escaneo)} (${d.hace(datos.escaneo)})` + (datos.demo ? " · DATOS FICTICIOS" : "")
       : "Este mercado aún no tiene escaneos: no hay precios.";
-    const lista = ordenarFilas(filtrarFilas(filas, f), orden.clave, orden.dir);
+    const lista = ordenarFilas(filtrarFilas(filas, f, nombreEs), orden.clave, orden.dir);
     const total = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
     pagina = Math.min(Math.max(1, pagina), total);
     const desde = (pagina - 1) * POR_PAGINA;
@@ -427,5 +430,33 @@ export function crearVistaFabricacion(d) {
     refrescar: () => cargar({ forzar: true }),
     /** Hay datos nuevos pero la vista no se ve: se pedirán al volver a ella. */
     invalidar: () => { datosMercado = null; },
+    /** Buscador de arriba en esta sección: filtra por texto. */
+    buscarTexto(texto) {
+      f.texto = texto; $("fab-texto").value = texto; pagina = 1; pintar();
+    },
+    /**
+     * Buscador de arriba con un objeto elegido: muestra sus recetas y despliega el desglose si solo
+     * hay una. Si nadie lo fabrica, muestra las recetas que lo usan como ingrediente.
+     */
+    async buscarObjeto(id) {
+      await cargar();
+      f.texto = String(id); $("fab-texto").value = String(id); pagina = 1;
+      const suyas = filas.filter((x) => x.id === id);
+      abierta = suyas.length === 1 ? suyas[0].spell : null;
+      // Que los filtros activos no escondan justo lo que se buscó.
+      const ocultas = suyas.length && !filtrarFilas(suyas, f, nombreEs).length;
+      if (ocultas) {
+        Object.assign(f, { profesiones: [], roiMin: null, netaMin: null, nivelMin: null, nivelMax: null, soloCompletas: false,
+                           soloRentables: false, soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false });
+        for (const id2 of ["fab-roi", "fab-neta", "fab-nivel-min", "fab-nivel-max"]) $(id2).value = "";
+        for (const k of casillas) $(`fab-${k}`).checked = false;
+        guardar(); pintarProfesiones();
+        d.avisar("Se quitaron los filtros para mostrar la receta buscada.");
+      }
+      pintar();
+      if (!suyas.length) d.avisar("Ninguna receta fabrica este objeto: se muestran las que lo usan como ingrediente.");
+      const tr = $("fab-tbody").querySelector(abierta != null ? `tr[data-spell="${abierta}"]` : "tr[data-spell]");
+      tr?.scrollIntoView({ block: "start", behavior: "smooth" });
+    },
   };
 }
