@@ -168,6 +168,14 @@ export function dibujarGrafico(cont, datos) {
   const tip = html("div", "g-tip");
   tip.hidden = true;
   const cantidadEn = new Map((datos.cantidad || []).map(([t, q]) => [t, q]));
+  // {hora: {q: unidades, antes: unidades del escaneo anterior}} (solo si se pasan unidades de otra fuente).
+  const unidadesRef = new Map();
+  let previa = null;
+  for (const [t, q] of [...(datos.unidadesRef?.cantidad ?? [])].sort((a, b) => a[0] - b[0])) {
+    if (q == null) continue;
+    unidadesRef.set(t, { q, antes: previa });
+    previa = q;
+  }
   const mostrar = (ev) => {
     const caja = svg.getBoundingClientRect();
     const xSvg = ((ev.clientX - caja.left) / caja.width) * W;
@@ -188,6 +196,15 @@ export function dibujarGrafico(cont, datos) {
       tip.append(fila);
     }
     if (cantidadEn.has(mejor[0])) tip.append(html("div", "", `Unidades publicadas: ${cantidadEn.get(mejor[0])?.toLocaleString("es") ?? "—"}`));
+    // Unidades de otra fuente (AHledger) en la misma hora, y cuántas dejaron de estar a la venta desde su
+    // escaneo anterior. No se sabe si se compraron, caducaron o se retiraron: se dice así.
+    const u = unidadesRef.get(mejor[0]);
+    if (u) {
+      tip.append(html("div", "", `A la venta (${datos.unidadesRef.proveedor}): ${u.q.toLocaleString("es")}`));
+      if (u.antes != null && u.antes > u.q) {
+        tip.append(html("div", "g-tip-baja", `−${(u.antes - u.q).toLocaleString("es")} desde el escaneo anterior (vendidas, caducadas o retiradas)`));
+      }
+    }
     tip.hidden = false;
     tip.style.left = `${Math.min(Math.max((xx / W) * caja.width + 12, 0), caja.width - 200)}px`;
   };

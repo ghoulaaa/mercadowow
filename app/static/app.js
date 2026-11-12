@@ -1619,7 +1619,8 @@ function pintarHistorial(cont) {
     return;
   }
   if (vistaHistorial === "precios") { cont.replaceChildren(tablaPrecios(h, cont._cantRef)); return; }
-  dibujarGrafico(cont, { puntos: h.puntos, nombres: h.nombres, cantidad: h.cantidad, med7: h.med7, med30: h.med30, pasoMs: h.paso_ms });
+  dibujarGrafico(cont, { puntos: h.puntos, nombres: h.nombres, cantidad: h.cantidad, med7: h.med7, med30: h.med30, pasoMs: h.paso_ms,
+    unidadesRef: cont._cantRef });   // unidades de AHledger en el cuadro del gráfico (si el mercado no las publica)
   if (h.nota) cont.append(el("p", "muted small", h.nota));
 }
 

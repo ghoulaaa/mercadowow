@@ -900,3 +900,5 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .tabla-precios th { white-space: normal; line-height: 1.25; vertical-align: bottom; padding: 8px; }
 .tabla-precios td { padding: 6px 8px; }
 .tabla-precios th:last-child, .tabla-precios td:last-child { width: 30%; }.tabla-precios th.num { white-space: normal; }
+
+.g-tip-baja { color: var(--muted); max-width: 240px; }
