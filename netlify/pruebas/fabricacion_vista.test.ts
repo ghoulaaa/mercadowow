@@ -4,7 +4,7 @@ import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { calcularFilas, filasACsv, filtrarFilas, ordenarFilas, prepararDatos } from "../../app/static/fabricacion_tabla.js";
+import { calcularFilas, filasACsv, filtrarFilas, ordenarFilas, prepararDatos, simularReceta } from "../../app/static/fabricacion_tabla.js";
 import { crearApi } from "../lib/api.ts";
 
 const TSM = "tsm:forever:us:pvp-horde";
@@ -80,6 +80,37 @@ describe("tabla de fabricación (sin DOM)", () => {
                      [["Purple Lotus", "subasta_sin_ofertas", 900], ["Empty Vial", "npc_tuyo", 4]]);
     const venda = por(1).desglose().materiales[0];
     assert.deepEqual([venda.cantidad, venda.precioUnitario, venda.costeTotal, venda.disponible, venda.hijos], [2, 200, 400, 500, []]);
+  });
+  test("calculadora: sin cambios da lo mismo que la tabla", () => {
+    const s = simularReceta(DATOS, 1)!;
+    assert.equal(s.simulado, false);
+    assert.deepEqual([s.a.costeFabricacion, s.a.gananciaNeta], [por(1).coste, por(1).neta]);
+    assert.equal(simularReceta(DATOS, 999), null);
+  });
+  test("calculadora: precio manual de un ingrediente y del producto", () => {
+    const s = simularReceta(DATOS, 1, { manual: { 2589: 150 }, precioVenta: 700 })!;
+    assert.equal(s.simulado, true);
+    assert.equal(s.desglose.materiales[0].origen, "manual");
+    assert.deepEqual([s.a.costeFabricacion, s.a.ingresoBruto, s.a.comision, s.a.gananciaNeta], [300, 700, 35, 365]);
+  });
+  test("calculadora: precio manual de un sub‑ingrediente cambia el coste del fabricado", () => {
+    // Gold Bar ← Iron Bar (fabricada) ← Iron Ore. Mineral a 300: barra fabricada a 300.
+    const s = simularReceta(DATOS, 3, { manual: { 2772: 300 } })!;
+    assert.equal(s.a.costeFabricacion, 300);
+    assert.equal(s.desglose.materiales[0].hijos[0].origen, "manual");
+    // Precio manual de la barra: manda sobre fabricarla, y ya no tiene sub‑ingredientes.
+    const b = simularReceta(DATOS, 3, { manual: { 3575: 100 } })!;
+    assert.deepEqual([b.desglose.materiales[0].origen, b.desglose.materiales[0].hijos], ["manual", []]);
+  });
+  test("calculadora por cantidades: 300 fabricaciones, stock insuficiente y máximo fabricable", () => {
+    const s = simularReceta(DATOS, 1, { fabricaciones: 300 })!;
+    assert.equal(s.a.unidadesProducidas, 300);
+    assert.equal(s.a.costeFabricacion, 300 * 400);
+    const tela = s.desglose.materiales[0];
+    assert.deepEqual([tela.cantidad, tela.disponible, tela.faltanEnSubasta], [600, 500, 100]);
+    assert.equal(s.a.maxFabricable.veces, 250);       // 500 telas / 2
+    assert.equal(simularReceta(DATOS, 1, { fabricaciones: 2 })!.desglose.materiales[0].faltanEnSubasta, 0);
+    assert.throws(() => simularReceta(DATOS, 1, { fabricaciones: 0 }));
   });
   test("prepararDatos convierte la forma corta de la API", () => {
     const { recetas, precios } = prepararDatos(DATOS);

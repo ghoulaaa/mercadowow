@@ -1,7 +1,7 @@
 // Vista «Fabricación» (etapa 2): tabla de rentabilidad de TODAS las recetas con el motor del navegador.
 // La parte sin DOM (cálculo, filtros, orden, CSV) está en fabricacion_tabla.js y se prueba en Node.
 
-import { NOMBRE_ORIGEN, calcularFilas, filasACsv, filtrarFilas, ordenarFilas } from "./fabricacion_tabla.js";
+import { NOMBRE_ORIGEN, calcularFilas, filasACsv, filtrarFilas, ordenarFilas, simularReceta } from "./fabricacion_tabla.js";
 import { REGLA_POR_DEFECTO } from "./fabricacion.js";
 import { parsearMoneda } from "./moneda.js";
 
@@ -279,9 +279,20 @@ export function crearVistaFabricacion(d) {
     return tr;
   }
 
-  // ---------- desglose de una receta: ingredientes, precios usados y cálculo ----------
+  // ---------- desglose y calculadora de una receta (etapa 3) ----------
+  // Simulación de la receta abierta: precios tuyos, precio de venta y número de fabricaciones.
+  // Solo afecta al desglose; la tabla sigue con los precios del mercado.
+  let sim = { spell: null, fabricaciones: 1, manual: {}, precioVenta: undefined };
+  const simDe = (spell) => (sim.spell === spell ? sim : (sim = { spell, fabricaciones: 1, manual: {}, precioVenta: undefined }));
+
   const nombreDe = (id, en) => d.nom(id, en);
   const cantTexto = (n) => (Number.isInteger(n) ? n.toLocaleString("es") : n.toLocaleString("es", { maximumFractionDigits: 2 }));
+  /** Cobre → «12o 34p 56c» sin separador de miles (se puede volver a leer con parsearMoneda). */
+  const monedaEditable = (c) => {
+    if (c == null) return "";
+    const o = Math.floor(c / 10000), p = Math.floor((c % 10000) / 100), co = c % 100;
+    return [o ? `${o}o` : "", p ? `${p}p` : "", co || (!o && !p) ? `${co}c` : ""].filter(Boolean).join(" ");
+  };
 
   function celdaObjeto(m, nivel = 0) {
     const td = el("td", "d-obj");
@@ -297,13 +308,24 @@ export function crearVistaFabricacion(d) {
   function celdaOrigen(m) {
     const td = el("td", "d-origen");
     if (m.origen == null) { td.append(el("span", "bad", "Sin precio")); return td; }
-    const etiqueta = el("span", `origen o-${m.origen}`, NOMBRE_ORIGEN[m.origen] ?? m.origen);
-    td.append(etiqueta);
+    td.append(el("span", `origen o-${m.origen}`, NOMBRE_ORIGEN[m.origen] ?? m.origen));
     return td;
+  }
+  /** Campo de precio editable. `clave`: id del objeto o «venta». */
+  function campoPrecio(valor, clave, manual, etiqueta) {
+    const i = el("input", "d-precio" + (manual ? " d-manual" : ""));
+    i.type = "text"; i.autocomplete = "off"; i.spellcheck = false;
+    i.value = monedaEditable(valor);
+    i.placeholder = "sin precio";
+    i.dataset.precio = clave;
+    i.setAttribute("aria-label", etiqueta);
+    i.title = "Escribe otro precio para simular (12o 34p 56c, 50p, 300…). Vacío = precio del mercado.";
+    return i;
   }
   function filaMaterial(m, nivel = 0) {
     const tr = el("tr", nivel ? "d-hijo" : "");
-    const tdPrecio = el("td", "num"); tdPrecio.append(d.monedaNodo(m.precioUnitario));
+    const tdPrecio = el("td", "num");
+    tdPrecio.append(campoPrecio(m.precioUnitario, String(m.id), m.origen === "manual", `Precio por unidad de ${nombreDe(m.id, m.nombre)}`));
     const tdCoste = el("td", "num d-coste"); tdCoste.append(d.monedaNodo(m.costeTotal));
     // Alternativas: comprar frente a fabricar (solo en los ingredientes directos).
     const tdAlt = el("td", "d-alt small");
@@ -315,28 +337,56 @@ export function crearVistaFabricacion(d) {
       if (m.ahorroFabricando > 0) tdAlt.append(el("span", "ok", ` (ahorras ${d.formatear(m.ahorroFabricando)})`));
     }
     const tdDisp = el("td", "num", nivel || m.disponible == null ? "—" : m.disponible.toLocaleString("es"));
+    if (!nivel && m.faltanEnSubasta > 0) {
+      tdDisp.append(el("span", "bad d-falta", ` faltan ${m.faltanEnSubasta.toLocaleString("es")}`));
+      tdDisp.title = "Hay menos unidades a la venta de las que necesitas";
+    }
     tr.append(celdaObjeto(m, nivel), el("td", "num", cantTexto(m.cantidad)), tdPrecio, celdaOrigen(m), tdCoste, tdAlt, tdDisp);
     return [tr, ...(m.hijos ?? []).flatMap((h) => filaMaterial(h, nivel + 1))];
   }
 
   function filaDesglose(x) {
-    const a = x.a;
-    const des = x.desglose();
+    const s = simDe(x.spell);
+    const r = simularReceta(datos, x.spell, {
+      regla: { ...REGLA_POR_DEFECTO, comision_pct: op.comision }, valorSinOfertas: op.valorSinOfertas,
+      fabricarIntermedios: op.fabricarIntermedios, manual: s.manual, fabricaciones: s.fabricaciones, precioVenta: s.precioVenta,
+    });
+    const a = r.a, des = r.desglose;
     const tr = el("tr", "fab-desglose");
     const td = el("td");
     td.colSpan = COLUMNAS.length;
     const caja = el("div", "desglose");
 
-    // Cabecera: qué se fabrica.
-    const rend = a.rendimiento.min === a.rendimiento.max ? `${a.rendimiento.min}` : `${a.rendimiento.min}–${a.rendimiento.max} (media ${cantTexto(a.rendimiento.medio)})`;
+    // Cabecera: cuántas veces, qué se produce y acciones.
+    const rend = a.rendimiento.min === a.rendimiento.max ? `${a.rendimiento.min}` : `${a.rendimiento.min}–${a.rendimiento.max}, media ${cantTexto(a.rendimiento.medio)}`;
     const cab = el("div", "d-cab");
-    cab.append(el("strong", "", `Ingredientes de 1 fabricación`),
-      el("span", "muted small", ` · produce ${rend} × ${nombreDe(x.id, x.nombre)} · ${d.nombreProf(x.profesion)}${x.nivel != null ? ` ${x.nivel}` : ""} · receta ${x.spell}`));
+    const lblN = el("label", "d-veces");
+    const n = el("input");
+    n.type = "number"; n.min = "1"; n.max = "100000"; n.step = "1"; n.value = String(s.fabricaciones); n.dataset.fabricaciones = "1";
+    lblN.append(el("span", "", "Fabricar"), n, el("span", "", s.fabricaciones === 1 ? "vez" : "veces"));
+    const unidades = a.rendimiento.min === a.rendimiento.max ? cantTexto(a.unidadesProducidas) : `≈ ${cantTexto(a.unidadesProducidas)}`;
+    cab.append(lblN, el("span", "muted small",
+      `produce ${unidades} × ${nombreDe(x.id, x.nombre)} (${rend} por vez) · ${d.nombreProf(x.profesion)}${x.nivel != null ? ` ${x.nivel}` : ""} · receta ${x.spell}`));
+    const acciones = el("span", "d-acciones");
+    if (a.maxFabricable.veces != null && a.maxFabricable.veces > 0 && a.maxFabricable.veces !== s.fabricaciones) {
+      const b = el("button", "btn btn-piedra btn-small", `Usar el máximo (${a.maxFabricable.veces.toLocaleString("es")})`);
+      b.type = "button"; b.dataset.maximo = String(Math.min(a.maxFabricable.veces, 100000));
+      acciones.append(b);
+    }
+    if (r.simulado) {
+      const b = el("button", "btn btn-piedra btn-small", "Restablecer precios");
+      b.type = "button"; b.dataset.restablecer = "1";
+      acciones.append(b);
+    }
     const ver = el("button", "btn btn-piedra btn-small", "Ver ficha del objeto");
     ver.type = "button"; ver.dataset.verObjeto = x.id;
-    cab.append(ver);
+    acciones.append(ver);
+    cab.append(acciones);
 
-    // Tabla de ingredientes.
+    const avisoSim = el("p", "d-sim small", "Simulación con precios tuyos: la tabla de arriba sigue con los precios del mercado.");
+    avisoSim.hidden = !r.simulado;
+
+    // Tabla de ingredientes (precios editables).
     const tabla = el("table", "tabla d-tabla");
     const th = el("thead"), trh = el("tr");
     for (const [t, c] of [["Ingrediente", ""], ["Cantidad", "num"], ["Precio unidad", "num"], ["Precio de", ""], ["Coste", "num"],
@@ -348,7 +398,7 @@ export function crearVistaFabricacion(d) {
     tb.append(...des.materiales.flatMap((m) => filaMaterial(m)));
     const tf = el("tfoot"), trf = el("tr");
     const tdTot = el("td", "num d-coste"); tdTot.append(d.monedaNodo(a.costeFabricacion));
-    const etq = el("td", "", a.completo ? "Coste de fabricación" : "Coste incompleto: falta algún precio");
+    const etq = el("td", "", a.completo ? "Coste de fabricación" : "Coste incompleto: pon un precio a lo que falta");
     etq.colSpan = 4;
     trf.append(etq, tdTot, el("td"), el("td"));
     tf.append(trf);
@@ -358,15 +408,19 @@ export function crearVistaFabricacion(d) {
 
     // Resultado paso a paso.
     const res = el("dl", "d-res");
-    const linea = (t, v, { signo: s = false, nota = "" } = {}) => {
+    const linea = (t, v, { signo: sg = false, nota = "", nodo = null } = {}) => {
       const dt = el("dt", "", t), dd = el("dd");
-      if (typeof v === "string") dd.textContent = v; else dd.append(d.monedaNodo(v));
-      if (s && typeof v === "number") dd.classList.add(v > 0 ? "ok" : v < 0 ? "bad" : "muted");
+      if (nodo) dd.append(nodo);
+      else if (typeof v === "string") dd.textContent = v;
+      else dd.append(d.monedaNodo(v));
+      if (sg && typeof v === "number") dd.classList.add(v > 0 ? "ok" : v < 0 ? "bad" : "muted");
       if (nota) dd.append(el("span", "muted small", ` ${nota}`));
       res.append(dt, dd);
     };
-    const notaVenta = x.topeAplicado ? "(recortado al tope del valor de mercado)" : x.ventaSinOfertas ? "(sin ofertas: valor de mercado)" : "(compra mínima)";
-    linea("Precio de venta por unidad", a.precioVenta, { nota: notaVenta });
+    const notaVenta = s.precioVenta !== undefined ? "(precio tuyo)" : x.topeAplicado ? "(recortado al tope del valor de mercado)"
+      : x.ventaSinOfertas ? "(sin ofertas: valor de mercado)" : "(compra mínima)";
+    linea("Precio de venta por unidad", null, {
+      nodo: campoPrecio(a.precioVenta, "venta", s.precioVenta !== undefined, "Precio de venta por unidad"), nota: notaVenta });
     linea("Ingreso bruto", a.ingresoBruto, { nota: a.precioVenta == null ? "" : `= ${d.formatear(a.precioVenta)} × ${cantTexto(a.unidadesProducidas)}` });
     linea(`Comisión de subasta (${op.comision} %)`, a.comision == null ? null : -a.comision);
     linea("Coste de fabricación", a.costeFabricacion == null ? null : -a.costeFabricacion);
@@ -385,12 +439,61 @@ export function crearVistaFabricacion(d) {
     const avisos = el("ul", "d-avisos small muted");
     if (!op.fabricarIntermedios) avisos.append(el("li", "", "«Fabricar materiales intermedios» está desactivado: todos los ingredientes se compran y no se compara con fabricarlos."));
     if (!op.valorSinOfertas) avisos.append(el("li", "", "«Valor de mercado si no hay ofertas» está desactivado: un ingrediente sin ofertas ahora deja la receta incompleta."));
+    if (s.fabricaciones > 1 && des.materiales.some((m) => m.origen === "subasta")) {
+      avisos.append(el("li", "", "Con varias fabricaciones se usa la compra mínima para todas las unidades. Las siguientes ofertas pueden ser más caras: la fuente no publica cuántas hay a cada precio."));
+    }
     for (const t of a.avisos) avisos.append(el("li", "", t));
-    caja.append(cab, envoltura, res, avisos);
+    caja.append(cab, avisoSim, envoltura, res, avisos);
     td.append(caja);
     tr.append(td);
     return tr;
   }
+
+  /** Vuelve a dibujar el desglose abierto (tras un cambio de la simulación) y devuelve el foco. */
+  function repintarDesglose(foco) {
+    const viejo = $("fab-tbody").querySelector("tr.fab-desglose");
+    const x = filas.find((r) => r.spell === abierta);
+    if (!viejo || !x) return;
+    viejo.replaceWith(filaDesglose(x));
+    if (foco) $("fab-tbody").querySelector(`tr.fab-desglose ${foco}`)?.focus();
+  }
+
+  function aplicarCampo(i) {
+    const s = simDe(abierta);
+    if (i.dataset.fabricaciones) {
+      const n = Math.round(Number(i.value));
+      if (!Number.isInteger(n) || n < 1 || n > 100000) {
+        d.avisar("Fabricaciones: un número entero de 1 a 100.000.", "bad"); i.value = String(s.fabricaciones); return;
+      }
+      if (n === s.fabricaciones) return;
+      s.fabricaciones = n;
+      repintarDesglose("[data-fabricaciones]");
+      return;
+    }
+    const clave = i.dataset.precio;
+    if (!clave) return;
+    let v;
+    try { v = i.value.trim() === "" ? null : parsearMoneda(i.value); }
+    catch (e) { d.avisar(e.message, "bad"); i.setAttribute("aria-invalid", "true"); return; }
+    if (clave === "venta") s.precioVenta = v == null ? undefined : v;
+    else if (v == null) delete s.manual[clave];
+    else s.manual[clave] = v;
+    repintarDesglose(`[data-precio="${clave}"]`);
+  }
+  $("fab-tbody").addEventListener("change", (ev) => {
+    if (ev.target.matches("tr.fab-desglose input")) aplicarCampo(ev.target);
+  });
+  $("fab-tbody").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && ev.target.matches("tr.fab-desglose input")) { ev.preventDefault(); aplicarCampo(ev.target); }
+  });
+  $("fab-tbody").addEventListener("click", (ev) => {
+    const b = ev.target.closest("tr.fab-desglose [data-maximo], tr.fab-desglose [data-restablecer]");
+    if (!b) return;
+    const s = simDe(abierta);
+    if (b.dataset.maximo) s.fabricaciones = Number(b.dataset.maximo);
+    else { s.manual = {}; s.precioVenta = undefined; }
+    repintarDesglose(b.dataset.maximo ? "[data-fabricaciones]" : null);
+  });
 
   function pintar() {
     for (const th of trCab.children) {

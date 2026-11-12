@@ -97,6 +97,33 @@ export function calcularFilas(datos, opciones = {}) {
   });
 }
 
+/**
+ * Calculadora de UNA receta con precios simulados y número de fabricaciones (etapa 3).
+ * No toca la tabla: recalcula solo esa receta con un resolutor propio.
+ * @param {object} datos  respuesta de la API
+ * @param {number} spell
+ * @param {{regla?: object, valorSinOfertas?: boolean, fabricarIntermedios?: boolean,
+ *          manual?: Object<number, number>, fabricaciones?: number, precioVenta?: number|null}} [opciones]
+ *   manual: precio unitario que pones tú para cualquier objeto (ingrediente o sub‑ingrediente), en cobre.
+ *   precioVenta: precio unitario de venta simulado (undefined = el del mercado).
+ * @returns {{a: object, desglose: object, simulado: boolean} | null}
+ */
+export function simularReceta(datos, spell, opciones = {}) {
+  const op = { ...OPCIONES_POR_DEFECTO, ...opciones };
+  const regla = op.regla ?? { ...REGLA_POR_DEFECTO, comision_pct: Number(datos.comision_pct ?? REGLA_POR_DEFECTO.comision_pct) };
+  const { recetas, precios } = prepararDatos(datos, op);
+  const receta = recetas.find((r) => r.spell === spell);
+  if (!receta) return null;
+  const manual = op.manual ?? {};
+  const resolutor = crearResolutor(recetas, precios, { fabricarIntermedios: op.fabricarIntermedios, manual });
+  const a = analizarReceta(receta, resolutor, { regla, fabricaciones: op.fabricaciones ?? 1, precioVenta: op.precioVenta });
+  return {
+    a,
+    desglose: desglosar(a, resolutor, precios, datos.objetos ?? {}),
+    simulado: Object.keys(manual).length > 0 || op.precioVenta !== undefined,
+  };
+}
+
 export const NOMBRE_ORIGEN = Object.freeze({
   subasta: "Subasta (compra mínima)",
   subasta_sin_ofertas: "Valor de mercado (sin ofertas ahora)",
@@ -136,6 +163,9 @@ export function desglosar(a, resolutor, precios, objetos = {}) {
       fabricar: m.fabricar,
       ahorroFabricando: m.ahorroFabricando,
       disponible: m.disponible,
+      // Se compra en subasta más de lo publicado: no se puede comprar todo (o subiría el precio).
+      faltanEnSubasta: m.origen === "subasta" && m.disponible != null && m.cantidad > m.disponible
+        ? m.cantidad - m.disponible : 0,
       // Si se fabrica, de qué está hecho (cantidades para ESTA receta).
       hijos: m.origen === "fabricar" ? nodo(resolutor.arbol(m.id, m.cantidad)).hijos : [],
       recetaIntermedia: m.origen === "fabricar" ? resolutor.coste(m.id).receta?.spell ?? null : null,
