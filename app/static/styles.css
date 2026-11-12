@@ -916,4 +916,4 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .wow-tip .tt-verde { color: #1eff00; }
 .wow-tip .tt-der { text-align: right; white-space: nowrap; }
 .wow-tip .tt-venta { justify-content: flex-start; gap: 6px; margin-top: 2px; }
-.wow-tip .moneda .n { color: #ffffff; }
+.wow-tip .moneda .n { color: #ffffff; }.wow-tip .tt-separador { height: 8px; }

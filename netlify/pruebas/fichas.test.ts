@@ -41,6 +41,14 @@ test("líneas del cuadro: como en el juego, sin inventar nada", () => {
   assert.equal(e.find((x) => x.izq === "+3 Fuerza").color, "rgb(255, 255, 255)");
   assert.equal(e.find((x) => x.izq.startsWith("Equipar:")).clase, "tt-verde");
   assert.equal(e.at(-1).izq, "«Brilla un poco.»");
+  // Bolsas y recetas (formas reales de Blizzard Classic).
+  assert.deepEqual(lineasTooltip({ name: "Bolsa", container_slots: { display_string: "Bolsa de 6 casillas" } }).map((x) => x.izq), ["Bolsa", "Bolsa de 6 casillas"]);
+  const receta = lineasTooltip({ name: "Receta: Estofado", spells: [{ description: "Uso: Te enseña a hacer estofado." }],
+    recipe: { item: { name: "Estofado", spells: [{ description: "Uso: Restaura 530 p. de salud." }], sell_price: { value: 100 } },
+              reagents_display_string: "Carne de buitre, Ojo de múrloc" }, sell_price: { value: 50 } });
+  assert.deepEqual(receta.map((x) => x.izq), ["Receta: Estofado", "Uso: Te enseña a hacer estofado.", "", "Estofado",
+    "Uso: Restaura 530 p. de salud.", "Requiere Carne de buitre, Ojo de múrloc", "Precio de venta:"]);
+  assert.equal(receta.at(-1).cobre, 50);   // el precio de venta es el de la receta, no el del producto
   assert.deepEqual(lineasTooltip(null), []);
   assert.deepEqual(lineasTooltip({}), []);
 });

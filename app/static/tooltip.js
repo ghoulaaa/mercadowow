@@ -30,8 +30,16 @@ export function lineasTooltip(p) {
     pon(s?.display?.display_string, s?.is_equip_bonus ? "tt-verde" : "tt-blanco", { color: color(s?.display?.color) ?? undefined });
   }
   for (const r of ["level", "skill", "ability", "reputation", "playable_classes"]) pon(p.requirements?.[r]?.display_string, "tt-blanco");
+  pon(p.container_slots?.display_string, "tt-blanco");
   pon(p.durability?.display_string, "tt-blanco");
   for (const s of Array.isArray(p.spells) ? p.spells : []) pon(s?.description, "tt-verde");
+  // Recetas: debajo, el objeto que enseñan a fabricar (sin su precio de venta) y los materiales.
+  const producto = p.recipe?.item;
+  if (producto && typeof producto === "object") {
+    const sub = lineasTooltip(producto).filter((x) => x.cobre == null);
+    if (sub.length) l.push({ izq: "", clase: "tt-separador" }, ...sub);
+    pon(p.recipe.reagents_display_string ? `Requiere ${p.recipe.reagents_display_string}` : null, "tt-blanco");
+  }
   pon(p.set?.display_string, "tt-oro");
   if (texto(p.description)) l.push({ izq: `«${texto(p.description)}»`, clase: "tt-oro" });
   const venta = p.sell_price;
