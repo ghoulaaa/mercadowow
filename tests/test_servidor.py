@@ -79,7 +79,7 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:39] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:41] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
                            "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
@@ -94,7 +94,8 @@ def test_migraciones_en_orden():
                            "0035_nombres_es_errores.sql",
                            "0036_nombres_es_extra.sql", "0037_nombres_es_extra_cron.sql",
                            "0038_planes_a_medida.sql",
-                           "0039_cantidades_ahledger.sql"]
+                           "0039_cantidades_ahledger.sql",
+                           "0040_fichas_blizzard.sql", "0041_fichas_cron.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------

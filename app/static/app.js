@@ -9,6 +9,7 @@ import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariaci
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { normalizarPerfil, perfilDeLista, textoAlerta } from "./listas.js";
 import { agregarReciente, atajoBuscar, chipsFiltros, fusionarSinReordenar } from "./interfaz.js";
+import { lineasTooltip } from "./tooltip.js";
 import { NOMBRE_CALIDAD, NOMBRE_CATEGORIA, NOMBRE_REC, SIN_CATEGORIA, formatearPct, nombreSubcategoria } from "./tabla.js";
 import {
   ESTADO, MAX_IDS, NOMBRE_FAMILIA, NOMBRE_OPORTUNIDAD, NOMBRE_ROL, POR_PAGINA, TEXTO_SIN_FICHA, leerIds, leerPreciosNpc, paginas,
@@ -742,6 +743,78 @@ for (const d of document.querySelectorAll(".lateral details[id]")) {
     local.escribir("mw_plegables", g);
   });
 }
+
+// ---------- cuadro del objeto al estilo del juego (texto oficial de Blizzard en español) ----------
+const fichasCache = new Map();   // id → ficha (o null si Blizzard no la tiene)
+let tipObjetoId = null, tipTemporizador = null;
+
+function cajaTip() {
+  let c = document.getElementById("wow-tip");
+  if (!c) { c = el("div", "wow-tip"); c.id = "wow-tip"; c.setAttribute("role", "tooltip"); c.hidden = true; document.body.append(c); }
+  return c;
+}
+/** ID del objeto al que pertenece un icono (fila de la tabla, detalle o sugerencia del buscador). */
+function idDeIcono(ic) {
+  const fila = ic.closest("tr[data-id]");
+  if (fila) return Number(fila.dataset.id);
+  if (ic.closest(".det-objeto")) return objetoActual;
+  const sug = ic.closest("[data-k]");
+  if (sug && ic.closest("#sugerencias")) return sugerencias[Number(sug.dataset.k)]?.id ?? null;
+  return null;
+}
+async function fichaDe(id) {
+  if (fichasCache.has(id)) return fichasCache.get(id);
+  try {
+    const r = await fetch(`/api/tooltip?mercado=${urlMercado()}&id=${id}`, { cache: "no-store" });
+    const d = r.ok ? await r.json() : null;
+    fichasCache.set(id, d?.ficha?.datos ?? null);
+  } catch { return null; }   // sin conexión: no se guarda, se reintentará
+  return fichasCache.get(id);
+}
+function pintarTip(lineas, x, y) {
+  const c = cajaTip();
+  c.replaceChildren(...lineas.map((ln) => {
+    const fila = el("div", "tt-linea " + ln.clase);
+    if (ln.color) fila.style.color = ln.color;
+    fila.append(el("span", "tt-izq", ln.izq));
+    if (ln.der) fila.append(el("span", "tt-der", ln.der));
+    if (ln.cobre) fila.append(" ", monedaNodo(ln.cobre));
+    return fila;
+  }));
+  c.hidden = false;
+  // Junto al cursor (o al icono), sin salirse de la pantalla.
+  const w = c.offsetWidth, h = c.offsetHeight;
+  c.style.left = `${Math.max(8, Math.min(x + 16, innerWidth - w - 8))}px`;
+  c.style.top = `${Math.max(8, y + 16 + h > innerHeight ? y - h - 12 : y + 16)}px`;
+}
+function ocultarTip() { clearTimeout(tipTemporizador); tipObjetoId = null; const c = document.getElementById("wow-tip"); if (c) c.hidden = true; }
+function mostrarTipDe(ic, x, y) {
+  const id = idDeIcono(ic);
+  if (!id || !ultimo) return;
+  tipObjetoId = id;
+  clearTimeout(tipTemporizador);
+  tipTemporizador = setTimeout(async () => {
+    const datos = await fichaDe(id);
+    if (tipObjetoId !== id) return;   // el cursor ya se fue a otro sitio
+    const lineas = lineasTooltip(datos);
+    if (lineas.length) pintarTip(lineas, x, y); else ocultarTip();
+  }, 150);
+}
+document.addEventListener("pointerover", (ev) => {
+  const ic = ev.target.closest?.(".icono");
+  if (ic && (ic.closest("#tbody") || ic.closest(".det-objeto") || ic.closest("#sugerencias"))) mostrarTipDe(ic, ev.clientX, ev.clientY);
+});
+document.addEventListener("pointerout", (ev) => { if (ev.target.closest?.(".icono")) ocultarTip(); });
+// Teclado: al enfocar un objeto de la tabla, su cuadro junto al icono.
+$("tbody").addEventListener("focusin", (ev) => {
+  const b = ev.target.closest(".objeto");
+  if (!b || !b.matches(":focus-visible")) return;
+  const ic = b.querySelector(".icono"), r = ic.getBoundingClientRect();
+  mostrarTipDe(ic, r.right, r.top);
+});
+$("tbody").addEventListener("focusout", ocultarTip);
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") ocultarTip(); });
+document.addEventListener("scroll", ocultarTip, true);
 
 $("tbody").addEventListener("click", (ev) => {
   const fav = ev.target.closest("[data-fav]");

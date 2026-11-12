@@ -436,6 +436,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return JSONResponse(r, headers=SIN_CACHE)
 
+    @app.get("/api/tooltip")
+    def tooltip(id: int = Query(gt=0, le=2147483647), mercado: str | None = Query(default=None, max_length=100)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select ficha_blizzard(%s, %s::integer) as r", (mercado or settings.market, id)).fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer la ficha del objeto: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse({"ficha": r}, headers=SIN_CACHE)
+
     @app.get("/api/nombres-es")
     def nombres_es(mercado: str | None = Query(default=None, max_length=100)):
         try:

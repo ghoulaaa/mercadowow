@@ -631,6 +631,21 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /** Ficha oficial de un objeto (texto del juego en español, de Blizzard) para el cuadro del icono. */
+    async tooltip(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      const u = new URL(req.url).searchParams;
+      const mercado = u.get("mercado") || o.mercado;
+      const id = Number(u.get("id"));
+      if (!Number.isInteger(id) || id <= 0 || id > 2_147_483_647) return json(400, { error: "id no válido" });
+      try {
+        return json(200, { ficha: await llamar(db, "select ficha_blizzard($1, $2::integer) as r", [mercado, id]) });
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Nombres oficiales en español ({id: nombre}) y cuántos hay (API de Blizzard). */
     async nombresEs(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

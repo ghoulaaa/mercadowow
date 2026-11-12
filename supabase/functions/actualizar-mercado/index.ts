@@ -10,7 +10,7 @@
 // Llamarla de más no provoca consultas extra a los proveedores.
 
 import postgres from "npm:postgres@3.4.9";
-import { actualizarNombresEs, actualizarNombresEsExtra, actualizarRecetas, actualizarRegion, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
+import { actualizarFichas, actualizarNombresEs, actualizarNombresEsExtra, actualizarRecetas, actualizarRegion, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -36,7 +36,11 @@ Deno.serve(async (req) => {
               ? { nombres_es_extra: await actualizarNombresEsExtra(db, { fetch,
                     clientId: Deno.env.get("BLIZZARD_CLIENT_ID") ?? undefined,
                     secreto: Deno.env.get("BLIZZARD_CLIENT_SECRET") ?? undefined }) }
-              : await ejecutarTodos(db, { fetch });
+              : cuerpo?.tarea === "fichas"
+                ? { fichas: await actualizarFichas(db, { fetch,
+                      clientId: Deno.env.get("BLIZZARD_CLIENT_ID") ?? undefined,
+                      secreto: Deno.env.get("BLIZZARD_CLIENT_SECRET") ?? undefined }) }
+                : await ejecutarTodos(db, { fetch });
     console.log(JSON.stringify(resultado));
     return Response.json(resultado);
   } catch (e) {
