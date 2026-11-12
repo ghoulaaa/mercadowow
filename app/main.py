@@ -425,12 +425,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 profesion: str | None = Query(default=None, max_length=40),
                 objeto: int | None = Query(default=None, gt=0),
                 base: str = Query(default="mediana", pattern="^(mediana|minimo|tsm)$"),
-                fabricacion: str | None = Query(default=None, max_length=5)):
+                fabricacion: str | None = Query(default=None, max_length=5),
+                historial: str | None = Query(default=None, max_length=5),
+                ids: str | None = Query(default=None, max_length=3000, pattern=r"^\d{1,9}(,\d{1,9}){0,299}$"),
+                dias: int = Query(default=7)):
         clave = mercado or settings.market
+        if historial is not None and (not ids or dias not in (1, 7, 30, 90)):
+            return JSONResponse(status_code=400, content={"error": "historial necesita ids y dias (1, 7, 30 o 90)"})
         try:
             with db.connect(settings.database_url) as conn:
                 r = db.recipes(conn, clave, profesion=profesion, objeto=objeto, base=base,
-                               fabricacion=fabricacion is not None)
+                               fabricacion=fabricacion is not None,
+                               historial=[int(x) for x in ids.split(",")] if historial is not None else None,
+                               dias=dias)
         except Exception as exc:
             if (resp := _error_validacion(exc)) is not None:
                 return resp

@@ -5,6 +5,8 @@ import { NOMBRE_ORIGEN, calcularFilas, filasACsv, filtrarFilas, ordenarFilas, si
 import { REGLA_POR_DEFECTO } from "./fabricacion.js";
 import { parsearMoneda } from "./moneda.js";
 import { NIVEL_TEXTO, UMBRAL, oportunidades } from "./oportunidades.js";
+import { serieHistorial, subarbolReceta } from "./fabricacion_historial.js";
+import { dibujarGrafico } from "./grafico.js";
 
 const POR_PAGINA = 100;
 const CLAVE_LOCAL = "mw_fabricacion1";
@@ -176,6 +178,8 @@ export function crearVistaFabricacion(d) {
     const regla = { ...REGLA_POR_DEFECTO, comision_pct: op.comision };
     const t = performance.now();
     filas = calcularFilas(datos, { regla, valorSinOfertas: op.valorSinOfertas, fabricarIntermedios: op.fabricarIntermedios });
+    // El historial abierto se recalcula con las nuevas opciones (los precios guardados no cambian).
+    if (hist.estado === "ok" && hist.crudo) hist.serie = serieHistorial(datos, hist.spell, hist.crudo, opcionesMotor());
     $("fab-calculo").textContent = `${filas.length.toLocaleString("es")} recetas calculadas en ${Math.round(performance.now() - t)} ms`;
   }
 
@@ -192,6 +196,7 @@ export function crearVistaFabricacion(d) {
         const j = await r.json().catch(() => null);
         if (!r.ok || !j) throw new Error(j?.error ?? `HTTP ${r.status}`);
         datos = j; datosMercado = mercado;
+        hist = { ...hist, estado: null, serie: null, crudo: null };   // datos nuevos: el historial se vuelve a pedir
         calcular(); pintarProfesiones(); pintar();
       } catch (e) {
         $("fab-estado").textContent = "No se pudieron cargar las recetas: " + e.message
@@ -284,6 +289,127 @@ export function crearVistaFabricacion(d) {
   // ---------- desglose y calculadora de una receta (etapa 3) ----------
   // Simulación de la receta abierta: precios tuyos, precio de venta y número de fabricaciones.
   // Solo afecta al desglose; la tabla sigue con los precios del mercado.
+  // ---------- historial de la receta abierta (etapa 5) ----------
+  // {spell, dias, estado: "cargando"|"ok"|"error", serie, crudo, error}. Se conserva al recalcular el desglose.
+  let hist = { spell: null, dias: 7, estado: null, serie: null, crudo: null, error: null };
+  const PERIODOS = [[1, "24 h"], [7, "7 d"], [30, "30 d"], [90, "90 d"]];
+
+  function opcionesMotor() {
+    return { regla: { ...REGLA_POR_DEFECTO, comision_pct: op.comision }, valorSinOfertas: op.valorSinOfertas,
+             fabricarIntermedios: op.fabricarIntermedios };
+  }
+
+  async function cargarHistorial(spell, dias) {
+    const sub = subarbolReceta(datos, spell);
+    if (!sub) return;
+    hist = { spell, dias, estado: "cargando", serie: null, crudo: null, error: null };
+    repintarHistorial();
+    try {
+      const url = `/api/recetas?historial=1&dias=${dias}&mercado=${encodeURIComponent(d.mercado())}&ids=${sub.ids.slice(0, 300).join(",")}`;
+      const r = await fetch(url, { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j) throw new Error(j?.error ?? `HTTP ${r.status}`);
+      if (hist.spell !== spell || hist.dias !== dias) return;   // se pidió otra cosa mientras tanto
+      hist = { ...hist, estado: "ok", crudo: j, serie: serieHistorial(datos, spell, j, opcionesMotor()) };
+    } catch (e) {
+      if (hist.spell !== spell) return;
+      hist = { ...hist, estado: "error", error: e.message.includes("historial_fabricacion")
+        ? "falta aplicar la migración 0041" : e.message };
+    }
+    repintarHistorial();
+  }
+
+  function repintarHistorial() {
+    const cont = $("fab-tbody").querySelector("tr.fab-desglose .d-hist");
+    if (cont) pintarHistorial(cont, Number(cont.dataset.spell));
+  }
+
+  function bloqueHistorial(x) {
+    const cont = el("section", "d-hist");
+    cont.dataset.spell = x.spell;
+    // Se dibuja cuando ya está en la página (los gráficos necesitan su ancho).
+    setTimeout(() => pintarHistorial(cont, x.spell), 0);
+    return cont;
+  }
+
+  function pintarHistorial(cont, spell) {
+    const cab = el("div", "d-hist-cab");
+    cab.append(el("h3", "", "Historial"));
+    const grupo = el("div", "periodos");
+    grupo.setAttribute("role", "group"); grupo.setAttribute("aria-label", "Periodo del historial");
+    for (const [dias, txt] of PERIODOS) {
+      const b = el("button", "btn-periodo", txt);
+      b.type = "button"; b.dataset.histDias = dias;
+      b.setAttribute("aria-pressed", String(hist.spell === spell && hist.dias === dias && hist.estado != null));
+      grupo.append(b);
+    }
+    cab.append(grupo);
+    const cuerpo = el("div", "d-hist-cuerpo");
+    if (hist.spell !== spell || hist.estado == null) {
+      cuerpo.append(el("p", "muted small", "Elige un periodo para ver cómo han cambiado el precio de venta, el coste de fabricación y la ganancia neta."));
+    } else if (hist.estado === "cargando") {
+      cuerpo.append(el("p", "muted small", "Cargando el historial…"));
+    } else if (hist.estado === "error") {
+      cuerpo.append(el("p", "bad small", "No se pudo cargar el historial: " + hist.error));
+    } else {
+      pintarSerie(cuerpo, hist.serie, hist.crudo);
+    }
+    cont.replaceChildren(cab, cuerpo);
+  }
+
+  function pintarSerie(cuerpo, s, crudo) {
+    if (!s || s.escaneos < 2) {
+      cuerpo.append(el("p", "muted small", "Todavía no hay historial suficiente en este periodo."));
+      return;
+    }
+    const primero = crudo.primer_escaneo ? ` · el mercado tiene datos desde el ${d.fecha(crudo.primer_escaneo)}` : "";
+    cuerpo.append(el("p", "muted small", `${s.escaneos} escaneos desde el ${d.fecha(new Date(s.desde).toISOString())}${primero}. `
+      + "Cada punto usa los precios de ese escaneo y las mismas reglas que la tabla; tus precios simulados no se aplican."));
+
+    // Resumen: actual, mínimo, máximo y media.
+    const t = el("table", "tabla d-hist-tabla");
+    const th = el("thead"), trh = el("tr");
+    for (const [txt, c] of [["", ""], ["Actual", "num"], ["Mínimo", "num"], ["Máximo", "num"], ["Media", "num"]]) {
+      const h = el("th", c, txt); h.scope = "col"; trh.append(h);
+    }
+    th.append(trh);
+    const tb = el("tbody");
+    for (const [nombre, r, moneda] of [["Precio de venta", s.venta, true], ["Coste de fabricación", s.coste, true],
+                                       ["Ganancia neta", s.neta, true], ["Unidades a la venta", s.unidades, false]]) {
+      if (!moneda && r.n === 0) continue;
+      const tr = el("tr");
+      tr.append(el("th", "", nombre));
+      tr.firstChild.scope = "row";
+      for (const v of [r.actual, r.min, r.max, r.media]) {
+        const td = el("td", "num");
+        if (moneda) { td.append(d.monedaNodo(v)); if (nombre === "Ganancia neta" && v != null) td.classList.add(v > 0 ? "ok" : v < 0 ? "bad" : "muted"); }
+        else td.textContent = v == null ? "—" : v.toLocaleString("es");
+        tr.append(td);
+      }
+      tb.append(tr);
+    }
+    t.append(th, tb);
+    const envoltura = el("div", "tabla-wrap");
+    envoltura.append(t);
+    cuerpo.append(envoltura);
+
+    const g1 = el("div", "d-hist-graf"), g2 = el("div", "d-hist-graf");
+    cuerpo.append(el("h4", "small", "Precio de venta y coste de fabricación"), g1, el("h4", "small", "Ganancia neta"), g2);
+    dibujarGrafico(g1, {
+      puntos: s.puntos.map((p) => [p[0], p[1], p[2]]),
+      nombres: ["Precio de venta", "Coste de fabricación"],
+      cantidad: s.unidades.n ? s.puntos.map((p) => [p[0], p[4]]) : undefined,
+    });
+    dibujarGrafico(g2, { puntos: s.puntos.map((p) => [p[0], p[3], null]), nombres: ["Ganancia neta", null] });
+  }
+
+  $("fab-tbody").addEventListener("click", (ev) => {
+    const b = ev.target.closest("tr.fab-desglose [data-hist-dias]");
+    if (!b) return;
+    const cont = b.closest(".d-hist");
+    cargarHistorial(Number(cont.dataset.spell), Number(b.dataset.histDias));
+  });
+
   let sim = { spell: null, fabricaciones: 1, manual: {}, precioVenta: undefined };
   const simDe = (spell) => (sim.spell === spell ? sim : (sim = { spell, fabricaciones: 1, manual: {}, precioVenta: undefined }));
 
@@ -445,7 +571,7 @@ export function crearVistaFabricacion(d) {
       avisos.append(el("li", "", "Con varias fabricaciones se usa la compra mínima para todas las unidades. Las siguientes ofertas pueden ser más caras: la fuente no publica cuántas hay a cada precio."));
     }
     for (const t of a.avisos) avisos.append(el("li", "", t));
-    caja.append(cab, avisoSim, envoltura, res, avisos);
+    caja.append(cab, avisoSim, envoltura, res, avisos, bloqueHistorial(x));
     td.append(caja);
     tr.append(td);
     return tr;

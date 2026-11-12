@@ -599,6 +599,16 @@ export function crearApi(db: Db, o: OpcionesApi) {
         if (u.get("fabricacion") !== null) {
           return json(200, await llamar(db, "select datos_fabricacion($1) as r", [mercado]));
         }
+        // Historial de una receta: precios de sus objetos en cada escaneo (?historial=1&ids=1,2&dias=7).
+        if (u.get("historial") !== null) {
+          const ids = (u.get("ids") ?? "").split(",").filter(Boolean).map(Number);
+          if (!ids.length || ids.length > 300 || !ids.every((n) => Number.isInteger(n) && n > 0)) {
+            return json(400, { error: "ids: entre 1 y 300 números separados por comas" });
+          }
+          const dias = Number(u.get("dias") ?? 7);
+          if (![1, 7, 30, 90].includes(dias)) return json(400, { error: "dias debe ser 1, 7, 30 o 90" });
+          return json(200, await llamar(db, "select historial_fabricacion($1, $2::integer[], $3) as r", [mercado, ids, dias]));
+        }
         if (objeto !== null) {
           const id = Number(objeto);
           if (!Number.isInteger(id) || id <= 0) return json(400, { error: "objeto no válido" });
