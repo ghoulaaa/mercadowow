@@ -4,6 +4,7 @@ import { dibujarGrafico } from "./grafico.js";
 import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
 import { leerRuta } from "./ruta.js";
+import { crearVistaFabricacion } from "./fabricacion_vista.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
@@ -121,9 +122,18 @@ const profAbiertas = new Set();   // profesiones desplegadas en la barra lateral
 const abiertas = new Set();   // categorías desplegadas en el árbol
 
 // ---------- vistas ----------
+const enFab = () => leerRuta(location.hash).vista === "fabricacion";
 function mostrar(vista) {
+  // «Fabricación» es otra sección de la página principal: comparte barra lateral, estado y detalle.
+  const fab = vista === "mercado" && enFab();
   $("vista-login").hidden = vista !== "login";
-  $("vista-mercado").hidden = vista !== "mercado";
+  $("vista-mercado").hidden = vista !== "mercado" || fab;
+  $("vista-fabricacion").hidden = !fab;
+  document.body.classList.toggle("modo-fab", fab);
+  $("nav-mercado").toggleAttribute("aria-current", !fab);
+  if (!fab) $("nav-mercado").setAttribute("aria-current", "page");
+  $("nav-fabricacion").toggleAttribute("aria-current", fab);
+  if (fab) $("nav-fabricacion").setAttribute("aria-current", "page");
   for (const id of ["grupo-mercado", "barra"]) $(id).hidden = vista === "login";
 }
 
@@ -561,7 +571,7 @@ function pintarTabla() {
   }
   // Cabeceras ordenables: refleja el orden actual.
   const [clave, dir] = $("f-orden").value.split(":");
-  for (const th of document.querySelectorAll(".tabla-mercado th")) {
+  for (const th of document.querySelectorAll("#tabla-mercado th")) {
     const bo = th.querySelector("[data-orden]");
     th.setAttribute("aria-sort", bo?.dataset.orden === clave ? (dir === "asc" ? "ascending" : "descending") : "none");
   }
@@ -2318,6 +2328,8 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
 function aplicarRuta() {
   if (!ultimo) return;
   const r = leerRuta(location.hash);
+  if ($("vista-login").hidden) mostrar("mercado");
+  if (r.vista === "fabricacion") { vistaFab.mostrar(); return; }
   if (r.vista === "objeto") { if (r.id !== objetoActual || $("panel-ficha").hidden) abrirObjeto(r.id); }
   else if (!$("panel-ficha").hidden) {
     const id = objetoActual;
@@ -2330,6 +2342,12 @@ function aplicarRuta() {
   }
 }
 window.addEventListener("hashchange", aplicarRuta);
+
+const vistaFab = crearVistaFabricacion({
+  $, el, monedaNodo, iconoNodo, nom, nombreProf, fecha, hace, local, avisar, formatear: formatearMoneda,
+  abrirObjeto: (id) => abrirObjeto(id),
+  mercado: () => ultimo?.mercado?.clave ?? null,
+});
 window.matchMedia("(max-width: 1339px)").addEventListener("change", () => {
   if (!$("panel-ficha").hidden) $("velo-detalle").hidden = !detalleSuperpuesto();
 });
@@ -2599,6 +2617,7 @@ async function vigilar() {
           await cargarPagina({ silencioso: true });
           if (vista === "mapa") cargarMapa();
           if (objetoActual != null) abrirObjeto(objetoActual, { silencioso: true });
+          if (enFab()) vistaFab.refrescar(); else vistaFab.invalidar();
         }
         firmaVersion = firma;
       }

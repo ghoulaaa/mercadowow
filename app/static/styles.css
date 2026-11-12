@@ -902,3 +902,49 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .tabla-precios th:last-child, .tabla-precios td:last-child { width: 30%; }.tabla-precios th.num { white-space: normal; }
 
 .g-tip-baja { color: var(--muted); max-width: 240px; }
+
+/* ---------- Fabricación (etapa 2) ---------- */
+.modo-fab #grupo-cat, .modo-fab #grupo-prof, .modo-fab #grupo-filtros,
+.modo-fab #grupo-banda, .modo-fab #grupo-catalogo { display: none; }
+.fab-estado { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 var(--esp-2); }
+.fab-filtros { display: grid; gap: var(--esp-2); margin-bottom: var(--esp-3); padding: var(--esp-2);
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.fab-profesiones { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-prof {
+  font: inherit; font-size: var(--fs-sec); padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+}
+.chip-prof:hover { border-color: var(--border-ctl); }
+.chip-prof[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+.fab-campos { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: end; }
+.fab-campos label { display: grid; gap: 2px; font-size: var(--fs-sec); color: var(--muted); }
+.fab-campos input, .fab-campos select { padding: 5px 8px; font-size: var(--fs-sec); width: 7.5em; }
+.fab-campos .fab-buscar { flex: 1 1 220px; }
+.fab-campos .fab-buscar input { width: 100%; }
+.fab-campos select { width: auto; }
+.fab-campos input[aria-invalid="true"] { border-color: var(--danger); }
+.fab-casillas { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: var(--fs-sec); }
+.fab-casillas label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.fab-casillas .btn { margin-left: auto; }
+.tabla-fab td.ok .moneda .n, .tabla-fab td.ok { color: var(--sell); }
+.tabla-fab td.bad .moneda .n, .tabla-fab td.bad { color: var(--danger); }
+.tabla-fab tr.perdida td.c-fobj { box-shadow: inset 3px 0 0 var(--danger); }
+.tabla-fab tr.incompleta td { opacity: .78; }
+.tabla-fab tr:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.tabla-fab .c-neta { font-weight: 700; }
+.tabla-fab .cant-ref { font-style: italic; }
+.tabla-fab .c-fobj { min-width: 220px; max-width: 320px; }
+.tabla-fab th { white-space: nowrap; }
+.marca-op.aviso-op { color: var(--watch); }
+.fab-nota { margin-top: var(--esp-3); }
+@media (max-width: 900px) {
+  .tabla-fab .c-bruta, .tabla-fab .c-margen-n, .tabla-fab .c-nivel { display: none; }
+}
+@media (max-width: 560px) {
+  .tabla-fab .c-prof, .tabla-fab .c-disp, .tabla-fab .c-ventas { display: none; }
+  .tabla-fab .c-fobj { min-width: 160px; }
+  .fab-casillas .btn { margin-left: 0; }
+}
+.tabla.tabla-fab { table-layout: auto; min-width: 1020px; }
+@media (max-width: 900px) { .tabla.tabla-fab { min-width: 760px; } }
+@media (max-width: 560px) { .tabla.tabla-fab { min-width: 0; } }

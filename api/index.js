@@ -2771,6 +2771,9 @@ function crearApi(db2, o) {
       const profesion = u.get("profesion");
       const objeto = u.get("objeto");
       try {
+        if (u.get("fabricacion") !== null) {
+          return json(200, await llamar(db2, "select datos_fabricacion($1) as r", [mercado]));
+        }
         if (objeto !== null) {
           const id = Number(objeto);
           if (!Number.isInteger(id) || id <= 0) return json(400, { error: "objeto no válido" });

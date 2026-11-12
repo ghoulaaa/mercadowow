@@ -595,6 +595,10 @@ export function crearApi(db: Db, o: OpcionesApi) {
       const profesion = u.get("profesion");
       const objeto = u.get("objeto");
       try {
+        // Vista «Fabricación»: todas las recetas y los precios en bruto; el cálculo lo hace el navegador.
+        if (u.get("fabricacion") !== null) {
+          return json(200, await llamar(db, "select datos_fabricacion($1) as r", [mercado]));
+        }
         if (objeto !== null) {
           const id = Number(objeto);
           if (!Number.isInteger(id) || id <= 0) return json(400, { error: "objeto no válido" });

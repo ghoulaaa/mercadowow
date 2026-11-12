@@ -8,5 +8,6 @@ export function leerRuta(hash) {
   if (["objeto", "historial", "rentabilidad"].includes(vista) && /^\d{1,9}$/.test(arg ?? "")) {
     return { vista: "objeto", id: Number(arg) };
   }
+  if (vista === "fabricacion" && arg === undefined) return { vista: "fabricacion", id: null };
   return { vista: "mercado", id: null };
 }

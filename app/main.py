@@ -424,11 +424,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def recetas(mercado: str | None = Query(default=None, max_length=100),
                 profesion: str | None = Query(default=None, max_length=40),
                 objeto: int | None = Query(default=None, gt=0),
-                base: str = Query(default="mediana", pattern="^(mediana|minimo|tsm)$")):
+                base: str = Query(default="mediana", pattern="^(mediana|minimo|tsm)$"),
+                fabricacion: str | None = Query(default=None, max_length=5)):
         clave = mercado or settings.market
         try:
             with db.connect(settings.database_url) as conn:
-                r = db.recipes(conn, clave, profesion=profesion, objeto=objeto, base=base)
+                r = db.recipes(conn, clave, profesion=profesion, objeto=objeto, base=base,
+                               fabricacion=fabricacion is not None)
         except Exception as exc:
             if (resp := _error_validacion(exc)) is not None:
                 return resp

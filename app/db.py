@@ -181,9 +181,12 @@ def market_page(conn: psycopg.Connection, market_key: str, params: dict) -> dict
 
 
 def recipes(conn: psycopg.Connection, market_key: str, *, profesion: str | None = None,
-            objeto: int | None = None, base: str = "mediana"):
-    """Profesiones (sin filtros), recetas de una profesión con su coste, o fabricación/usos de un objeto."""
-    if objeto is not None:
+            objeto: int | None = None, base: str = "mediana", fabricacion: bool = False):
+    """Profesiones (sin filtros), recetas de una profesión con su coste, o fabricación/usos de un objeto.
+    Con fabricacion=True: todas las recetas y precios en bruto para la vista «Fabricación»."""
+    if fabricacion:
+        sql, args = "select datos_fabricacion(%s) as r", (market_key,)
+    elif objeto is not None:
         sql, args = "select recetas_objeto(%s, %s, %s) as r", (market_key, objeto, base)
     elif profesion is not None:
         sql, args = "select recetas_profesion(%s, %s, %s) as r", (market_key, profesion, base)
