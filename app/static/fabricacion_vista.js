@@ -7,6 +7,9 @@ import { parsearMoneda } from "./moneda.js";
 import { NIVEL_TEXTO, UMBRAL, oportunidades } from "./oportunidades.js";
 import { serieHistorial, subarbolReceta } from "./fabricacion_historial.js";
 import { dibujarGrafico } from "./grafico.js";
+import {
+  CAMPOS_ALERTA, MAX_COMPARAR, alternar as alternarSpell, anadirComparar, compararRecetas, crearAlerta, evaluarAlertas, normalizarExtras,
+} from "./fabricacion_extras.js";
 
 const POR_PAGINA = 100;
 const CLAVE_LOCAL = "mw_fabricacion1";
@@ -35,6 +38,7 @@ export function crearVistaFabricacion(d) {
   const f = {
     profesiones: guardado.profesiones ?? [], roiMin: null, netaMin: null, nivelMin: null, nivelMax: null,
     soloCompletas: true, soloRentables: false, soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false,
+    soloFavoritas: false,
     ...(guardado.filtros ?? {}),
     texto: "",
   };
@@ -49,7 +53,7 @@ export function crearVistaFabricacion(d) {
     profesiones: f.profesiones, orden, opciones: op,
     filtros: { roiMin: f.roiMin, netaMin: f.netaMin, nivelMin: f.nivelMin, nivelMax: f.nivelMax, soloCompletas: f.soloCompletas,
                soloRentables: f.soloRentables, soloConVenta: f.soloConVenta, soloMaterialesEnVenta: f.soloMaterialesEnVenta,
-               soloConVentas: f.soloConVentas },
+               soloConVentas: f.soloConVentas, soloFavoritas: f.soloFavoritas },
   });
 
   // ---------- cabecera de la tabla ----------
@@ -76,7 +80,7 @@ export function crearVistaFabricacion(d) {
 
   // ---------- controles ----------
   const num = (id) => { const v = $(id).value.trim(); return v === "" ? null : Number(v); };
-  const casillas = ["soloCompletas", "soloRentables", "soloConVenta", "soloMaterialesEnVenta", "soloConVentas"];
+  const casillas = ["soloCompletas", "soloRentables", "soloConVenta", "soloMaterialesEnVenta", "soloConVentas", "soloFavoritas"];
   for (const k of casillas) $(`fab-${k}`).checked = !!f[k];
   for (const [k, id] of [["roiMin", "fab-roi"], ["nivelMin", "fab-nivel-min"], ["nivelMax", "fab-nivel-max"]]) {
     if (f[k] != null) $(id).value = f[k];
@@ -129,13 +133,14 @@ export function crearVistaFabricacion(d) {
   });
   $("fab-quitar").addEventListener("click", () => {
     Object.assign(f, { texto: "", profesiones: [], roiMin: null, netaMin: null, nivelMin: null, nivelMax: null,
-                       soloCompletas: false, soloRentables: false, soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false });
+                       soloCompletas: false, soloRentables: false, soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false,
+                       soloFavoritas: false });
     for (const id of ["fab-texto", "fab-roi", "fab-neta", "fab-nivel-min", "fab-nivel-max"]) $(id).value = "";
     for (const k of casillas) $(`fab-${k}`).checked = false;
     guardar(); pagina = 1; pintarProfesiones(); pintar();
   });
   $("fab-csv").addEventListener("click", () => {
-    const lista = ordenarFilas(filtrarFilas(filas, f, nombreEs), orden.clave, orden.dir);
+    const lista = ordenarFilas(filtradas(), orden.clave, orden.dir);
     const blob = new Blob(["﻿" + filasACsv(lista, (x) => d.nom(x.id, x.nombre))], { type: "text/csv;charset=utf-8" });
     const a = el("a");
     a.href = URL.createObjectURL(blob);
@@ -180,6 +185,7 @@ export function crearVistaFabricacion(d) {
     filas = calcularFilas(datos, { regla, valorSinOfertas: op.valorSinOfertas, fabricarIntermedios: op.fabricarIntermedios });
     // El historial abierto se recalcula con las nuevas opciones (los precios guardados no cambian).
     if (hist.estado === "ok" && hist.crudo) hist.serie = serieHistorial(datos, hist.spell, hist.crudo, opcionesMotor());
+    pintarAlertas();
     $("fab-calculo").textContent = `${filas.length.toLocaleString("es")} recetas calculadas en ${Math.round(performance.now() - t)} ms`;
   }
 
@@ -257,7 +263,7 @@ export function crearVistaFabricacion(d) {
     if (!x.completo) txt.firstChild.append(el("span", "marca-op", "Incompleta"));
     else if (x.materialesSinOfertas.length) txt.firstChild.append(el("span", "marca-op aviso-op", "Mat. sin ofertas"));
     caja.append(d.iconoNodo(x.icono, nombre, x.calidad), txt);
-    tdObj.append(caja);
+    tdObj.append(botonEstrella(x), caja);
     tdObj.title = [
       `#${x.id} · receta ${x.spell}`,
       ...x.a.materiales.map((m) => `${m.cantidadPorFabricacion} × ${d.nom(m.id, datos.objetos[m.id]?.n ?? `#${m.id}`)} (${m.origen ?? "sin precio"})`),
@@ -571,7 +577,7 @@ export function crearVistaFabricacion(d) {
       avisos.append(el("li", "", "Con varias fabricaciones se usa la compra mínima para todas las unidades. Las siguientes ofertas pueden ser más caras: la fuente no publica cuántas hay a cada precio."));
     }
     for (const t of a.avisos) avisos.append(el("li", "", t));
-    caja.append(cab, avisoSim, envoltura, res, avisos, bloqueHistorial(x));
+    caja.append(cab, bloqueExtrasReceta(x), avisoSim, envoltura, res, avisos, bloqueHistorial(x));
     td.append(caja);
     tr.append(td);
     return tr;
@@ -715,9 +721,9 @@ export function crearVistaFabricacion(d) {
     if (!x) return;
     f.texto = String(spell); $("fab-texto").value = String(spell); pagina = 1; abierta = spell;
     // Que los filtros de la tabla no escondan justo la receta elegida.
-    if (!filtrarFilas([x], f, nombreEs).length) {
+    if (!filtrarFilas([x], f, nombreEs).length || (f.soloFavoritas && !esFavorita(spell))) {
       Object.assign(f, { roiMin: null, netaMin: null, nivelMin: null, nivelMax: null, soloCompletas: false, soloRentables: false,
-                         soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false });
+                         soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false, soloFavoritas: false });
       for (const id of ["fab-roi", "fab-neta", "fab-nivel-min", "fab-nivel-max"]) $(id).value = "";
       for (const k of casillas) $(`fab-${k}`).checked = false;
       guardar();
@@ -725,6 +731,244 @@ export function crearVistaFabricacion(d) {
     if (location.hash !== "#/fabricacion") location.hash = "#/fabricacion"; else pintar();
     setTimeout(() => $("fab-tbody").querySelector(`tr[data-spell="${spell}"]`)?.scrollIntoView({ block: "start" }), 50);
   }
+
+  // ---------- etapa 6: favoritas, comparador y alertas (guardado en este navegador) ----------
+  const CLAVE_EXTRAS = "mw_fabricacion_extras";
+  let extras = normalizarExtras(d.local.leer(CLAVE_EXTRAS, null));
+  let verComparacion = false;
+  const guardarExtras = () => d.local.escribir(CLAVE_EXTRAS, extras);
+  const esFavorita = (spell) => extras.favoritas.includes(spell);
+  /** Filas que pasan los filtros de la tabla (incluido «Solo favoritas»). */
+  const filtradas = () => filtrarFilas(f.soloFavoritas ? filas.filter((x) => esFavorita(x.spell)) : filas, f, nombreEs);
+  const nombreReceta = (x) => d.nom(x.id, x.nombre) + (x.receta !== x.nombre ? ` (${x.receta})` : "");
+  const valorAlerta = (campo, v) => (campo === "neta" ? d.formatear(v) : `${v.toLocaleString("es")} %`);
+
+  function botonEstrella(x) {
+    const b = el("button", "estrella-fab");
+    b.type = "button"; b.dataset.fav = x.spell;
+    const fav = esFavorita(x.spell);
+    b.setAttribute("aria-pressed", String(fav));
+    b.setAttribute("aria-label", fav ? "Quitar de favoritas" : "Marcar como favorita");
+    b.title = fav ? "Quitar de favoritas" : "Marcar como favorita";
+    b.textContent = fav ? "★" : "☆";
+    return b;
+  }
+
+  function alternarFavorita(spell) {
+    extras.favoritas = alternarSpell(extras.favoritas, spell);
+    guardarExtras();
+    for (const b of document.querySelectorAll(`[data-fav="${spell}"]`)) b.replaceWith(botonEstrella(filas.find((x) => x.spell === spell)));
+    if (f.soloFavoritas) pintar();
+  }
+
+  function alternarComparar(spell) {
+    if (extras.comparar.includes(spell)) extras.comparar = extras.comparar.filter((s) => s !== spell);
+    else {
+      const r = anadirComparar(extras.comparar, spell);
+      if (r.error) { d.avisar(r.error, "bad"); return; }
+      extras.comparar = r.lista;
+    }
+    guardarExtras();
+    pintarComparar();
+    repintarDesglose(null);
+  }
+
+  // Barra del comparador y tabla lado a lado.
+  function pintarComparar() {
+    const cont = $("fab-comparar");
+    const c = compararRecetas(filas, extras.comparar, datos?.objetos ?? {});
+    cont.hidden = c.recetas.length === 0;
+    if (cont.hidden) { cont.replaceChildren(); return; }
+    const barra = el("div", "cmp-barra");
+    barra.append(el("strong", "", `Comparador (${c.recetas.length}/${MAX_COMPARAR})`));
+    for (const x of c.recetas) {
+      const ch = el("span", "cmp-chip");
+      const q = el("button", "cmp-quitar", "✕");
+      q.type = "button"; q.dataset.quitarComparar = x.spell; q.setAttribute("aria-label", `Quitar ${nombreReceta(x)} del comparador`);
+      ch.append(el("span", "", d.nom(x.id, x.nombre)), q);
+      barra.append(ch);
+    }
+    const ver = el("button", "btn btn-piedra btn-small", verComparacion ? "Ocultar comparación" : "Ver comparación");
+    ver.type = "button"; ver.dataset.verComparacion = "1";
+    ver.disabled = c.recetas.length < 2 && !verComparacion;
+    if (c.recetas.length < 2) ver.title = "Añade al menos 2 recetas desde su desglose";
+    const vaciar = el("button", "btn btn-piedra btn-small", "Vaciar");
+    vaciar.type = "button"; vaciar.dataset.vaciarComparador = "1";
+    barra.append(ver, vaciar);
+    const nodos = [barra];
+    if (verComparacion && c.recetas.length) {
+      const t = el("table", "tabla cmp-tabla");
+      const th = el("thead"), trh = el("tr");
+      trh.append(el("th", "", ""));
+      for (const x of c.recetas) {
+        const h = el("th", "cmp-col");
+        h.scope = "col";
+        const b = el("button", "op-boton cmp-receta");
+        b.type = "button"; b.dataset.abrirReceta = x.spell;
+        b.append(d.iconoNodo(x.icono, d.nom(x.id, x.nombre), x.calidad), el("span", "", d.nom(x.id, x.nombre)),
+          el("span", "muted small", d.nombreProf(x.profesion)));
+        h.append(b);
+        trh.append(h);
+      }
+      th.append(trh);
+      const tb = el("tbody");
+      for (const m of c.metricas) {
+        const tr = el("tr");
+        const n = el("th", "", m.nombre); n.scope = "row";
+        tr.append(n);
+        m.valores.forEach((v, k) => {
+          const td = el("td", "num" + (m.mejores[k] ? " cmp-mejor" : ""));
+          if (m.tipo === "moneda") td.append(d.monedaNodo(v));
+          else if (m.tipo === "pct") td.textContent = pctTexto(v);
+          else td.textContent = v == null ? "—" : v.toLocaleString("es", { maximumFractionDigits: 1 });
+          if (m.mejores[k]) td.title = "La mejor de las comparadas";
+          tr.append(td);
+        });
+        tb.append(tr);
+      }
+      const trR = el("tr"); const nR = el("th", "", "Riesgo"); nR.scope = "row"; trR.append(nR);
+      for (const x of c.recetas) {
+        const td = el("td");
+        td.append(chip("riesgo", x.i.riesgo, x.i.motivosRiesgo.join("\n") || "Sin riesgos detectados"));
+        trR.append(td);
+      }
+      tb.append(trR);
+      t.append(th, tb);
+      const env = el("div", "tabla-wrap");
+      env.append(t);
+      nodos.push(env);
+    }
+    cont.replaceChildren(...nodos);
+  }
+  $("fab-comparar").addEventListener("click", (ev) => {
+    const q = ev.target.closest("[data-quitar-comparar]");
+    if (q) { alternarComparar(Number(q.dataset.quitarComparar)); return; }
+    if (ev.target.closest("[data-ver-comparacion]")) { verComparacion = !verComparacion; pintarComparar(); return; }
+    if (ev.target.closest("[data-vaciar-comparador]")) { extras.comparar = []; verComparacion = false; guardarExtras(); pintarComparar(); repintarDesglose(null); return; }
+    const a = ev.target.closest("[data-abrir-receta]");
+    if (a) vistaAbrirReceta(Number(a.dataset.abrirReceta));
+  });
+
+  // Alertas: texto, evaluación y configuración.
+  function textoAlerta(a) {
+    const cond = `${CAMPOS_ALERTA[a.campo]} ≥ ${valorAlerta(a.campo, a.umbral)}`;
+    if (a.tipo === "receta") {
+      const x = filas.find((r) => r.spell === a.spell);
+      return `${x ? nombreReceta(x) : `Receta ${a.spell}`}: ${cond}`;
+    }
+    const profs = a.profesiones?.length ? ` de ${a.profesiones.map(d.nombreProf).join(", ")}` : "";
+    return `Cualquier receta${profs} con ${cond} (que se venda y con precio creíble)`;
+  }
+
+  function pintarAlertas() {
+    const cumplidas = datos ? evaluarAlertas(filas, extras.alertas, datos.objetos) : [];
+    const aviso = $("fab-alertas-cumplidas");
+    aviso.hidden = cumplidas.length === 0;
+    if (cumplidas.length) {
+      const nodos = [el("strong", "", `🔔 ${cumplidas.length === 1 ? "Se cumple 1 alerta" : `Se cumplen ${cumplidas.length} alertas`} de fabricación`)];
+      const ul = el("ul");
+      for (const c of cumplidas) {
+        const li = el("li");
+        li.append(el("span", "", textoAlerta(c.alerta) + ": "));
+        c.recetas.slice(0, 5).forEach((x, k) => {
+          const b = el("button", "enlace", d.nom(x.id, x.nombre));
+          b.type = "button"; b.dataset.abrirReceta = x.spell;
+          b.title = `${CAMPOS_ALERTA[c.alerta.campo]}: ${c.alerta.campo === "neta" ? d.formatear(x.neta) : pctTexto(x.roi)}`;
+          if (k) li.append(document.createTextNode(", "));
+          li.append(b);
+        });
+        if (c.recetas.length > 5) li.append(el("span", "muted", ` y ${c.recetas.length - 5} más`));
+        ul.append(li);
+      }
+      nodos.push(ul);
+      aviso.replaceChildren(...nodos);
+    }
+    // Lista de alertas configuradas.
+    const lista = $("fab-alertas-lista");
+    lista.replaceChildren(...(extras.alertas.length ? extras.alertas.map((a) => {
+      const li = el("li");
+      const cumple = cumplidas.some((c) => c.alerta.id === a.id);
+      li.append(el("span", cumple ? "ok" : "", (cumple ? "● " : "○ ") + textoAlerta(a)));
+      const b = el("button", "btn btn-piedra btn-small", "Borrar");
+      b.type = "button"; b.dataset.borrarAlerta = a.id;
+      li.append(b);
+      return li;
+    }) : [el("li", "muted", "No tienes alertas de fabricación.")]));
+    $("fab-alertas-n").textContent = extras.alertas.length ? ` (${extras.alertas.length})` : "";
+  }
+
+  function nuevaAlerta(datosAlerta) {
+    try { extras.alertas = crearAlerta(extras.alertas, datosAlerta); }
+    catch (e) { d.avisar(e.message, "bad"); return false; }
+    guardarExtras(); pintarAlertas();
+    d.avisar("Alerta creada. Se revisa cada vez que se cargan precios nuevos con esta página abierta.");
+    return true;
+  }
+
+  function leerUmbral(campo, texto) {
+    if (campo === "neta") return parsearMoneda(texto);
+    const n = Number(String(texto).replace(",", ".").replace("%", "").trim());
+    if (!Number.isFinite(n)) throw new Error("El ROI debe ser un número (por ejemplo, 50)");
+    return n;
+  }
+
+  $("fab-alerta-crear").addEventListener("click", () => {
+    const campo = $("fab-alerta-campo").value;
+    let umbral;
+    try { umbral = leerUmbral(campo, $("fab-alerta-umbral").value); }
+    catch (e) { d.avisar(e.message, "bad"); return; }
+    if (umbral == null) { d.avisar("Pon un umbral", "bad"); return; }
+    const profesiones = $("fab-alerta-mias").checked ? [...f.profesiones] : [];
+    if (nuevaAlerta({ tipo: "general", campo, umbral, profesiones })) $("fab-alerta-umbral").value = "";
+  });
+  $("fab-alertas-lista").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-borrar-alerta]");
+    if (!b) return;
+    extras.alertas = extras.alertas.filter((a) => a.id !== b.dataset.borrarAlerta);
+    guardarExtras(); pintarAlertas();
+  });
+  $("fab-alertas-cumplidas").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-abrir-receta]");
+    if (b) vistaAbrirReceta(Number(b.dataset.abrirReceta));
+  });
+
+  /** En el desglose: comparar y crear una alerta para esta receta. */
+  function bloqueExtrasReceta(x) {
+    const cont = el("div", "d-extras");
+    const enCmp = extras.comparar.includes(x.spell);
+    const cmp = el("button", "btn btn-piedra btn-small", enCmp ? "Quitar del comparador" : "Añadir al comparador");
+    cmp.type = "button"; cmp.dataset.comparar = x.spell;
+    const fav = el("button", "btn btn-piedra btn-small", esFavorita(x.spell) ? "★ Favorita" : "☆ Marcar favorita");
+    fav.type = "button"; fav.dataset.fav = x.spell;
+    const form = el("span", "d-alerta");
+    const sel = el("select");
+    sel.dataset.alertaCampo = "1";
+    for (const [v, t] of Object.entries(CAMPOS_ALERTA)) { const o = el("option", "", t); o.value = v; sel.append(o); }
+    const inp = el("input");
+    inp.type = "text"; inp.placeholder = "p. ej. 1o o 50"; inp.dataset.alertaUmbral = "1";
+    inp.setAttribute("aria-label", "Umbral de la alerta");
+    const crear = el("button", "btn btn-piedra btn-small", "Crear alerta");
+    crear.type = "button"; crear.dataset.alertaReceta = x.spell;
+    form.append(el("span", "small muted", "Avísame si"), sel, el("span", "small muted", "≥"), inp, crear);
+    cont.append(fav, cmp, form);
+    return cont;
+  }
+  $("fab-tbody").addEventListener("click", (ev) => {
+    const fav = ev.target.closest("[data-fav]");
+    if (fav) { ev.stopPropagation(); alternarFavorita(Number(fav.dataset.fav)); repintarDesglose(null); return; }
+    const cmp = ev.target.closest("tr.fab-desglose [data-comparar]");
+    if (cmp) { alternarComparar(Number(cmp.dataset.comparar)); return; }
+    const al = ev.target.closest("tr.fab-desglose [data-alerta-receta]");
+    if (al) {
+      const caja = al.closest(".d-alerta");
+      const campo = caja.querySelector("[data-alerta-campo]").value;
+      let umbral;
+      try { umbral = leerUmbral(campo, caja.querySelector("[data-alerta-umbral]").value); }
+      catch (e) { d.avisar(e.message, "bad"); return; }
+      if (umbral == null) { d.avisar("Pon un umbral", "bad"); return; }
+      nuevaAlerta({ tipo: "receta", spell: Number(al.dataset.alertaReceta), campo, umbral });
+    }
+  }, true);
 
   function pintar() {
     for (const th of trCab.children) {
@@ -738,7 +982,8 @@ export function crearVistaFabricacion(d) {
       ? `Precios del escaneo del ${d.fecha(datos.escaneo)} (${d.hace(datos.escaneo)})` + (datos.demo ? " · DATOS FICTICIOS" : "")
       : "Este mercado aún no tiene escaneos: no hay precios.";
     if (modo === "oportunidades") { pintarOportunidades(); return; }
-    const lista = ordenarFilas(filtrarFilas(filas, f, nombreEs), orden.clave, orden.dir);
+    pintarComparar();
+    const lista = ordenarFilas(filtradas(), orden.clave, orden.dir);
     const total = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
     pagina = Math.min(Math.max(1, pagina), total);
     const desde = (pagina - 1) * POR_PAGINA;
@@ -793,10 +1038,10 @@ export function crearVistaFabricacion(d) {
       const suyas = filas.filter((x) => x.id === id);
       abierta = suyas.length === 1 ? suyas[0].spell : null;
       // Que los filtros activos no escondan justo lo que se buscó.
-      const ocultas = suyas.length && !filtrarFilas(suyas, f, nombreEs).length;
+      const ocultas = suyas.length && (!filtrarFilas(suyas, f, nombreEs).length || (f.soloFavoritas && !suyas.some((x) => esFavorita(x.spell))));
       if (ocultas) {
         Object.assign(f, { profesiones: [], roiMin: null, netaMin: null, nivelMin: null, nivelMax: null, soloCompletas: false,
-                           soloRentables: false, soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false });
+                           soloRentables: false, soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false, soloFavoritas: false });
         for (const id2 of ["fab-roi", "fab-neta", "fab-nivel-min", "fab-nivel-max"]) $(id2).value = "";
         for (const k of casillas) $(`fab-${k}`).checked = false;
         guardar(); pintarProfesiones();

@@ -338,6 +338,7 @@
           <span id="fab-contador" class="muted small" aria-live="polite"></span>
           <button id="fab-csv" type="button" class="btn btn-piedra btn-small solo-tabla" title="Descarga las recetas filtradas, en el orden actual">Exportar CSV</button>
         </div>
+        <div id="fab-alertas-cumplidas" class="fab-alertas-cumplidas" role="status" hidden></div>
         <p class="fab-estado"><span id="fab-estado" class="muted small">Cargando…</span>
           <span id="fab-calculo" class="muted small"></span></p>
 
@@ -370,6 +371,7 @@
             <label class="solo-tabla"><input id="fab-soloConVenta" type="checkbox"> Producto con ofertas ahora</label>
             <label class="solo-tabla"><input id="fab-soloMaterialesEnVenta" type="checkbox"> Materiales con ofertas ahora</label>
             <label class="solo-tabla"><input id="fab-soloConVentas" type="checkbox"> Se vende (ventas/día &gt; 0)</label>
+            <label class="solo-tabla"><input id="fab-soloFavoritas" type="checkbox"> Solo favoritas ★</label>
             <label title="Si un material no tiene ofertas ahora, usar su valor de mercado (la fila lo marca). Desactivado: esa receta queda incompleta salvo que el material venga del NPC o se fabrique.">
               <input id="fab-valor-sin-ofertas" type="checkbox"> Valor de mercado si no hay ofertas</label>
             <label title="Para cada material, compara comprarlo con fabricarlo con materiales más básicos y usa lo más barato">
@@ -378,7 +380,24 @@
           </div>
         </form>
 
+        <details class="fab-alertas-cfg" id="fab-alertas">
+          <summary>Alertas de fabricación<span id="fab-alertas-n"></span></summary>
+          <p class="small muted">Se revisan cada vez que llegan precios nuevos con esta página abierta, y solo en este navegador.
+            Para una receta concreta, créala desde su desglose.</p>
+          <ul id="fab-alertas-lista" class="fab-alertas-lista"></ul>
+          <div class="fab-alerta-nueva">
+            <span class="small">Avísame de cualquier receta con</span>
+            <select id="fab-alerta-campo" aria-label="Qué vigilar"><option value="neta">Ganancia neta</option><option value="roi">ROI</option></select>
+            <span class="small">≥</span>
+            <input id="fab-alerta-umbral" type="text" placeholder="p. ej. 1o o 50" aria-label="Umbral">
+            <label class="small"><input id="fab-alerta-mias" type="checkbox" checked> solo de las profesiones elegidas</label>
+            <button id="fab-alerta-crear" type="button" class="btn btn-piedra btn-small">Crear alerta</button>
+          </div>
+        </details>
+
         <div id="fab-oport" class="fab-oport" hidden></div>
+
+        <div id="fab-comparar" class="fab-comparar solo-tabla" hidden></div>
 
         <div class="tabla-wrap solo-tabla">
           <table class="tabla tabla-mercado tabla-fab">
