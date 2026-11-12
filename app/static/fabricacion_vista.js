@@ -1,7 +1,7 @@
 // Vista «Fabricación» (etapa 2): tabla de rentabilidad de TODAS las recetas con el motor del navegador.
 // La parte sin DOM (cálculo, filtros, orden, CSV) está en fabricacion_tabla.js y se prueba en Node.
 
-import { calcularFilas, filasACsv, filtrarFilas, ordenarFilas } from "./fabricacion_tabla.js";
+import { NOMBRE_ORIGEN, calcularFilas, filasACsv, filtrarFilas, ordenarFilas } from "./fabricacion_tabla.js";
 import { REGLA_POR_DEFECTO } from "./fabricacion.js";
 import { parsearMoneda } from "./moneda.js";
 
@@ -38,6 +38,7 @@ export function crearVistaFabricacion(d) {
   const op = { valorSinOfertas: true, fabricarIntermedios: true, comision: 5, ...(guardado.opciones ?? {}) };
   let orden = guardado.orden ?? { clave: "neta", dir: "desc" };
   let datos = null, datosMercado = null, filas = [], pagina = 1, cargando = null;
+  let abierta = null;   // spell de la receta desplegada
 
   const guardar = () => d.local.escribir(CLAVE_LOCAL, {
     profesiones: f.profesiones, orden, opciones: op,
@@ -139,13 +140,31 @@ export function crearVistaFabricacion(d) {
   });
   $("fab-pag-ant").addEventListener("click", () => { pagina--; pintar(); $("vista-fabricacion").scrollIntoView({ block: "start" }); });
   $("fab-pag-sig").addEventListener("click", () => { pagina++; pintar(); $("vista-fabricacion").scrollIntoView({ block: "start" }); });
+  // Pulsar una receta despliega (o pliega) su desglose debajo; la ficha del objeto se abre desde ahí.
+  function alternar(tr) {
+    const spell = Number(tr.dataset.spell);
+    const siguiente = tr.nextElementSibling;
+    if (siguiente?.classList.contains("fab-desglose")) {
+      siguiente.remove(); abierta = null; tr.setAttribute("aria-expanded", "false"); return;
+    }
+    $("fab-tbody").querySelector("tr.fab-desglose")?.remove();
+    $("fab-tbody").querySelector("tr[aria-expanded='true']")?.setAttribute("aria-expanded", "false");
+    const x = filas.find((r) => r.spell === spell);
+    if (!x) return;
+    abierta = spell;
+    tr.setAttribute("aria-expanded", "true");
+    tr.after(filaDesglose(x));
+  }
   $("fab-tbody").addEventListener("click", (ev) => {
-    const tr = ev.target.closest("tr[data-id]");
-    if (tr) d.abrirObjeto(Number(tr.dataset.id));
+    const ver = ev.target.closest("[data-ver-objeto]");
+    if (ver) { d.abrirObjeto(Number(ver.dataset.verObjeto)); return; }
+    if (ev.target.closest("tr.fab-desglose")) return;
+    const tr = ev.target.closest("tr[data-spell]");
+    if (tr) alternar(tr);
   });
   $("fab-tbody").addEventListener("keydown", (ev) => {
-    const tr = ev.target.closest("tr[data-id]");
-    if (tr && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); d.abrirObjeto(Number(tr.dataset.id)); }
+    const tr = ev.target.closest("tr[data-spell]");
+    if (tr && ev.target === tr && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); alternar(tr); }
   });
 
   // ---------- datos y cálculo ----------
@@ -212,7 +231,10 @@ export function crearVistaFabricacion(d) {
   function fila(x) {
     const tr = el("tr");
     tr.dataset.id = x.id;
+    tr.dataset.spell = x.spell;
     tr.tabIndex = 0;
+    tr.setAttribute("aria-expanded", "false");
+    tr.title = "Pulsa para ver los ingredientes y el cálculo";
     if (!x.completo) tr.classList.add("incompleta");
     if (x.neta != null && x.neta < 0) tr.classList.add("perdida");
 
@@ -256,6 +278,117 @@ export function crearVistaFabricacion(d) {
     return tr;
   }
 
+  // ---------- desglose de una receta: ingredientes, precios usados y cálculo ----------
+  const nombreDe = (id, en) => d.nom(id, en);
+  const cantTexto = (n) => (Number.isInteger(n) ? n.toLocaleString("es") : n.toLocaleString("es", { maximumFractionDigits: 2 }));
+
+  function celdaObjeto(m, nivel = 0) {
+    const td = el("td", "d-obj");
+    td.style.paddingLeft = `${8 + nivel * 22}px`;
+    const caja = el("span", "objeto");
+    const nombre = nombreDe(m.id, m.nombre);
+    caja.append(d.iconoNodo(m.icono, nombre, m.calidad), el("span", "objeto-nombre" + (m.calidad ? ` q-${m.calidad}` : ""),
+      (nivel ? "↳ " : "") + nombre));
+    td.append(caja);
+    td.title = `#${m.id}` + (nombre !== m.nombre ? ` · ${m.nombre}` : "");
+    return td;
+  }
+  function celdaOrigen(m) {
+    const td = el("td", "d-origen");
+    if (m.origen == null) { td.append(el("span", "bad", "Sin precio")); return td; }
+    const etiqueta = el("span", `origen o-${m.origen}`, NOMBRE_ORIGEN[m.origen] ?? m.origen);
+    td.append(etiqueta);
+    return td;
+  }
+  function filaMaterial(m, nivel = 0) {
+    const tr = el("tr", nivel ? "d-hijo" : "");
+    const tdPrecio = el("td", "num"); tdPrecio.append(d.monedaNodo(m.precioUnitario));
+    const tdCoste = el("td", "num d-coste"); tdCoste.append(d.monedaNodo(m.costeTotal));
+    // Alternativas: comprar frente a fabricar (solo en los ingredientes directos).
+    const tdAlt = el("td", "d-alt small");
+    if (!nivel) {
+      const partes = [];
+      if (m.comprar != null) partes.push(`Comprar ${d.formatear(m.comprar)}`);
+      if (m.fabricar != null) partes.push(`Fabricar ${d.formatear(m.fabricar)}`);
+      tdAlt.textContent = partes.join(" · ") || "—";
+      if (m.ahorroFabricando > 0) tdAlt.append(el("span", "ok", ` (ahorras ${d.formatear(m.ahorroFabricando)})`));
+    }
+    const tdDisp = el("td", "num", nivel || m.disponible == null ? "—" : m.disponible.toLocaleString("es"));
+    tr.append(celdaObjeto(m, nivel), el("td", "num", cantTexto(m.cantidad)), tdPrecio, celdaOrigen(m), tdCoste, tdAlt, tdDisp);
+    return [tr, ...(m.hijos ?? []).flatMap((h) => filaMaterial(h, nivel + 1))];
+  }
+
+  function filaDesglose(x) {
+    const a = x.a;
+    const des = x.desglose();
+    const tr = el("tr", "fab-desglose");
+    const td = el("td");
+    td.colSpan = COLUMNAS.length;
+    const caja = el("div", "desglose");
+
+    // Cabecera: qué se fabrica.
+    const rend = a.rendimiento.min === a.rendimiento.max ? `${a.rendimiento.min}` : `${a.rendimiento.min}–${a.rendimiento.max} (media ${cantTexto(a.rendimiento.medio)})`;
+    const cab = el("div", "d-cab");
+    cab.append(el("strong", "", `Ingredientes de 1 fabricación`),
+      el("span", "muted small", ` · produce ${rend} × ${nombreDe(x.id, x.nombre)} · ${d.nombreProf(x.profesion)}${x.nivel != null ? ` ${x.nivel}` : ""} · receta ${x.spell}`));
+    const ver = el("button", "btn btn-piedra btn-small", "Ver ficha del objeto");
+    ver.type = "button"; ver.dataset.verObjeto = x.id;
+    cab.append(ver);
+
+    // Tabla de ingredientes.
+    const tabla = el("table", "tabla d-tabla");
+    const th = el("thead"), trh = el("tr");
+    for (const [t, c] of [["Ingrediente", ""], ["Cantidad", "num"], ["Precio unidad", "num"], ["Precio de", ""], ["Coste", "num"],
+                          ["Comprar o fabricar (por unidad)", ""], ["Disponible", "num"]]) {
+      const h = el("th", c, t); h.scope = "col"; trh.append(h);
+    }
+    th.append(trh);
+    const tb = el("tbody");
+    tb.append(...des.materiales.flatMap((m) => filaMaterial(m)));
+    const tf = el("tfoot"), trf = el("tr");
+    const tdTot = el("td", "num d-coste"); tdTot.append(d.monedaNodo(a.costeFabricacion));
+    const etq = el("td", "", a.completo ? "Coste de fabricación" : "Coste incompleto: falta algún precio");
+    etq.colSpan = 4;
+    trf.append(etq, tdTot, el("td"), el("td"));
+    tf.append(trf);
+    tabla.append(th, tb, tf);
+    const envoltura = el("div", "tabla-wrap");
+    envoltura.append(tabla);
+
+    // Resultado paso a paso.
+    const res = el("dl", "d-res");
+    const linea = (t, v, { signo: s = false, nota = "" } = {}) => {
+      const dt = el("dt", "", t), dd = el("dd");
+      if (typeof v === "string") dd.textContent = v; else dd.append(d.monedaNodo(v));
+      if (s && typeof v === "number") dd.classList.add(v > 0 ? "ok" : v < 0 ? "bad" : "muted");
+      if (nota) dd.append(el("span", "muted small", ` ${nota}`));
+      res.append(dt, dd);
+    };
+    const notaVenta = x.topeAplicado ? "(recortado al tope del valor de mercado)" : x.ventaSinOfertas ? "(sin ofertas: valor de mercado)" : "(compra mínima)";
+    linea("Precio de venta por unidad", a.precioVenta, { nota: notaVenta });
+    linea("Ingreso bruto", a.ingresoBruto, { nota: a.precioVenta == null ? "" : `= ${d.formatear(a.precioVenta)} × ${cantTexto(a.unidadesProducidas)}` });
+    linea(`Comisión de subasta (${op.comision} %)`, a.comision == null ? null : -a.comision);
+    linea("Coste de fabricación", a.costeFabricacion == null ? null : -a.costeFabricacion);
+    linea("Ganancia bruta", a.gananciaBruta, { signo: true, nota: "(ingreso − coste)" });
+    linea("Ganancia neta", a.gananciaNeta, { signo: true, nota: "(ingreso − comisión − coste)" });
+    linea("ROI", pctTexto(a.roi));
+    linea("Margen neto", pctTexto(a.margenNeto));
+    if (a.rendimiento.min !== a.rendimiento.max) linea("Ganancia neta si sale el mínimo", a.gananciaNetaMinima, { signo: true });
+    linea("Depósito al publicar", a.deposito, { nota: "(se recupera al vender; no se resta)" });
+    linea("Precio mínimo para no perder", a.precioEquilibrio, { nota: "por unidad" });
+    const mf = a.maxFabricable;
+    linea("Máximo fabricable con el stock", mf.ilimitado ? "Sin límite (materiales del NPC o fabricados)"
+      : mf.veces == null ? "Desconocido (la fuente no publica cantidades de algún material)"
+      : `${mf.veces.toLocaleString("es")} veces` + (mf.limitante ? ` (limita ${nombreDe(mf.limitante, datos.objetos[mf.limitante]?.n ?? `#${mf.limitante}`)})` : ""));
+
+    const avisos = el("ul", "d-avisos small muted");
+    for (const t of a.avisos) avisos.append(el("li", "", t));
+    caja.append(cab, envoltura, res, avisos);
+    td.append(caja);
+    tr.append(td);
+    return tr;
+  }
+
   function pintar() {
     for (const th of trCab.children) {
       const c = th.querySelector("[data-orden]").dataset.orden;
@@ -271,7 +404,13 @@ export function crearVistaFabricacion(d) {
     const total = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
     pagina = Math.min(Math.max(1, pagina), total);
     const desde = (pagina - 1) * POR_PAGINA;
-    $("fab-tbody").replaceChildren(...lista.slice(desde, desde + POR_PAGINA).map(fila));
+    const visibles = lista.slice(desde, desde + POR_PAGINA);
+    $("fab-tbody").replaceChildren(...visibles.flatMap((x) => {
+      const tr = fila(x);
+      if (x.spell !== abierta) return [tr];
+      tr.setAttribute("aria-expanded", "true");
+      return [tr, filaDesglose(x)];   // el desglose abierto sigue abierto al reordenar o recalcular
+    }));
     const rentables = lista.filter((x) => x.neta > 0).length;
     $("fab-contador").textContent = `${lista.length.toLocaleString("es")} de ${filas.length.toLocaleString("es")} recetas · ${rentables.toLocaleString("es")} con ganancia`;
     $("fab-vacio").hidden = lista.length > 0;

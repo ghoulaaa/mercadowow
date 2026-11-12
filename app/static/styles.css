@@ -948,3 +948,36 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .tabla.tabla-fab { table-layout: auto; min-width: 1020px; }
 @media (max-width: 900px) { .tabla.tabla-fab { min-width: 760px; } }
 @media (max-width: 560px) { .tabla.tabla-fab { min-width: 0; } }
+/* Desglose de una receta */
+.tabla-fab tbody tr[data-spell] { cursor: pointer; }
+.tabla-fab tbody tr[aria-expanded="true"] td { background: rgba(214, 175, 88, .10); }
+.tabla-fab tbody tr[aria-expanded="true"] td.c-fobj { box-shadow: inset 3px 0 0 var(--gold); }
+.tabla-fab tr.fab-desglose > td { padding: 0; background: var(--bg); height: auto; }
+.tabla-fab tr.fab-desglose:hover > td { background: var(--bg); }
+.desglose { padding: var(--esp-3); border-left: 3px solid var(--gold); display: grid; gap: var(--esp-3); }
+.d-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.d-cab .btn { margin-left: auto; }
+.tabla.d-tabla { width: 100%; table-layout: auto; min-width: 640px; }
+.tabla.d-tabla td { height: auto; padding-top: 6px; padding-bottom: 6px; }
+.tabla.d-tabla .icono { flex-basis: 26px; width: 26px; height: 26px; }
+.tabla.d-tabla tr.d-hijo td { color: var(--muted); font-size: var(--fs-sec); border-bottom-style: dashed; }
+.tabla.d-tabla tfoot td { font-weight: 700; border-top: 2px solid var(--border-ctl); border-bottom: 0; }
+.tabla.d-tabla .d-coste { font-weight: 600; }
+.origen { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: var(--fs-min); border: 1px solid var(--border-ctl); white-space: nowrap; }
+.origen.o-subasta { color: var(--text); }
+.origen.o-subasta_sin_ofertas { color: var(--watch); border-color: var(--watch); }
+.origen.o-npc, .origen.o-npc_tuyo { color: var(--hold); border-color: var(--hold); }
+.origen.o-fabricar { color: var(--gold); border-color: var(--gold); }
+.origen.o-manual { color: var(--copper); border-color: var(--copper); }
+.d-res { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; max-width: 640px; }
+.d-res dt { color: var(--muted); }
+.d-res dd { margin: 0; font-variant-numeric: tabular-nums; }
+.d-avisos { margin: 0; padding-left: 18px; }
+@media (max-width: 560px) {
+  .desglose { padding: var(--esp-2); }
+  .d-res { grid-template-columns: 1fr; gap: 0 0; }
+  .d-res dd { margin-bottom: 6px; }
+}
+/* La tabla del desglose va dentro de .tabla-mercado: no hereda sus columnas ocultas ni su cabecera fija. */
+.tabla-fab .tabla.d-tabla th, .tabla-fab .tabla.d-tabla td { display: table-cell; }
+.tabla-fab .tabla.d-tabla thead th { position: static; }

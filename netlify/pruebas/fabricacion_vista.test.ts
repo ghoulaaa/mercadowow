@@ -63,6 +63,24 @@ describe("tabla de fabricación (sin DOM)", () => {
     assert.equal(sin.completo, false);
     assert.equal(sin.neta, null);
   });
+  test("desglose: cada ingrediente con su precio, origen y coste; los fabricados con sus propios ingredientes", () => {
+    const g = por(3).desglose();
+    assert.equal(g.materiales.length, 1);
+    const barra = g.materiales[0];
+    assert.deepEqual([barra.nombre, barra.cantidad, barra.precioUnitario, barra.costeTotal, barra.origen], ["Iron Bar", 1, 440, 440, "fabricar"]);
+    assert.deepEqual([barra.comprar, barra.fabricar, barra.ahorroFabricando, barra.recetaIntermedia], [488, 440, 48, 2]);
+    assert.equal(barra.hijos.length, 1);
+    assert.deepEqual([barra.hijos[0].nombre, barra.hijos[0].cantidad, barra.hijos[0].precioUnitario, barra.hijos[0].origen],
+                     ["Iron Ore", 1, 440, "subasta"]);
+    // La suma del desglose es exactamente el coste de la fila.
+    assert.equal(g.materiales.reduce((s: number, m: any) => s + m.costeTotal, 0), por(3).coste);
+
+    const p = por(4).desglose();
+    assert.deepEqual(p.materiales.map((m: any) => [m.nombre, m.origen, m.precioUnitario]),
+                     [["Purple Lotus", "subasta_sin_ofertas", 900], ["Empty Vial", "npc_tuyo", 4]]);
+    const venda = por(1).desglose().materiales[0];
+    assert.deepEqual([venda.cantidad, venda.precioUnitario, venda.costeTotal, venda.disponible, venda.hijos], [2, 200, 400, 500, []]);
+  });
   test("prepararDatos convierte la forma corta de la API", () => {
     const { recetas, precios } = prepararDatos(DATOS);
     assert.deepEqual(recetas[3].materiales, [{ id: 8831, cantidad: 1 }, { id: 3371, cantidad: 1 }]);

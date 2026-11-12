@@ -40,6 +40,7 @@ export function prepararDatos(datos, opciones = {}) {
       subasta: s ?? (op.valorSinOfertas ? v : null),
       sinOfertas: s == null,
       npc: entero(o.npc),
+      npcTuyo: !!o.npc_tuyo,
       venta,
       topeAplicado,
       disponible: Number.isInteger(o.c) ? o.c : null,
@@ -90,8 +91,56 @@ export function calcularFilas(datos, opciones = {}) {
       completo: a.completo,
       materialesSinOfertas: sinOfertas,
       a,
+      /** Ingredientes con el precio usado y de dónde sale (se calcula al abrir la fila). */
+      desglose: () => desglosar(a, resolutor, precios, objetos),
     };
   });
+}
+
+export const NOMBRE_ORIGEN = Object.freeze({
+  subasta: "Subasta (compra mínima)",
+  subasta_sin_ofertas: "Valor de mercado (sin ofertas ahora)",
+  npc: "Compra al NPC",
+  npc_tuyo: "Compra al NPC (precio tuyo)",
+  fabricar: "Fabricado",
+  manual: "Precio manual",
+});
+
+/** Clave de NOMBRE_ORIGEN para un material o nodo. */
+function claveOrigen(origen, p) {
+  if (origen === "subasta" && p?.sinOfertas) return "subasta_sin_ofertas";
+  if (origen === "npc" && p?.npcTuyo) return "npc_tuyo";
+  return origen ?? null;
+}
+
+/**
+ * Desglose de una receta ya analizada: cada ingrediente con cantidad, precio unitario usado, origen,
+ * coste, alternativas (comprar / fabricar) y, si se fabrica, sus propios ingredientes (árbol).
+ * Los costes del árbol son los mismos que entran en el cálculo: nada se recalcula distinto.
+ */
+export function desglosar(a, resolutor, precios, objetos = {}) {
+  const info = (id) => ({ nombre: objetos[id]?.n ?? `#${id}`, icono: objetos[id]?.i ?? null, calidad: objetos[id]?.q ?? null });
+  const nodo = (n) => ({
+    id: n.id, ...info(n.id), cantidad: n.cantidad, precioUnitario: n.costeUnidad, costeTotal: n.costeTotal,
+    origen: claveOrigen(n.origen, precios.get(n.id)), receta: n.receta ?? null, tandas: n.tandas ?? null,
+    hijos: (n.hijos ?? []).map(nodo),
+  });
+  return {
+    materiales: a.materiales.map((m) => ({
+      id: m.id, ...info(m.id),
+      cantidad: m.cantidad,
+      precioUnitario: m.precioUnitario,
+      costeTotal: m.costeTotal,
+      origen: claveOrigen(m.origen, precios.get(m.id)),
+      comprar: m.comprar,
+      fabricar: m.fabricar,
+      ahorroFabricando: m.ahorroFabricando,
+      disponible: m.disponible,
+      // Si se fabrica, de qué está hecho (cantidades para ESTA receta).
+      hijos: m.origen === "fabricar" ? nodo(resolutor.arbol(m.id, m.cantidad)).hijos : [],
+      recetaIntermedia: m.origen === "fabricar" ? resolutor.coste(m.id).receta?.spell ?? null : null,
+    })),
+  };
 }
 
 /**
