@@ -42,6 +42,7 @@
       <nav class="lat-nav" aria-label="Sección">
         <a href="#/" id="nav-mercado" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
         <a href="#/fabricacion" id="nav-fabricacion"><svg aria-hidden="true"><use href="#i-yunque" /></svg>Fabricación</a>
+        <a href="#/oportunidades" id="nav-oportunidades"><svg aria-hidden="true"><use href="#i-estrella" /></svg>Mejores oportunidades</a>
       </nav>
 
       <div class="lat-grupo" id="grupo-mercado">
@@ -330,8 +331,12 @@
       <section id="vista-fabricacion" class="resultados fabricacion" aria-labelledby="titulo-fabricacion" hidden>
         <div class="res-cab">
           <h1 id="titulo-fabricacion">Fabricación</h1>
+          <div class="vistas" role="group" aria-label="Qué ver">
+            <a class="btn-vista" href="#/fabricacion" id="modo-tabla">Todas las recetas</a>
+            <a class="btn-vista" href="#/oportunidades" id="modo-oport">Mejores oportunidades</a>
+          </div>
           <span id="fab-contador" class="muted small" aria-live="polite"></span>
-          <button id="fab-csv" type="button" class="btn btn-piedra btn-small" title="Descarga las recetas filtradas, en el orden actual">Exportar CSV</button>
+          <button id="fab-csv" type="button" class="btn btn-piedra btn-small solo-tabla" title="Descarga las recetas filtradas, en el orden actual">Exportar CSV</button>
         </div>
         <p class="fab-estado"><span id="fab-estado" class="muted small">Cargando…</span>
           <span id="fab-calculo" class="muted small"></span></p>
@@ -339,15 +344,15 @@
         <form id="fab-filtros" class="fab-filtros">
           <div id="fab-profesiones" class="fab-profesiones" role="group" aria-label="Profesiones (las elegidas se recuerdan)"></div>
           <div class="fab-campos">
-            <label class="fab-buscar"><span class="sr-only">Buscar</span>
+            <label class="fab-buscar solo-tabla"><span class="sr-only">Buscar</span>
               <input id="fab-texto" type="search" placeholder="Objeto, receta o ID" autocomplete="off"></label>
-            <label>ROI mín. %<input id="fab-roi" type="number" step="1" inputmode="numeric"></label>
-            <label title="Ganancia neta mínima por fabricación: 1o 20p, 50p, 300 (cobre)…">Ganancia mín.<input id="fab-neta" type="text" placeholder="p. ej. 50p"></label>
-            <label>Nivel<input id="fab-nivel-min" type="number" min="0" max="450" placeholder="desde"></label>
-            <label><span class="sr-only">Nivel hasta</span><input id="fab-nivel-max" type="number" min="0" max="450" placeholder="hasta"></label>
+            <label class="solo-tabla">ROI mín. %<input id="fab-roi" type="number" step="1" inputmode="numeric"></label>
+            <label class="solo-tabla" title="Ganancia neta mínima por fabricación: 1o 20p, 50p, 300 (cobre)…">Ganancia mín.<input id="fab-neta" type="text" placeholder="p. ej. 50p"></label>
+            <label class="solo-tabla">Nivel<input id="fab-nivel-min" type="number" min="0" max="450" placeholder="desde"></label>
+            <label class="solo-tabla"><span class="sr-only">Nivel hasta</span><input id="fab-nivel-max" type="number" min="0" max="450" placeholder="hasta"></label>
             <label>Casa<select id="fab-casa" title="Comisión por venta (sin verificar en Forever)">
               <option value="5">Facción (5 %)</option><option value="15">Neutral (15 %)</option></select></label>
-            <label>Orden<select id="fab-orden">
+            <label class="solo-tabla">Orden<select id="fab-orden">
               <option value="neta:desc">Ganancia neta ↓</option>
               <option value="roi:desc">ROI ↓</option>
               <option value="margen:desc">Margen ↓</option>
@@ -360,27 +365,29 @@
             </select></label>
           </div>
           <div class="fab-casillas">
-            <label><input id="fab-soloCompletas" type="checkbox"> Con todos los precios</label>
-            <label><input id="fab-soloRentables" type="checkbox"> Solo con ganancia</label>
-            <label><input id="fab-soloConVenta" type="checkbox"> Producto con ofertas ahora</label>
-            <label><input id="fab-soloMaterialesEnVenta" type="checkbox"> Materiales con ofertas ahora</label>
-            <label><input id="fab-soloConVentas" type="checkbox"> Se vende (ventas/día &gt; 0)</label>
+            <label class="solo-tabla"><input id="fab-soloCompletas" type="checkbox"> Con todos los precios</label>
+            <label class="solo-tabla"><input id="fab-soloRentables" type="checkbox"> Solo con ganancia</label>
+            <label class="solo-tabla"><input id="fab-soloConVenta" type="checkbox"> Producto con ofertas ahora</label>
+            <label class="solo-tabla"><input id="fab-soloMaterialesEnVenta" type="checkbox"> Materiales con ofertas ahora</label>
+            <label class="solo-tabla"><input id="fab-soloConVentas" type="checkbox"> Se vende (ventas/día &gt; 0)</label>
             <label title="Si un material no tiene ofertas ahora, usar su valor de mercado (la fila lo marca). Desactivado: esa receta queda incompleta salvo que el material venga del NPC o se fabrique.">
               <input id="fab-valor-sin-ofertas" type="checkbox"> Valor de mercado si no hay ofertas</label>
             <label title="Para cada material, compara comprarlo con fabricarlo con materiales más básicos y usa lo más barato">
               <input id="fab-intermedios" type="checkbox"> Fabricar materiales intermedios si sale más barato</label>
-            <button id="fab-quitar" type="button" class="btn btn-piedra btn-small">Quitar filtros</button>
+            <button id="fab-quitar" type="button" class="btn btn-piedra btn-small solo-tabla">Quitar filtros</button>
           </div>
         </form>
 
-        <div class="tabla-wrap">
+        <div id="fab-oport" class="fab-oport" hidden></div>
+
+        <div class="tabla-wrap solo-tabla">
           <table class="tabla tabla-mercado tabla-fab">
             <thead><tr id="fab-cab"></tr></thead>
             <tbody id="fab-tbody"></tbody>
           </table>
         </div>
-        <div id="fab-vacio" class="vacio" hidden><p class="muted">Ninguna receta coincide con los filtros.</p></div>
-        <nav class="paginador" id="fab-paginador" aria-label="Páginas de recetas" hidden>
+        <div id="fab-vacio" class="vacio solo-tabla" hidden><p class="muted">Ninguna receta coincide con los filtros.</p></div>
+        <nav class="paginador solo-tabla" id="fab-paginador" aria-label="Páginas de recetas" hidden>
           <button id="fab-pag-ant" type="button" class="btn btn-piedra btn-small">‹ Anterior</button>
           <span id="fab-pag-txt" class="muted small" aria-live="polite"></span>
           <button id="fab-pag-sig" type="button" class="btn btn-piedra btn-small">Siguiente ›</button>

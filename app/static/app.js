@@ -122,18 +122,19 @@ const profAbiertas = new Set();   // profesiones desplegadas en la barra lateral
 const abiertas = new Set();   // categorías desplegadas en el árbol
 
 // ---------- vistas ----------
-const enFab = () => leerRuta(location.hash).vista === "fabricacion";
+/** «Fabricación» y «Mejores oportunidades» son la misma sección con dos modos. */
+const enFab = () => ["fabricacion", "oportunidades"].includes(leerRuta(location.hash).vista);
 function mostrar(vista) {
   // «Fabricación» es otra sección de la página principal: comparte barra lateral, estado y detalle.
   const fab = vista === "mercado" && enFab();
+  const oport = fab && leerRuta(location.hash).vista === "oportunidades";
   $("vista-login").hidden = vista !== "login";
   $("vista-mercado").hidden = vista !== "mercado" || fab;
   $("vista-fabricacion").hidden = !fab;
   document.body.classList.toggle("modo-fab", fab);
-  $("nav-mercado").toggleAttribute("aria-current", !fab);
-  if (!fab) $("nav-mercado").setAttribute("aria-current", "page");
-  $("nav-fabricacion").toggleAttribute("aria-current", fab);
-  if (fab) $("nav-fabricacion").setAttribute("aria-current", "page");
+  for (const [id, activo] of [["nav-mercado", !fab], ["nav-fabricacion", fab && !oport], ["nav-oportunidades", oport]]) {
+    if (activo) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+  }
   for (const id of ["grupo-mercado", "barra"]) $(id).hidden = vista === "login";
 }
 
@@ -2329,7 +2330,7 @@ function aplicarRuta() {
   if (!ultimo) return;
   const r = leerRuta(location.hash);
   if ($("vista-login").hidden) mostrar("mercado");
-  if (r.vista === "fabricacion") { vistaFab.mostrar(); return; }
+  if (r.vista === "fabricacion" || r.vista === "oportunidades") { vistaFab.mostrar(r.vista === "oportunidades" ? "oportunidades" : "tabla"); return; }
   if (r.vista === "objeto") { if (r.id !== objetoActual || $("panel-ficha").hidden) abrirObjeto(r.id); }
   else if (!$("panel-ficha").hidden) {
     const id = objetoActual;

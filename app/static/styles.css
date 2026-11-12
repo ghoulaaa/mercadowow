@@ -994,3 +994,35 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .d-falta { font-weight: 700; }
 .desglose input.d-precio { width: 9.5em; }
 .desglose .d-veces input { width: 6.5em; }
+
+/* ---------- Mejores oportunidades (etapa 4) ---------- */
+#vista-fabricacion.modo-oport .solo-tabla { display: none !important; }
+.res-cab .vistas a.btn-vista { text-decoration: none; }
+.res-cab .vistas a.btn-vista[aria-current="page"] { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+.fab-oport { display: grid; gap: var(--esp-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); align-items: start; }
+.op-intro, .op-como { grid-column: 1 / -1; margin: 0; }
+.op-lista { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--esp-2) var(--esp-3); }
+.op-lista h2 { font-size: var(--fs-h3); margin: 0 0 2px; color: var(--gold); }
+.op-lista > p { margin: 0 0 var(--esp-2); }
+.op-perdidas h2 { color: var(--danger); }
+.op-descartadas h2 { color: var(--watch); }
+.op-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; counter-reset: op; }
+.op-boton {
+  display: grid; gap: 3px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
+}
+.op-boton:hover { border-color: var(--border-ctl); }
+.op-boton:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.op-cab { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.op-cab .icono { flex-basis: 26px; width: 26px; height: 26px; }
+.op-nombre { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.op-prof { margin-left: auto; white-space: nowrap; }
+.op-cifras { display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; }
+.op-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip-ind { font-size: var(--fs-min); padding: 0 7px; border-radius: 999px; border: 1px solid var(--border-ctl); white-space: nowrap; }
+.chip-ind.ind-demanda.n-alta, .chip-ind.ind-competencia.n-baja, .chip-ind.ind-competencia.n-ninguna, .chip-ind.ind-riesgo.n-bajo { color: var(--sell); border-color: var(--sell); }
+.chip-ind.ind-demanda.n-media, .chip-ind.ind-competencia.n-media, .chip-ind.ind-riesgo.n-medio { color: var(--watch); border-color: var(--watch); }
+.chip-ind.ind-demanda.n-baja, .chip-ind.ind-demanda.n-nula, .chip-ind.ind-competencia.n-alta, .chip-ind.ind-riesgo.n-alto { color: var(--danger); border-color: var(--danger); }
+.op-motivo { white-space: normal; }
+.op-como summary { cursor: pointer; color: var(--gold); }
+.op-como p { margin: 6px 0 0; color: var(--muted); }

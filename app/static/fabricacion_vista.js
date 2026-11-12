@@ -4,6 +4,7 @@
 import { NOMBRE_ORIGEN, calcularFilas, filasACsv, filtrarFilas, ordenarFilas, simularReceta } from "./fabricacion_tabla.js";
 import { REGLA_POR_DEFECTO } from "./fabricacion.js";
 import { parsearMoneda } from "./moneda.js";
+import { NIVEL_TEXTO, UMBRAL, oportunidades } from "./oportunidades.js";
 
 const POR_PAGINA = 100;
 const CLAVE_LOCAL = "mw_fabricacion1";
@@ -39,6 +40,7 @@ export function crearVistaFabricacion(d) {
   let orden = guardado.orden ?? { clave: "neta", dir: "desc" };
   let datos = null, datosMercado = null, filas = [], pagina = 1, cargando = null;
   let abierta = null;   // spell de la receta desplegada
+  let modo = "tabla";   // «tabla» (todas las recetas) u «oportunidades»
   const nombreEs = (id) => d.nom(id, null);   // para buscar también por el nombre en español
 
   const guardar = () => d.local.escribir(CLAVE_LOCAL, {
@@ -495,6 +497,109 @@ export function crearVistaFabricacion(d) {
     repintarDesglose(b.dataset.maximo ? "[data-fabricaciones]" : null);
   });
 
+  // ---------- «Mejores oportunidades» (etapa 4) ----------
+  const LISTAS = [
+    ["equilibrio", "Mejor equilibrio", "Ganancia por unidad × ventas al día (hasta 10), a la mitad si hay algún riesgo. Lo más sensato para empezar."],
+    ["ganancia", "Mayor ganancia neta", "Más oro por fabricación entre las que se venden y tienen un precio creíble."],
+    ["roi", "Mayor rentabilidad (ROI)", "Más oro por cada oro invertido, con al menos 1 plata de ganancia por unidad."],
+    ["demanda", "Buena demanda y poca competencia", "Se venden 1 o más al día y lo publicado se vende en 1 día o menos."],
+    ["materialesBaratos", "Materiales baratos ahora", `Sus ingredientes cuestan al menos un ${UMBRAL.descuentoMateriales} % menos que con sus precios históricos.`],
+    ["perdidas", "No conviene fabricar", "Se venden, pero ahora mismo fabricarlas cuesta más de lo que se saca."],
+    ["descartadas", "Descartadas por riesgo", "Ganancia teórica alta, pero no se venden o su precio es sospechoso. Revísalas a mano antes de fabricar."],
+  ];
+
+  function chip(tipo, nivel, motivo) {
+    const c = el("span", `chip-ind ind-${tipo} n-${nivel}`, `${{ demanda: "Demanda", competencia: "Competencia", riesgo: "Riesgo" }[tipo]}: ${NIVEL_TEXTO[nivel] ?? nivel}`);
+    if (motivo) c.title = motivo;
+    return c;
+  }
+
+  function itemOportunidad(x, clave) {
+    const li = el("li", "op-item");
+    const b = el("button", "op-boton");
+    b.type = "button"; b.dataset.abrirReceta = x.spell;
+    b.title = "Abrir la receta con su desglose";
+    const nombre = d.nom(x.id, x.nombre);
+    const cab = el("span", "op-cab");
+    cab.append(d.iconoNodo(x.icono, nombre, x.calidad),
+      el("span", "op-nombre" + (x.calidad ? ` q-${x.calidad}` : ""), nombre),
+      el("span", "op-prof muted small", d.nombreProf(x.profesion)));
+    const cifras = el("span", "op-cifras small");
+    const neta = el("span", x.neta >= 0 ? "ok" : "bad"); neta.append(d.monedaNodo(x.neta));
+    cifras.append(el("span", "muted", "Neta "), neta, el("span", "muted", ` · ROI ${pctTexto(x.roi)}`));
+    const i = x.i;
+    if (i.ventas != null) cifras.append(el("span", "muted", ` · ${i.ventas.toLocaleString("es", { maximumFractionDigits: 1 })}/día${i.regional ? " (región)" : ""}`));
+    if (clave === "equilibrio" && i.techoDia != null) {
+      const t = el("span", "muted", " · techo "); t.append(d.monedaNodo(Math.round(i.techoDia)), document.createTextNode("/día"));
+      t.title = "Si vendieras tú todas las ventas estimadas del día";
+      cifras.append(t);
+    }
+    if (clave === "materialesBaratos" && i.descuentoMateriales != null) cifras.append(el("span", "ok", ` · materiales −${Math.round(i.descuentoMateriales)} %`));
+    const chips = el("span", "op-chips");
+    chips.append(chip("demanda", i.demanda, i.ventas == null ? "Sin datos de ventas" : `${i.ventas} ventas/día${i.regional ? " en toda la región US" : ""}`),
+      chip("competencia", i.competencia, i.dias != null ? `${x.disponible} a la venta ≈ ${i.dias.toLocaleString("es", { maximumFractionDigits: 1 })} días de ventas` : ""),
+      chip("riesgo", i.riesgo, i.motivosRiesgo.join("\n") || "Sin riesgos detectados"));
+    b.append(cab, cifras, chips);
+    if (clave === "descartadas" || i.motivosRiesgo.length) {
+      b.append(el("span", "op-motivo small muted", (i.motivosSospecha.length ? i.motivosSospecha : i.motivosRiesgo).join(" · ")));
+    }
+    li.append(b);
+    return li;
+  }
+
+  function pintarOportunidades() {
+    const o = oportunidades(filas, datos.objetos, { profesiones: f.profesiones, limite: 10 });
+    const r = o.resumen;
+    $("fab-contador").textContent = `${r.recomendables.toLocaleString("es")} recomendables de ${r.conGanancia.toLocaleString("es")} con ganancia teórica`;
+    const cont = $("fab-oport");
+    const intro = el("p", "op-intro small muted",
+      `De ${r.recetas.toLocaleString("es")} recetas con todos los precios${f.profesiones.length ? " (profesiones elegidas)" : ""}, `
+      + `${r.conGanancia.toLocaleString("es")} ganan en teoría. Se descartan ${r.sinDemanda.toLocaleString("es")} que no se venden `
+      + `y ${r.sospechosas.toLocaleString("es")} con precio sospechoso. Pasa el ratón por los indicadores para ver el motivo; pulsa una receta para ver su desglose.`);
+    const nodos = [intro];
+    for (const [clave, titulo, texto] of LISTAS) {
+      const lista = o[clave];
+      const sec = el("section", `op-lista op-${clave}`);
+      sec.append(el("h2", "", titulo), el("p", "small muted", texto));
+      if (!lista.length) sec.append(el("p", "small muted op-vacia", "Ninguna con los datos actuales."));
+      else {
+        const ol = el("ol", "op-items");
+        ol.append(...lista.map((x) => itemOportunidad(x, clave)));
+        sec.append(ol);
+      }
+      nodos.push(sec);
+    }
+    const como = el("details", "op-como small");
+    como.append(el("summary", "", "Cómo se calcula"),
+      el("p", "", `Demanda: alta con ${UMBRAL.demandaAlta} o más ventas al día, media con ${UMBRAL.demandaMedia} o más, baja por debajo. Son estimaciones: AHledger (este reino) deduce las ventas de anuncios que desaparecen; TSM (toda la región US) usa ventas que suben los jugadores.`),
+      el("p", "", `Competencia: unidades a la venta ÷ ventas al día. Baja si se vende en ${UMBRAL.competenciaBaja} día o menos, media hasta ${UMBRAL.competenciaMedia}, alta por encima.`),
+      el("p", "", `Precio sospechoso: más de ${UMBRAL.sospechaHistorico} veces su histórico; sin histórico, más de ${UMBRAL.sospechaNpc} veces lo que paga el NPC (y más de 1 oro); o un anuncio por encima del tope del valor de mercado.`),
+      el("p", "", "Riesgo alto: sin ventas o precio sospechoso (no se recomienda). Medio: se vende poco, mucha competencia, sin ofertas ahora, el rendimiento mínimo pierde o la receta tiene tiempo de espera (transmutaciones y Mooncloth en Classic; sin verificar en Forever)."));
+    nodos.push(como);
+    cont.replaceChildren(...nodos);
+  }
+  $("fab-oport").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-abrir-receta]");
+    if (b) vistaAbrirReceta(Number(b.dataset.abrirReceta));
+  });
+
+  /** Abre una receta concreta en la tabla, con su desglose (desde «Mejores oportunidades»). */
+  function vistaAbrirReceta(spell) {
+    const x = filas.find((r) => r.spell === spell);
+    if (!x) return;
+    f.texto = String(spell); $("fab-texto").value = String(spell); pagina = 1; abierta = spell;
+    // Que los filtros de la tabla no escondan justo la receta elegida.
+    if (!filtrarFilas([x], f, nombreEs).length) {
+      Object.assign(f, { roiMin: null, netaMin: null, nivelMin: null, nivelMax: null, soloCompletas: false, soloRentables: false,
+                         soloConVenta: false, soloMaterialesEnVenta: false, soloConVentas: false });
+      for (const id of ["fab-roi", "fab-neta", "fab-nivel-min", "fab-nivel-max"]) $(id).value = "";
+      for (const k of casillas) $(`fab-${k}`).checked = false;
+      guardar();
+    }
+    if (location.hash !== "#/fabricacion") location.hash = "#/fabricacion"; else pintar();
+    setTimeout(() => $("fab-tbody").querySelector(`tr[data-spell="${spell}"]`)?.scrollIntoView({ block: "start" }), 50);
+  }
+
   function pintar() {
     for (const th of trCab.children) {
       const c = th.querySelector("[data-orden]").dataset.orden;
@@ -506,6 +611,7 @@ export function crearVistaFabricacion(d) {
     est.textContent = datos.escaneo
       ? `Precios del escaneo del ${d.fecha(datos.escaneo)} (${d.hace(datos.escaneo)})` + (datos.demo ? " · DATOS FICTICIOS" : "")
       : "Este mercado aún no tiene escaneos: no hay precios.";
+    if (modo === "oportunidades") { pintarOportunidades(); return; }
     const lista = ordenarFilas(filtrarFilas(filas, f, nombreEs), orden.clave, orden.dir);
     const total = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
     pagina = Math.min(Math.max(1, pagina), total);
@@ -528,13 +634,26 @@ export function crearVistaFabricacion(d) {
 
   return {
     /** Muestra la vista y carga los datos del mercado actual si hace falta. */
-    mostrar: () => cargar(),
+    mostrar(m = "tabla") {
+      modo = m;
+      const oport = m === "oportunidades";
+      $("vista-fabricacion").classList.toggle("modo-oport", oport);
+      $("fab-oport").hidden = !oport;
+      $("titulo-fabricacion").textContent = oport ? "Mejores oportunidades" : "Fabricación";
+      for (const [id, activo] of [["modo-tabla", !oport], ["modo-oport", oport]]) {
+        if (activo) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+      }
+      if (datos && datosMercado === d.mercado()) pintar();
+      return cargar();
+    },
+    abrirReceta: (spell) => vistaAbrirReceta(spell),
     /** Hay escaneo nuevo o se cambió de mercado: vuelve a pedir los datos. */
     refrescar: () => cargar({ forzar: true }),
     /** Hay datos nuevos pero la vista no se ve: se pedirán al volver a ella. */
     invalidar: () => { datosMercado = null; },
     /** Buscador de arriba en esta sección: filtra por texto. */
     buscarTexto(texto) {
+      if (modo !== "tabla") location.hash = "#/fabricacion";
       f.texto = texto; $("fab-texto").value = texto; pagina = 1; pintar();
     },
     /**
@@ -542,6 +661,7 @@ export function crearVistaFabricacion(d) {
      * hay una. Si nadie lo fabrica, muestra las recetas que lo usan como ingrediente.
      */
     async buscarObjeto(id) {
+      if (modo !== "tabla") location.hash = "#/fabricacion";
       await cargar();
       f.texto = String(id); $("fab-texto").value = String(id); pagina = 1;
       const suyas = filas.filter((x) => x.id === id);
