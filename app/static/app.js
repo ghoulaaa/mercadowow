@@ -4,6 +4,7 @@ import { dibujarGrafico } from "./grafico.js";
 import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
 import { leerRuta } from "./ruta.js";
+import { crearVistaFabricacion } from "./fabricacion_vista.js";
 import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
@@ -122,9 +123,19 @@ const profAbiertas = new Set();   // profesiones desplegadas en la barra lateral
 const abiertas = new Set();   // categorías desplegadas en el árbol
 
 // ---------- vistas ----------
+/** «Fabricación» y «Mejores oportunidades» son la misma sección con dos modos. */
+const enFab = () => ["fabricacion", "oportunidades"].includes(leerRuta(location.hash).vista);
 function mostrar(vista) {
+  // «Fabricación» es otra sección de la página principal: comparte barra lateral, estado y detalle.
+  const fab = vista === "mercado" && enFab();
+  const oport = fab && leerRuta(location.hash).vista === "oportunidades";
   $("vista-login").hidden = vista !== "login";
-  $("vista-mercado").hidden = vista !== "mercado";
+  $("vista-mercado").hidden = vista !== "mercado" || fab;
+  $("vista-fabricacion").hidden = !fab;
+  document.body.classList.toggle("modo-fab", fab);
+  for (const [id, activo] of [["nav-mercado", !fab], ["nav-fabricacion", fab && !oport], ["nav-oportunidades", oport]]) {
+    if (activo) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+  }
   for (const id of ["grupo-mercado", "barra"]) $(id).hidden = vista === "login";
 }
 
@@ -562,7 +573,7 @@ function pintarTabla() {
   }
   // Cabeceras ordenables: refleja el orden actual.
   const [clave, dir] = $("f-orden").value.split(":");
-  for (const th of document.querySelectorAll(".tabla-mercado th")) {
+  for (const th of document.querySelectorAll("#tabla-mercado th")) {
     const bo = th.querySelector("[data-orden]");
     th.setAttribute("aria-sort", bo?.dataset.orden === clave ? (dir === "asc" ? "ascending" : "descending") : "none");
   }
@@ -2391,6 +2402,8 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
 function aplicarRuta() {
   if (!ultimo) return;
   const r = leerRuta(location.hash);
+  if ($("vista-login").hidden) mostrar("mercado");
+  if (r.vista === "fabricacion" || r.vista === "oportunidades") { vistaFab.mostrar(r.vista === "oportunidades" ? "oportunidades" : "tabla"); return; }
   if (r.vista === "objeto") { if (r.id !== objetoActual || $("panel-ficha").hidden) abrirObjeto(r.id); }
   else if (!$("panel-ficha").hidden) {
     const id = objetoActual;
@@ -2403,6 +2416,12 @@ function aplicarRuta() {
   }
 }
 window.addEventListener("hashchange", aplicarRuta);
+
+const vistaFab = crearVistaFabricacion({
+  $, el, monedaNodo, iconoNodo, nom, nombreProf, fecha, hace, local, avisar, formatear: formatearMoneda,
+  abrirObjeto: (id) => abrirObjeto(id),
+  mercado: () => ultimo?.mercado?.clave ?? null,
+});
 window.matchMedia("(max-width: 1339px)").addEventListener("change", () => {
   if (!$("panel-ficha").hidden) $("velo-detalle").hidden = !detalleSuperpuesto();
 });
@@ -2461,6 +2480,8 @@ function confirmarSugerencia(k) {
   ac = { ...ac, abierto: false, activo: -1 };
   pintarSugerencias();
   guardarReciente({ id: s.id, nombre: s.nombre, icono: s.icono, calidad: s.calidad });
+  // En «Fabricación», el objeto elegido se busca en sus recetas (con el desglose) sin salir de la sección.
+  if (enFab()) { vistaFab.buscarObjeto(s.id); return; }
   location.hash = `#/objeto/${s.id}`;
   if (leerRuta(location.hash).id === objetoActual) abrirObjeto(s.id);
 }
@@ -2472,6 +2493,7 @@ function buscarEnMercado() {
   pintarSugerencias();
   ocultarRecientes();
   if (filtro.texto) guardarReciente({ texto: filtro.texto });
+  if (enFab()) { vistaFab.buscarTexto(filtro.texto); return; }
   repintar();
 }
 
@@ -2502,7 +2524,8 @@ $("lista-recientes").addEventListener("click", (ev) => {
   if (x.id != null) {
     $("buscador").value = nom(x.id, x.nombre); $("btn-borrar-busqueda").hidden = false;
     guardarReciente(x);
-    location.hash = `#/objeto/${x.id}`;
+    if (enFab()) vistaFab.buscarObjeto(x.id);
+    else location.hash = `#/objeto/${x.id}`;
   } else {
     $("buscador").value = x.texto; $("btn-borrar-busqueda").hidden = false;
     buscarEnMercado();
@@ -2672,6 +2695,7 @@ async function vigilar() {
           await cargarPagina({ silencioso: true });
           if (vista === "mapa") cargarMapa();
           if (objetoActual != null) abrirObjeto(objetoActual, { silencioso: true });
+          if (enFab()) vistaFab.refrescar(); else vistaFab.invalidar();
         }
         firmaVersion = firma;
       }

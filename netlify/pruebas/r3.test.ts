@@ -90,6 +90,9 @@ describe("rutas", () => {
     ["#/inventario", { vista: "mercado", id: null }],
     ["#/objeto/abc", { vista: "mercado", id: null }],
     ["#/no-existe", { vista: "mercado", id: null }],
+    ["#/fabricacion", { vista: "fabricacion", id: null }],
+    ["#/fabricacion/123", { vista: "mercado", id: null }],
+    ["#/oportunidades", { vista: "oportunidades", id: null }],
     ["", { vista: "mercado", id: null }],
   ] as const) {
     test(`${hash || "(vacío)"}`, () => assert.deepEqual(leerRuta(hash), esperado));

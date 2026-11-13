@@ -464,7 +464,11 @@ def test_una_sola_vista_de_mercado(cliente):
                      'href="#/inventario"', 'href="#/rentabilidad"', "Actualización solicitada"):
         assert retirado not in html
     seccion = html.split('class="lat-nav"', 1)[1].split("</nav>", 1)[0]
-    assert html.count('aria-label="Sección"') == 1 and seccion.count("<a ") == 1 and 'aria-current="page"' in seccion
+    assert html.count('aria-label="Sección"') == 1 and seccion.count('aria-current="page"') == 1
+    # Mercado, Fabricación y Mejores oportunidades: las únicas entradas del menú lateral.
+    assert seccion.count("<a ") == 3
+    for ruta in ('href="#/"', 'href="#/fabricacion"', 'href="#/oportunidades"'):
+        assert ruta in seccion
 
 
 @pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])
@@ -472,7 +476,8 @@ def test_tasas_valida(cliente, cuerpo):
     assert cliente.post("/api/tasas", json=cuerpo).status_code == 400
 
 
-@pytest.mark.parametrize("q", ["?base=media", "?objeto=0", "?objeto=abc", "?profesion=" + "x" * 41])
+@pytest.mark.parametrize("q", ["?base=media", "?objeto=0", "?objeto=abc", "?profesion=" + "x" * 41,
+                               "?historial=1&ids=1,a", "?historial=1&ids=,1", "?historial=1&ids=" + ",".join(["1"] * 301)])
 def test_recetas_valida(cliente, q):
     assert cliente.get("/api/recetas" + q).status_code == 422
 
