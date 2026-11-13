@@ -186,7 +186,7 @@ describe("datos_fabricacion (SQL)", () => {
                      "0015_recetas.sql", "0017_mercado_pagina.sql", "0018_evidencia.sql", "0019_catalogo_ampliado.sql",
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
-                     "0039_cantidades_ahledger.sql", "0040_datos_fabricacion.sql"]) await pg.exec(leer(n));
+                     "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql"]) await pg.exec(leer(n));
     const cat = [[2589, "Linen Cloth"], [1251, "Linen Bandage"]]
       .map(([id, name]) => ({ id, name, itemClass: "Trade Goods", itemSubclass: "Cloth", quality: "COMMON", vendorSell: 13 }));
     await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify(cat)]);

@@ -10,7 +10,7 @@
 -- Las unidades vienen del propio mercado o, si no las publica (TSM), del escaneo de AHledger del
 -- mismo reino en la misma hora (marcado con cantidades_de).
 
-create function historial_fabricacion(p_market_key text, p_ids integer[], p_dias integer default 7)
+create or replace function historial_fabricacion(p_market_key text, p_ids integer[], p_dias integer default 7)
 returns jsonb language plpgsql stable as $$
 declare
   v_m     markets%rowtype;

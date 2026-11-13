@@ -11,7 +11,7 @@ export const RUTAS: Record<string, string> = {
   favorito: "favorito", "historial-fuente": "historialFuente", historial: "historial",
   importar: "importar", inventario: "inventario", login: "login", logout: "logout", mapa: "mapa",
   mercado: "mercado", "nombres-es": "nombresEs", objeto: "objeto", "perfil-subasta": "perfilSubasta", precios: "precios",
-  recetas: "recetas", tasas: "tasas", ventas: "ventas", version: "version",
+  recetas: "recetas", tasas: "tasas", tooltip: "tooltip", ventas: "ventas", version: "version",
 };
 
 const PARAM = "__ruta";

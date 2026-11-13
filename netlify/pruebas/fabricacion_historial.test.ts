@@ -88,7 +88,7 @@ describe("historial_fabricacion (SQL) y API", () => {
                      "0015_recetas.sql", "0017_mercado_pagina.sql", "0018_evidencia.sql", "0019_catalogo_ampliado.sql",
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
-                     "0039_cantidades_ahledger.sql", "0040_datos_fabricacion.sql", "0041_historial_fabricacion.sql"]) await pg.exec(leer(n));
+                     "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0043_historial_fabricacion.sql"]) await pg.exec(leer(n));
     await escaneo(TSM, "2026-11-01T09:10:00Z", [[2589, 100, 100, null]]);          // fuera de 7 días
     await escaneo(TSM, "2026-11-10T10:15:00Z", [[2589, 200, 210, null], [1251, 600, 580, null]]);
     await escaneo(TSM, "2026-11-10T11:20:00Z", [[2589, 190, 205, null]]);           // 1251 no aparece

@@ -12,7 +12,7 @@
 --                    c: unidades publicadas, cr: c viene de otro proveedor, npc: compra al NPC,
 --                    npc_tuyo: la puso el usuario, vn: venta al NPC, d: ventas/día del reino, dg: ventas/día región}}}
 
-create function datos_fabricacion(p_market_key text) returns jsonb language plpgsql stable as $$
+create or replace function datos_fabricacion(p_market_key text) returns jsonb language plpgsql stable as $$
 declare
   v_m    markets%rowtype;
   v_hora timestamptz;

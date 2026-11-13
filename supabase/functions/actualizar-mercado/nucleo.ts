@@ -752,6 +752,69 @@ export async function actualizarNombresEsExtra(db: Db, o: { fetch: typeof fetch;
   }
 }
 
+// ---------------------------------------------------------------------
+// Fichas oficiales (texto del juego en español) para el cuadro del icono: preview_item de Blizzard.
+
+type RespuestaFicha = { tipo: "ok"; datos: Record<string, unknown> } | { tipo: "no" } | { tipo: "error"; motivo: string }
+  | { tipo: "parar"; motivo: string };
+
+async function pedirFichaBlizzard(f: typeof fetch, token: string, ns: string, id: number): Promise<RespuestaFicha> {
+  let r: Response;
+  try {
+    r = await f(`${URL_API_BLIZZARD}/data/wow/item/${id}?namespace=${ns}&locale=${LOCALE_ES}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, signal: AbortSignal.timeout(15_000),
+    });
+  } catch (e) { return { tipo: "parar", motivo: `Error de conexión: ${(e as Error).message ?? e}` }; }
+  if (r.status === 404) { await r.body?.cancel(); return { tipo: "no" }; }
+  if (r.status === 429 || r.status === 401 || r.status === 403) { await r.body?.cancel(); return { tipo: "parar", motivo: `HTTP ${r.status}` }; }
+  if (r.status !== 200) { await r.body?.cancel(); return { tipo: "error", motivo: `HTTP ${r.status}` }; }
+  const j = await r.json().catch(() => null) as { id?: unknown; preview_item?: unknown } | null;
+  // Solo si es ESE objeto y trae la vista previa. Se quitan los enlaces internos de la API (no hacen falta).
+  if (!j || j.id !== id || !j.preview_item || typeof j.preview_item !== "object") return { tipo: "no" };
+  const limpio = JSON.parse(JSON.stringify(j.preview_item, (k, v) => (k === "key" || k === "_links" || k === "media" ? undefined : v)));
+  return { tipo: "ok", datos: limpio };
+}
+
+export async function actualizarFichas(db: Db, o: { fetch: typeof fetch; clientId?: string; secreto?: string;
+                                                   ahora?: () => Date; lote?: number; paralelo?: number }) {
+  const ahora = o.ahora ?? (() => new Date());
+  const t = () => ahora().toISOString();
+  const turno = (await db.consulta("select tomar_turno_fichas(300, $1::timestamptz) as r", [t()]))[0]?.r;
+  if (!turno) return { estado: "omitido", motivo: "en_curso" };
+  let pausa = 0;
+  try {
+    if (!o.clientId || !o.secreto) { pausa = 6 * 3600; return { estado: "omitido", motivo: "sin_credenciales" }; }
+    const pendientes = ((await db.consulta("select fichas_pendientes('forever', $1, $2::timestamptz) as r",
+      [o.lote ?? 300, t()]))[0]?.r ?? []) as { id: number; ns: string }[];
+    if (!pendientes.length) return { estado: "ok", motivo: "al_dia" };
+    const tk = await tokenBlizzard(o.fetch, o.clientId, o.secreto);
+    if (!("token" in tk)) { pausa = tk.pausa; return { estado: "error", motivo: tk.motivo }; }
+    const filas: { id: number; datos: Record<string, unknown>; fuente: string }[] = [];
+    const sin: number[] = [], conError: number[] = [];
+    let parado: string | null = null, seguidos = 0, k = 0;
+    const trabajador = async () => {
+      while (!parado && k < pendientes.length) {
+        const { id, ns } = pendientes[k++];
+        if (!/^static-[a-z0-9.-]+$/.test(ns)) { sin.push(id); continue; }
+        let r = await pedirFichaBlizzard(o.fetch, tk.token, ns, id);
+        if (r.tipo === "error") r = await pedirFichaBlizzard(o.fetch, tk.token, ns, id);
+        if (r.tipo === "ok") { filas.push({ id, datos: r.datos, fuente: `blizzard:${ns}:${LOCALE_ES}` }); seguidos = 0; }
+        else if (r.tipo === "no") { sin.push(id); seguidos = 0; }
+        else if (r.tipo === "error") { conError.push(id); if (++seguidos >= 10) parado = `${r.motivo} en ${seguidos} objetos seguidos`; }
+        else parado = r.motivo;
+      }
+    };
+    await Promise.all(Array.from({ length: o.paralelo ?? 5 }, trabajador));
+    if (parado) pausa = 900;
+    const g = (await db.consulta(
+      "select guardar_fichas('forever', $1::text::jsonb, $2::integer[], $3::integer[], $4::timestamptz) as r",
+      [JSON.stringify(filas), sin, conError, t()]))[0]?.r;
+    return { estado: "ok", pedidas: pendientes.length, ...(g as object), parado };
+  } finally {
+    await db.consulta("select soltar_turno_fichas($1, $2::timestamptz)", [pausa, t()]);
+  }
+}
+
 export async function actualizarRecetas(db: Db, o: { fetch: typeof fetch; ahora?: () => Date;
                                                     userAgent?: string }) {
   const ahora = o.ahora ?? (() => new Date());

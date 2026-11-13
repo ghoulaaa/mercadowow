@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import re
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.config import Settings, load_settings
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 # Windows a veces registra .js como text/plain y el navegador rechaza los módulos.
 mimetypes.add_type("text/javascript", ".js")
+IDS_RE = re.compile(r"\d{1,9}(?:,\d{1,9}){0,299}")
 log = logging.getLogger("mercado")
 SIN_CACHE = {"Cache-Control": "no-store"}
 SIN_CONEXION = {"error": "No se pudo conectar con Supabase"}
@@ -427,9 +429,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 base: str = Query(default="mediana", pattern="^(mediana|minimo|tsm)$"),
                 fabricacion: str | None = Query(default=None, max_length=5),
                 historial: str | None = Query(default=None, max_length=5),
-                ids: str | None = Query(default=None, max_length=3000, pattern=r"^\d{1,9}(,\d{1,9}){0,299}$"),
+                ids: str | None = Query(default=None, max_length=3000),
                 dias: int = Query(default=7)):
         clave = mercado or settings.market
+        # Se valida aquí y no con pattern=: el regex con {0,299} supera el límite de tamaño de pydantic-core.
+        if ids is not None and not IDS_RE.fullmatch(ids):
+            return JSONResponse(status_code=422, content={"error": "ids debe ser de 1 a 300 números separados por comas"})
         if historial is not None and (not ids or dias not in (1, 7, 30, 90)):
             return JSONResponse(status_code=400, content={"error": "historial necesita ids y dias (1, 7, 30 o 90)"})
         try:
@@ -444,6 +449,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("Fallo al leer recetas: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.get("/api/tooltip")
+    def tooltip(id: int = Query(gt=0, le=2147483647), mercado: str | None = Query(default=None, max_length=100)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select ficha_blizzard(%s, %s::integer) as r", (mercado or settings.market, id)).fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer la ficha del objeto: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse({"ficha": r}, headers=SIN_CACHE)
 
     @app.get("/api/nombres-es")
     def nombres_es(mercado: str | None = Query(default=None, max_length=100)):

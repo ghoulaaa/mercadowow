@@ -1072,3 +1072,18 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .fab-alertas-cumplidas { margin: 0 0 var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--sell); border-radius: var(--radius); background: rgba(99, 201, 149, .08); }
 .fab-alertas-cumplidas ul { margin: 6px 0 0; padding-left: 18px; font-size: var(--fs-sec); }
 .fab-alertas-cumplidas .enlace { background: none; border: 0; padding: 0; font: inherit; color: var(--gold); text-decoration: underline; cursor: pointer; }
+
+/* Cuadro del objeto al estilo del juego (texto oficial de Blizzard). Colores de los tooltips de WoW. */
+.wow-tip {
+  position: fixed; z-index: 80; pointer-events: none; max-width: 320px; min-width: 200px; padding: 8px 10px;
+  border-radius: 4px; border: 1px solid #5b6a7d; background: rgba(9, 12, 26, .96); box-shadow: 0 6px 20px rgba(0, 0, 0, .6);
+  font-family: var(--fuente-texto); font-size: 13px; line-height: 1.35; color: #ffffff;
+}
+.wow-tip .tt-linea { display: flex; justify-content: space-between; gap: 16px; }
+.wow-tip .tt-nombre { font-size: 15px; font-weight: 600; }
+.wow-tip .tt-nivel, .wow-tip .tt-oro { color: #ffd100; }
+.wow-tip .tt-blanco { color: #ffffff; }
+.wow-tip .tt-verde { color: #1eff00; }
+.wow-tip .tt-der { text-align: right; white-space: nowrap; }
+.wow-tip .tt-venta { justify-content: flex-start; gap: 6px; margin-top: 2px; }
+.wow-tip .moneda .n { color: #ffffff; }.wow-tip .tt-separador { height: 8px; }
