@@ -1544,7 +1544,11 @@ function abrirPanel() {
   $("velo-detalle").hidden = !detalleSuperpuesto();
   for (const tr of $("tbody").querySelectorAll("tr")) tr.classList.toggle("activa", Number(tr.dataset.id) === objetoActual);
 }
+let alCerrarFicha = null;   // a quién avisar al cerrar la ficha (Fabricación reabre su receta)
 function cerrarDetalle() {
+  const volver = alCerrarFicha;
+  alCerrarFicha = null;
+  if (volver && !$("panel-ficha").hidden) setTimeout(volver, 0);
   objetoActual = null;
   objetoN++;   // una carga del detalle que aún estuviera en curso ya no se pinta
   $("panel-ficha").hidden = true;
@@ -2434,7 +2438,8 @@ window.addEventListener("hashchange", aplicarRuta);
 
 const vistaFab = crearVistaFabricacion({
   $, el, monedaNodo, iconoNodo, nom, nombreProf, fecha, hace, local, avisar, formatear: formatearMoneda,
-  abrirObjeto: (id) => abrirObjeto(id),
+  // Ficha del objeto en Mercado (mismo mercado). alCerrar: se llama al cerrarla (Fabricación vuelve a su receta).
+  abrirObjeto: (id, alCerrar = null) => { alCerrarFicha = alCerrar; abrirObjeto(id); },
   mercado: () => ultimo?.mercado?.clave ?? null,
   copiarTexto, ponerDensidad,
   iconoProfesion: (p) => pagina?.profesiones_roles?.find((x) => x.profesion === p)?.icono ?? null,

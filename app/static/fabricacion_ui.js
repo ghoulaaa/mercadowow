@@ -155,6 +155,43 @@ export function etiquetaRiesgo(i) {
   return { nivel: i.riesgo, texto, motivos: i.motivosRiesgo };
 }
 
+// ---------- de dónde sale el precio de cada material ----------
+/**
+ * Qué es el precio de un material del desglose (simularReceta → desglose.materiales) y si su subtotal es exacto.
+ * La fuente solo publica la compra mínima POR UNIDAD (no cuántas hay a cada precio): con más de una unidad,
+ * el subtotal de lo que se compra es una estimación. Nada cambia el cálculo: solo se describe.
+ * @returns {{clave: string, texto: string, estimado: boolean, incompleto: boolean, nota: string|null}}
+ */
+export function estadoPrecio(m) {
+  const varias = m.cantidad > 1;
+  const notaVarias = "Subtotal estimado: la fuente solo publica el precio mínimo por unidad; las siguientes ofertas pueden costar más.";
+  switch (m.origen) {
+    case "subasta":
+      return { clave: "subasta", texto: "Subasta · Compra mínima", estimado: varias, incompleto: false, nota: varias ? notaVarias : null };
+    case "subasta_sin_ofertas":
+      return { clave: "valor", texto: "Estimado · Valor de mercado", estimado: true, incompleto: false,
+               nota: "Sin ofertas ahora: se usa su valor de mercado (opción «Usar valor de mercado cuando falten ofertas»)." };
+    case "fabricar":
+      return { clave: "fabricar", texto: "Fabricado", estimado: varias, incompleto: false,
+               nota: "Coste de fabricarlo con sus materiales del mismo escaneo." + (varias ? ` ${notaVarias}` : "") };
+    case "npc": return { clave: "npc", texto: "Compra al NPC", estimado: false, incompleto: false, nota: null };
+    case "npc_tuyo": return { clave: "npc", texto: "Compra al NPC · precio tuyo", estimado: false, incompleto: false, nota: null };
+    case "manual": return { clave: "manual", texto: "Precio manual", estimado: false, incompleto: false,
+                            nota: "Precio escrito por ti: solo cambia este cálculo de Fabricación." };
+    default: return { clave: "sin", texto: "Sin precio", estimado: false, incompleto: true,
+                      nota: "Ninguna fuente tiene precio ahora: el coste de la receta queda incompleto." };
+  }
+}
+
+/**
+ * Comprar frente a fabricar, por unidad y para la misma cantidad. El ahorro solo se da si hay los dos precios.
+ * @returns {{comprar: number|null, fabricar: number|null, ahorro: number|null}}
+ */
+export function compararCompraFabricacion(m) {
+  const comprar = m.comprar ?? null, fabricar = m.fabricar ?? null;
+  return { comprar, fabricar, ahorro: comprar != null && fabricar != null ? comprar - fabricar : null };
+}
+
 // ---------- lista de fabricación ----------
 /** Lista guardada: [{spell, veces}], sin repetir y con veces enteras de 1 a 100.000. */
 export function normalizarLista(x) {

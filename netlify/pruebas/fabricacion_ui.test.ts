@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { calcularFilas, ordenarFilas, simularReceta } from "../../app/static/fabricacion_tabla.js";
 import { oportunidades } from "../../app/static/oportunidades.js";
 import {
-  COLUMNAS_DEFECTO, actividad, agruparPorProducto, anadirALista, chipsFiltros, consolidarLista, contarFiltrosPanel,
-  diferenciasVariantes, etiquetaRiesgo, limpiarFiltros, motivosReferencia, motivosRevision, normalizarColumnas, normalizarLista,
+  COLUMNAS_DEFECTO, actividad, agruparPorProducto, anadirALista, chipsFiltros, compararCompraFabricacion, consolidarLista,
+  contarFiltrosPanel, diferenciasVariantes, estadoPrecio, etiquetaRiesgo, limpiarFiltros, motivosReferencia, motivosRevision, normalizarColumnas, normalizarLista,
   quitarFiltro, textoMateriales,
 } from "../../app/static/fabricacion_ui.js";
 
@@ -108,6 +108,68 @@ describe("oportunidades: una lista por criterio", () => {
     const o = oportunidades(filas, DATOS.objetos, { limite: 60 });
     const textos = JSON.stringify(o);
     assert.equal(textos.includes("No se vende"), false);
+  });
+});
+
+describe("precios de los materiales (mismos datos que Mercado)", () => {
+  // Bolsa de tela lunar: 4 Madejas de paño rúnico (subasta), 1 Tela lunar (fabricada), 1 tinte sin ofertas
+  // (valor de mercado) y 1 material sin precio. Precios de un mismo escaneo, en cobre entero.
+  const D = {
+    escaneo: "2026-11-13T00:22:40Z", tope_pct: 150, comision_pct: 5,
+    recetas: [
+      { s: 18445, n: "Mooncloth Bag", p: "Tailoring", l: 230, r: 14155, mn: 1, mx: 1, m: [[14048, 4], [14342, 1], [6261, 1], [7777, 1]] },
+      { s: 18560, n: "Mooncloth", p: "Tailoring", l: 230, r: 14342, mn: 1, mx: 1, m: [[14256, 2]] },
+    ],
+    objetos: {
+      14048: { n: "Bolt of Runecloth", s: 3828, v: 3854 },   // 38p 28c, como la compra mínima del Mercado
+      14342: { n: "Mooncloth", s: 230000, v: 230000 },
+      14256: { n: "Felcloth", s: 7191, v: 7200 },
+      6261: { n: "Orange Dye", v: 1200 },                     // sin ofertas: valor de mercado (estimado)
+      7777: { n: "Sin precio" },
+      14155: { n: "Mooncloth Bag", s: 690000, v: 690000 },
+    },
+  };
+  test("Madeja: 38p 28c por unidad y 1o 53p 12c por cuatro (estimado: solo hay mínimo por unidad)", async () => {
+    const { formatearMoneda } = await import("../../app/static/moneda.js");
+    const r = simularReceta(D, 18445)!;
+    const madeja = r.desglose.materiales.find((m: any) => m.id === 14048);
+    assert.equal(madeja.precioUnitario, 3828);
+    assert.equal(formatearMoneda(madeja.precioUnitario), "38p 28c");
+    assert.equal(madeja.costeTotal, 15312);
+    assert.equal(formatearMoneda(madeja.costeTotal), "1o 53p 12c");
+    assert.deepEqual([estadoPrecio(madeja).texto, estadoPrecio(madeja).estimado], ["Subasta · Compra mínima", true]);
+    assert.equal(estadoPrecio({ ...madeja, cantidad: 1 }).estimado, false);   // una unidad: precio exacto
+  });
+  test("Tela lunar fabricada: coste fabricado y precio de compra por separado; ahorro comparable", () => {
+    const tela = simularReceta(D, 18445)!.desglose.materiales.find((m: any) => m.id === 14342);
+    assert.equal(tela.origen, "fabricar");
+    assert.equal(tela.precioUnitario, 2 * 7191);
+    assert.deepEqual(compararCompraFabricacion(tela), { comprar: 230000, fabricar: 14382, ahorro: 230000 - 14382 });
+    assert.equal(tela.hijos[0].id, 14256);
+    assert.equal(estadoPrecio(tela).texto, "Fabricado");
+    assert.deepEqual(compararCompraFabricacion({ comprar: null, fabricar: 10 }), { comprar: null, fabricar: 10, ahorro: null });
+  });
+  test("sin ofertas (valor de mercado) y sin precio: estimado e incompleto", () => {
+    const r = simularReceta(D, 18445)!;
+    const tinte = r.desglose.materiales.find((m: any) => m.id === 6261);
+    assert.deepEqual([estadoPrecio(tinte).texto, estadoPrecio(tinte).estimado], ["Estimado · Valor de mercado", true]);
+    const sin = r.desglose.materiales.find((m: any) => m.id === 7777);
+    assert.deepEqual([estadoPrecio(sin).texto, estadoPrecio(sin).incompleto], ["Sin precio", true]);
+    assert.equal(r.a.completo, false);
+    assert.equal(r.a.costeFabricacion, null);
+  });
+  test("precio manual: solo cambia este cálculo y se marca", () => {
+    const m = simularReceta(D, 18445, { manual: { 14048: 3000 } })!;
+    const madeja = m.desglose.materiales.find((x: any) => x.id === 14048);
+    assert.deepEqual([madeja.origen, madeja.costeTotal, estadoPrecio(madeja).texto], ["manual", 12000, "Precio manual"]);
+    assert.equal(simularReceta(D, 18445)!.desglose.materiales.find((x: any) => x.id === 14048).precioUnitario, 3828);
+  });
+  test("escaneo nuevo: con los precios nuevos, todo se recalcula a la vez (también los fabricados)", () => {
+    const nuevo = { ...D, objetos: { ...D.objetos, 14048: { ...D.objetos[14048], s: 4000 }, 14256: { ...D.objetos[14256], s: 7000 } } };
+    const a = simularReceta(nuevo, 18445)!;
+    const madeja = a.desglose.materiales.find((m: any) => m.id === 14048);
+    const tela = a.desglose.materiales.find((m: any) => m.id === 14342);
+    assert.deepEqual([madeja.precioUnitario, madeja.costeTotal, tela.precioUnitario, tela.hijos[0].precioUnitario], [4000, 16000, 14000, 7000]);
   });
 });
 

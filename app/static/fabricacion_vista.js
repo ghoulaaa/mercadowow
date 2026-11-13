@@ -13,8 +13,8 @@ import {
   CAMPOS_ALERTA, MAX_COMPARAR, alternar as alternarSpell, anadirComparar, compararRecetas, crearAlerta, evaluarAlertas, normalizarExtras,
 } from "./fabricacion_extras.js";
 import {
-  COLUMNAS_FAB, CRITERIOS, FILTROS_VACIOS, actividad, agruparPorProducto, anadirALista, chipsFiltros, consolidarLista,
-  contarFiltrosPanel, diferenciasVariantes, etiquetaRiesgo, limpiarFiltros, motivosReferencia, motivosRevision,
+  COLUMNAS_FAB, CRITERIOS, FILTROS_VACIOS, actividad, agruparPorProducto, anadirALista, chipsFiltros, compararCompraFabricacion,
+  consolidarLista, contarFiltrosPanel, diferenciasVariantes, estadoPrecio, etiquetaRiesgo, limpiarFiltros, motivosReferencia, motivosRevision,
   normalizarColumnas, normalizarLista, quitarFiltro, textoMateriales,
 } from "./fabricacion_ui.js";
 
@@ -450,6 +450,7 @@ export function crearVistaFabricacion(d) {
           + (datos ? " Se muestran los últimos datos recibidos." : "");
         $("fab-error").hidden = false;
         if (!datos) { $("fab-tbody").replaceChildren(); $("fab-oport").replaceChildren(); }
+        else if (detalle.spell != null && !$("fab-det").hidden) pintarDetalle();   // marca que sigue con el último escaneo válido
       } finally {
         cargando = null;
         $("vista-fabricacion").removeAttribute("aria-busy");
@@ -704,13 +705,13 @@ export function crearVistaFabricacion(d) {
     if (h && !h.hasAttribute("tabindex")) h.tabIndex = -1;
     requestAnimationFrame(() => ($(id).querySelector("[data-foco]") ?? h ?? $(id)).focus());
   }
-  function cerrarPanel({ devolver = true } = {}) {
+  function cerrarPanel({ devolver = true, conservar = false } = {}) {
     if (!panel) return;
     const id = panel;
     $(id).hidden = true; $("fab-velo").hidden = true; panel = null;
     document.body.classList.remove("fab-con-panel");
     for (const b of document.querySelectorAll(`[aria-controls="${id}"]`)) b.setAttribute("aria-expanded", "false");
-    if (id === "fab-det") detalle.spell = null;
+    if (id === "fab-det" && !conservar) { detalle.spell = null; matAbiertos.clear(); }
     if (devolver && opener?.isConnected) opener.focus();
     else if (devolver && id === "fab-det" && opener?.dataset?.abrir) $("vista-fabricacion").querySelector(`[data-abrir="${opener.dataset.abrir}"]`)?.focus();
   }
@@ -874,8 +875,12 @@ export function crearVistaFabricacion(d) {
     const pv = el("label", "fab-det-pv");
     pv.append("Precio de venta por unidad ", campoPrecio(a.precioVenta, "venta", detalle.precioVenta !== undefined, "Precio de venta por unidad"),
       el("span", "muted", ` ${notaVenta}`));
-    fuente.append(pv, el("p", "muted", `Precios del escaneo del ${d.fecha(datos.escaneo)} (${d.hace(datos.escaneo)})`
-      + `${datos.cantidades ? ` · unidades a la venta según ${datos.cantidades.proveedor}` : ""}.`));
+    // Mismo servicio y mismo escaneo que Mercado: la antigüedad se cuenta desde la hora del escaneo original.
+    const estado = el("p", "fab-det-estado" + (error ? " bad" : ""));
+    estado.textContent = `Precios del mercado · ${d.hace(datos.escaneo)}` + (error ? " · no se pudo actualizar: se mantiene el último escaneo válido" : "");
+    estado.title = `Escaneo del ${d.fecha(datos.escaneo)} · ${datos.mercado}`
+      + (datos.cantidades ? ` · unidades a la venta según ${datos.cantidades.proveedor}` : "");
+    fuente.append(pv, estado);
     for (const m of motivosReferencia(x)) fuente.append(el("p", "fab-nota-ref", m));
     nodos.push(fuente);
 
@@ -928,38 +933,69 @@ export function crearVistaFabricacion(d) {
     cont.replaceChildren(nodos[0], cuerpo);
   }
 
-  function itemMaterial(m, nivel = 0) {
+  // Desplegables «Origen y desglose» abiertos (se conservan al recalcular, p. ej. al escribir un precio).
+  const matAbiertos = new Set();
+  /**
+   * Un material: icono, nombre, cantidad, precio por unidad y subtotal en una línea; debajo, de dónde sale el
+   * precio. El resto (comprar o fabricar, precio manual y componentes) en un desplegable.
+   */
+  function itemMaterial(m, nivel = 0, ruta = "") {
+    const clave = `${ruta}${m.id}`;
     const li = el("li", "fab-mat" + (nivel ? " hijo" : ""));
     li.dataset.id = m.id;
     const nombre = nombreObj(m.id, m.nombre);
+    const e = estadoPrecio(m);
     const fila = el("div", "fab-mat-fila");
     const n = boton("", "fab-mat-nombre", { verObjeto: m.id });
     n.append(d.iconoNodo(m.icono, nombre, m.calidad), el("span", "objeto-nombre" + (m.calidad ? ` q-${m.calidad}` : ""), nombre));
-    n.title = `Ver ficha de ${nombre}`;
+    n.title = `Abrir ${nombre} en Mercado`;
     const c = el("span", "fab-mat-cant", `× ${cant(m.cantidad)}`);
-    const origen = el("span", `origen o-${m.origen ?? "sin"}`, m.origen ? NOMBRE_ORIGEN[m.origen] ?? m.origen : "Sin precio");
-    const precio = el("span", "fab-mat-precio");
-    if (!nivel) precio.append(campoPrecio(m.precioUnitario, String(m.id), m.origen === "manual", `Precio por unidad de ${nombre}`));
-    else precio.append(moneda(m.precioUnitario));
-    const total = el("span", "fab-mat-total"); total.append(moneda(m.costeTotal));
-    fila.append(n, c, total);
-    const sub = el("div", "fab-mat-sub");
-    sub.append(origen, precio, el("span", "muted small", "c/u"));
-    if (!nivel && m.ahorroFabricando > 0 && m.origen === "fabricar") {
-      const s = el("span", "small pos-txt"); s.append("Fabricarlo ahorra ", d.monedaNodo(m.ahorroFabricando), " c/u"); sub.append(s);
-    } else if (!nivel && m.fabricar != null && m.comprar != null && m.origen !== "fabricar") {
-      sub.append(el("span", "small muted", m.fabricar < m.comprar ? "Fabricarlo sería más barato (opción desactivada)" : "Comprarlo es más barato que fabricarlo"));
+    const pu = el("span", "fab-mat-pu");
+    pu.append(moneda(m.precioUnitario));
+    pu.title = "Precio por unidad";
+    const total = el("span", "fab-mat-total" + (e.estimado ? " estimado" : ""));
+    if (e.estimado && m.costeTotal != null) total.append(el("span", "aprox", "≈"));
+    total.append(moneda(m.costeTotal));
+    total.title = e.estimado ? e.nota : `Subtotal: ${cant(m.cantidad)} × ${m.precioUnitario == null ? "sin precio" : d.formatear(m.precioUnitario)}`;
+    fila.append(n, c, pu, total);
+    const linea = el("div", "fab-mat-sub");
+    linea.append(el("span", `origen o-${e.clave}`, e.texto));
+    if (m.origen === "manual") linea.append(boton("Restaurar precio de Mercado", "enlace small", { restaurar: m.id }));
+    if (m.faltanEnSubasta > 0) linea.append(el("span", "small bad", `Solo hay ${m.disponible.toLocaleString("es")} publicadas`));
+    li.append(fila, linea);
+
+    const det = el("details", "fab-mat-mas");
+    det.open = matAbiertos.has(clave);
+    det.addEventListener("toggle", () => { if (det.open) matAbiertos.add(clave); else matAbiertos.delete(clave); });
+    det.append(el("summary", "small", m.hijos?.length ? `Origen y ${m.hijos.length === 1 ? "su material" : `sus ${m.hijos.length} materiales`}` : "Origen del precio"));
+    const cuerpo = el("div", "fab-mat-mas-cuerpo");
+    if (e.nota) cuerpo.append(el("p", "small muted", e.nota));
+    if (!nivel) {
+      // Comprar (Mercado o NPC) frente a fabricar: dos valores distintos; ahorro solo si se pueden comparar.
+      const cf = compararCompraFabricacion(m);
+      const dl = el("dl", "fab-mat-dl");
+      const par = (k, nodo) => { dl.append(el("dt", "", k)); const dd = el("dd"); dd.append(nodo); dl.append(dd); };
+      par("Comprar", cf.comprar == null ? sinDato("Sin precio", "Sin ofertas ni precio de NPC") : moneda(cf.comprar));
+      if (cf.fabricar != null) par("Fabricarlo", moneda(cf.fabricar));
+      if (cf.ahorro != null && cf.ahorro !== 0) {
+        const s = el("span", cf.ahorro > 0 ? "pos-txt" : "");
+        s.append(d.monedaNodo(Math.abs(cf.ahorro)));
+        par(cf.ahorro > 0 ? "Fabricarlo ahorra" : "Comprarlo ahorra", s);
+      }
+      cuerpo.append(dl, el("p", "small muted", "Importes por unidad, del mismo escaneo."));
+      const lbl = el("label", "fab-mat-manual small");
+      lbl.append("Precio para este cálculo ", campoPrecio(m.origen === "manual" ? m.precioUnitario : null, String(m.id), m.origen === "manual",
+        `Precio manual por unidad de ${nombre}`), " c/u");
+      lbl.querySelector("input").placeholder = m.precioUnitario == null ? "sin precio" : d.formatear(m.precioUnitario);
+      cuerpo.append(lbl);
     }
-    if (m.faltanEnSubasta > 0) sub.append(el("span", "small bad", `Solo hay ${m.disponible.toLocaleString("es")} publicadas`));
-    li.append(fila, sub);
     if (m.hijos?.length) {
-      const det = el("details", "fab-mat-hijos");
-      det.append(el("summary", "small", `Se fabrica con ${m.hijos.length} ${m.hijos.length === 1 ? "material" : "materiales"}`));
       const ul = el("ul", "fab-mats");
-      for (const h2 of m.hijos) ul.append(itemMaterial(h2, nivel + 1));
-      det.append(ul);
-      li.append(det);
+      for (const h2 of m.hijos) ul.append(itemMaterial(h2, nivel + 1, `${clave}>`));
+      cuerpo.append(ul);
     }
+    det.append(cuerpo);
+    li.append(det);
     return li;
   }
 
@@ -994,12 +1030,34 @@ export function crearVistaFabricacion(d) {
     const mx = t.closest("[data-maximo]");
     if (mx) { detalle.veces = Number(mx.dataset.maximo); pintarDetalle(); $("fab-veces")?.focus(); return; }
     if (t.closest("[data-restablecer]")) { detalle.manual = {}; detalle.precioVenta = undefined; pintarDetalle(); d.avisar("Precios del mercado restablecidos."); return; }
+    const rs = t.closest("[data-restaurar]");
+    if (rs) {
+      delete detalle.manual[rs.dataset.restaurar];
+      pintarDetalle();
+      $("fab-det").querySelector(`.fab-mat[data-id="${rs.dataset.restaurar}"] [data-ver-objeto]`)?.focus();
+      d.avisar("Precio de Mercado restaurado.");
+      return;
+    }
     const v = t.closest("[data-variante]");
     if (v) { const s = Number(v.dataset.variante); Object.assign(detalle, { spell: s, manual: {}, precioVenta: undefined }); pintarDetalle(); $("fab-det").querySelector(`[data-variante="${s}"]`)?.focus(); return; }
     const fav = t.closest("[data-fav]");
     if (fav) { alternarFavorita(Number(fav.dataset.fav)); return; }
     const vo = t.closest("[data-ver-objeto]");
-    if (vo) { cerrarPanel({ devolver: false }); d.abrirObjeto(Number(vo.dataset.verObjeto)); return; }
+    if (vo) {
+      // La ficha del objeto se abre en Mercado (mismo mercado); al cerrarla vuelve esta receta con su cantidad y precios.
+      const id = Number(vo.dataset.verObjeto);
+      const vuelta = { ...detalle, manual: { ...detalle.manual } };
+      cerrarPanel({ devolver: false, conservar: true });
+      d.abrirObjeto(id, () => {
+        // Solo si se sigue en Fabricación (desde la ficha se puede haber ido al Mercado).
+        if ($("vista-fabricacion").hidden || !porSpell.has(vuelta.spell)) return;
+        Object.assign(detalle, vuelta);
+        pintarDetalle();
+        abrirPanel("fab-det", opener);
+        requestAnimationFrame(() => $("fab-det").querySelector(`[data-ver-objeto="${id}"]`)?.focus());
+      });
+      return;
+    }
     const ci = t.closest("[data-copiar-id]");
     if (ci) { const ok = await d.copiarTexto?.(ci.dataset.copiarId); d.avisar(ok ? `ID ${ci.dataset.copiarId} copiado.` : "No se pudo copiar.", ok ? "" : "bad"); return; }
     if (t.closest("[data-copiar-materiales]")) {
