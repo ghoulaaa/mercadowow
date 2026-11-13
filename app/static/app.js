@@ -1,10 +1,11 @@
-// Casa de Subastas — WoW Forever. Tres secciones: Mercado y Oportunidades (la tabla del catálogo, paginada en
-// el servidor) y Fabricación (recetas de una profesión con coste y beneficio). El detalle del objeto, a la derecha.
+// Casa de Subastas — WoW Forever. Una sola vista: Mercado (barra lateral, tabla y detalle del objeto).
+// La tabla recorre TODO el catálogo y la pide por páginas al servidor (filtros, orden y paginación en SQL).
 import { dibujarGrafico } from "./grafico.js";
 import { formatearMoneda, parsearMoneda } from "./moneda.js";
 import { ESTADO_INICIAL, alEscribir, conSugerencias, teclado } from "./autocompletar.js";
-import { SECCIONES, hashSeccion, leerRuta } from "./ruta.js";
-import { NOMBRE_PROFESION, filtrarRecetas, nombreReceta, ordenarRecetas, resumenRecetas } from "./recetas.js";
+import { leerRuta } from "./ruta.js";
+import { crearVistaFabricacion } from "./fabricacion_vista.js";
+import { NOMBRE_PROFESION } from "./recetas.js";
 import { abreviar, paramsMapaCasa, pesoBloque, pesoGrupo, squarify, textoVariacion, tonoVariacion } from "./treemap.js";
 import { PERFIL_POR_DEFECTO, sugerencia, textoMotivo } from "./subasta.js";
 import { normalizarPerfil, perfilDeLista, textoAlerta } from "./listas.js";
@@ -121,14 +122,21 @@ const filtro = { texto: "", categoria: "", subcategoria: "", calidad: "", profes
 const profAbiertas = new Set();   // profesiones desplegadas en la barra lateral
 const abiertas = new Set();   // categorías desplegadas en el árbol
 
-let seccion = "mercado";      // mercado · fabricacion · oportunidades
-
 // ---------- vistas ----------
-function mostrar(v) {
-  $("vista-login").hidden = v !== "login";
-  $("vista-mercado").hidden = v !== "mercado" || seccion === "fabricacion";
-  $("vista-fabricacion").hidden = v !== "mercado" || seccion !== "fabricacion";
-  for (const id of ["grupo-mercado", "barra"]) $(id).hidden = v === "login";
+/** «Fabricación» y «Mejores oportunidades» son la misma sección con dos modos. */
+const enFab = () => ["fabricacion", "oportunidades"].includes(leerRuta(location.hash).vista);
+function mostrar(vista) {
+  // «Fabricación» es otra sección de la página principal: comparte barra lateral, estado y detalle.
+  const fab = vista === "mercado" && enFab();
+  const oport = fab && leerRuta(location.hash).vista === "oportunidades";
+  $("vista-login").hidden = vista !== "login";
+  $("vista-mercado").hidden = vista !== "mercado" || fab;
+  $("vista-fabricacion").hidden = !fab;
+  document.body.classList.toggle("modo-fab", fab);
+  for (const [id, activo] of [["nav-mercado", !fab], ["nav-fabricacion", fab && !oport], ["nav-oportunidades", oport]]) {
+    if (activo) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+  }
+  for (const id of ["grupo-mercado", "barra"]) $(id).hidden = vista === "login";
 }
 
 // ---------- mercado: región · tipo · facción · fuente ----------
@@ -509,13 +517,6 @@ function pintarTabla() {
         `${x.var24 > 0.05 ? "▲" : x.var24 < -0.05 ? "▼" : "▬"} ${formatearPct(x.var24)}`);
       tdPrecio.append(mini);
     }
-    // Oportunidades: bajo el precio, la referencia con la que se compara (valor de mercado o lo que paga el NPC).
-    const refValor = x.margen_tipo === "npc" ? x.venta_npc : x.valor_mercado;
-    if (x.margen != null && refValor != null) {
-      const ref = el("span", "ref-valor");
-      ref.append(el("span", "ref-k", x.margen_tipo === "npc" ? "NPC paga " : "Mercado "), monedaNodo(refValor));
-      tdPrecio.append(ref);
-    }
     tr.append(tdObj, tdPrecio, tdCant, celdaMargen(x), celdaVariacion(x), celdaSpark(x));
     frag.append(tr);
   }
@@ -540,16 +541,15 @@ function pintarTabla() {
   if ($("f-materiales").checked) partes.push(filtro.familia ? NOMBRE_FAMILIA[filtro.familia] : "Materiales");
   if (filtro.subcategoria) partes.push(nombreSub(filtro.subcategoria)); else if (filtro.categoria) partes.push(nombreCat(filtro.categoria));
   if (filtro.texto) partes.push(`«${filtro.texto}»`);
+  if ($("f-oportunidad").value) partes.unshift(NOMBRE_OPORTUNIDAD[$("f-oportunidad").value]);
   if ($("f-region").value) partes.push(`se vende en la región (≥ ${$("f-region").value}/día)`);
   if ($("f-lista").value) partes.unshift(`Lista «${misListas.find((l) => String(l.id) === $("f-lista").value)?.nombre ?? "?"}»`);
   const tit = partes.join(" · ");
-  if (seccion === "oportunidades") $("titulo-resultados").textContent = "Oportunidades" + (tit ? ` · ${tit}` : "");
-  else $("titulo-resultados").textContent = tit ? tit[0].toUpperCase() + tit.slice(1) : "Mercado";
-  // Oportunidades: cuántas hay de cada tipo con los demás filtros, y el aviso de que el dato puede ir con retraso.
-  for (const b of document.querySelectorAll("#op-tabs [data-op]")) {
-    const n = d?.oportunidades?.[b.dataset.op];
-    b.querySelector(".op-n").textContent = n == null ? "" : n.toLocaleString("es");
-    b.setAttribute("aria-pressed", String($("f-oportunidad").value === b.dataset.op));
+  $("titulo-resultados").textContent = tit ? tit[0].toUpperCase() + tit.slice(1) : "Mercado";
+  // Oportunidades: cuántas hay con los demás filtros, y el aviso de que el dato puede ir con retraso.
+  for (const o of $("f-oportunidad").options) {
+    const n = d?.oportunidades?.[o.value];
+    if (o.value) o.textContent = NOMBRE_OPORTUNIDAD[o.value] + (n == null ? "" : ` (${n.toLocaleString("es")})`);
   }
   pintarAvisoOportunidad();
   // Referencia regional: de cuándo es el archivo (en su ayuda, no como párrafo fijo).
@@ -573,7 +573,7 @@ function pintarTabla() {
   }
   // Cabeceras ordenables: refleja el orden actual.
   const [clave, dir] = $("f-orden").value.split(":");
-  for (const th of document.querySelectorAll(".tabla-mercado th")) {
+  for (const th of document.querySelectorAll("#tabla-mercado th")) {
     const bo = th.querySelector("[data-orden]");
     th.setAttribute("aria-sort", bo?.dataset.orden === clave ? (dir === "asc" ? "ascending" : "descending") : "none");
   }
@@ -613,8 +613,7 @@ async function alternarFavorito(id, nombre) {
 // ---------- filtros activos como etiquetas ----------
 function estadoFiltros() {
   const f = leerFiltros();
-  // El tipo de oportunidad no es una etiqueta: lo eligen la sección y sus pestañas.
-  return { ...f, oportunidad: "", ventasRegion: f.ventasRegion || "", lista: f.lista || "" };
+  return { ...f, ventasRegion: f.ventasRegion || "", lista: f.lista || "" };
 }
 const NOMBRES_CHIP = {
   categoria: (c) => nombreCat(c), profesion: (p) => nombreProf(p), rol: (r) => NOMBRE_ROL[r]?.toLowerCase() ?? r,
@@ -677,9 +676,11 @@ function limpiarTodo() {
   Object.assign(filtro, { texto: "", categoria: "", subcategoria: "", calidad: "", profesion: "", rol: "", familia: "", pagina: 1 });
   for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"]) $(id).value = "";
   $("f-ofertas").checked = false;
+  $("f-oportunidad").value = "";
   $("f-region").value = "";
   $("f-lista").value = "";
   $("f-materiales").checked = false;
+  if ($("f-orden").value.startsWith("margen")) $("f-orden").value = "nombre:asc";
   $("buscador").value = "";
   $("btn-borrar-busqueda").hidden = true;
   pintarCalidades(); pintarArbol(); pintarProfesiones();
@@ -694,7 +695,7 @@ $("btn-reordenar").addEventListener("click", () => {
 });
 
 // ---------- filtros, orden, densidad y vista se conservan al recargar ----------
-const CAMPOS_GUARDADOS = ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max", "f-region", "f-orden"];
+const CAMPOS_GUARDADOS = ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max", "f-oportunidad", "f-region", "f-orden"];
 function guardarEstado() {
   local.escribir("mw_estado", {
     filtro: { ...filtro },
@@ -765,7 +766,7 @@ function cajaTip() {
 }
 /** ID del objeto al que pertenece un icono (fila de la tabla, detalle o sugerencia del buscador). */
 function idDeIcono(ic) {
-  const fila = ic.closest("[data-id]");   // fila de la tabla, receta o material de Fabricación
+  const fila = ic.closest("tr[data-id]");
   if (fila) return Number(fila.dataset.id);
   if (ic.closest(".det-objeto")) return objetoActual;
   const sug = ic.closest("[data-k]");
@@ -812,9 +813,7 @@ function mostrarTipDe(ic, x, y) {
 }
 document.addEventListener("pointerover", (ev) => {
   const ic = ev.target.closest?.(".icono");
-  if (ic && (ic.closest("#tbody") || ic.closest("#fab-tbody") || ic.closest(".det-objeto") || ic.closest("#sugerencias"))) {
-    mostrarTipDe(ic, ev.clientX, ev.clientY);
-  }
+  if (ic && (ic.closest("#tbody") || ic.closest(".det-objeto") || ic.closest("#sugerencias"))) mostrarTipDe(ic, ev.clientX, ev.clientY);
 });
 document.addEventListener("pointerout", (ev) => { if (ev.target.closest?.(".icono")) ocultarTip(); });
 // Teclado: al enfocar un objeto de la tabla, su cuadro junto al icono.
@@ -874,76 +873,13 @@ for (const id of ["f-nivel-min", "f-nivel-max", "f-precio-min", "f-precio-max"])
 $("f-ofertas").addEventListener("change", repintar);
 $("f-region").addEventListener("change", () => { repintar(); if (estrecho()) cerrarLateral(); });
 $("f-lista").addEventListener("change", () => { repintar(); if (estrecho()) cerrarLateral(); });
-// Oportunidades: pestañas Todas · Gangas · Bajo precio de NPC (se recuerda la elegida).
-const TIPOS_OPORTUNIDAD = ["todas", "ganga", "npc"];
-for (const b of document.querySelectorAll("#op-tabs [data-op]")) {
-  b.addEventListener("click", () => {
-    if ($("f-oportunidad").value === b.dataset.op) return;
-    $("f-oportunidad").value = b.dataset.op;
-    local.escribir("mw_oportunidad", b.dataset.op);
-    repintar();
-  });
-}
-
-// ---------- secciones: Mercado · Fabricación · Oportunidades ----------
-/** Pone un orden en el selector aunque sea uno añadido desde una cabecera («cantidad:asc»). */
-function ponerOrden(v) {
-  const s = $("f-orden");
-  if (!/^[a-z_0-9]+:(asc|desc)$/.test(v ?? "")) return;
-  if (![...s.options].some((o) => o.value === v)) {
-    const o = el("option", "", v.replace(":asc", " ↑").replace(":desc", " ↓")); o.value = v; s.append(o);
-  }
-  s.value = v;
-}
-/**
- * Cambia de sección. Mercado y Oportunidades comparten la tabla y los filtros (cada una recuerda su orden);
- * Fabricación tiene su propia tabla de recetas y oculta los filtros del catálogo.
- */
-function ponerSeccion(s, { cargarDatos = true } = {}) {
-  const antes = seccion;
-  seccion = SECCIONES.includes(s) ? s : "mercado";
-  local.escribir("mw_seccion", seccion);
-  document.body.dataset.seccion = seccion;
-  for (const a of document.querySelectorAll(".lat-nav a[data-seccion]")) {
-    if (a.dataset.seccion === seccion) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
-  }
-  const fab = seccion === "fabricacion";
-  if ($("vista-login").hidden) { $("vista-mercado").hidden = fab; $("vista-fabricacion").hidden = !fab; }
-  for (const id of ["grupo-cat", "grupo-prof", "grupo-filtros", "grupo-banda"]) $(id).hidden = fab;
-  $("buscador").placeholder = fab ? "Buscar receta, objeto o material" : "Buscar objeto";
-  $("buscador").value = fab ? fabEstado.texto : filtro.texto;
-  $("btn-borrar-busqueda").hidden = !$("buscador").value;
-  // Cada sección de la tabla recuerda su orden; Oportunidades empieza por el mayor margen.
-  const ordenes = local.leer("mw_ordenes", {}) ?? {};
-  if (cargarDatos && antes !== seccion && antes !== "fabricacion") { ordenes[antes] = $("f-orden").value; local.escribir("mw_ordenes", ordenes); }
-  const op = seccion === "oportunidades";
-  $("op-tabs").hidden = !op;
-  document.querySelector(".res-cab .vistas:not(#densidad)").hidden = op;   // Lista / Mapa: solo en el Mercado
-  if (op) {
-    const t = local.leer("mw_oportunidad", "todas");
-    $("f-oportunidad").value = TIPOS_OPORTUNIDAD.includes(t) ? t : "todas";
-    ponerOrden(ordenes.oportunidades ?? "margen:desc");
-    if (vista === "mapa") ponerVista("lista", { guardar: false });
-  } else if (seccion === "mercado") {
-    $("f-oportunidad").value = "";
-    if (ordenes.mercado) ponerOrden(ordenes.mercado);
-    else if ($("f-orden").value.startsWith("margen")) ponerOrden("nombre:asc");   // venía de Oportunidades
-    if (vista !== local.leer("mw_vista", "lista") && antes !== seccion) ponerVista(local.leer("mw_vista", "lista") === "mapa" ? "mapa" : "lista");
-  }
+$("f-oportunidad").addEventListener("change", () => {
+  // Al elegir una oportunidad, lo útil es ver primero la de mayor margen.
+  if ($("f-oportunidad").value && !$("f-orden").value.startsWith("margen")) $("f-orden").value = "margen:desc";
+  if (!$("f-oportunidad").value && $("f-orden").value.startsWith("margen")) $("f-orden").value = "nombre:asc";
+  repintar();
   if (estrecho()) cerrarLateral();
-  if (!cargarDatos || antes === seccion) return;
-  // Fabricación: las recetas ya cargadas de este mercado se reutilizan (vigilar() las refresca con datos nuevos).
-  if (fab) { if (fabEstado.datos && fabEstado.datosDe === ultimo?.mercado?.clave) pintarFabricacion(); else cargarFabricacion(); }
-  else { filtro.pagina = 1; cargarPagina(); }
-}
-for (const a of document.querySelectorAll(".lat-nav a[data-seccion]")) {
-  // Con un objeto abierto, la dirección es la del objeto: el enlace cambia de sección igualmente.
-  a.addEventListener("click", (ev) => {
-    if (leerRuta(location.hash).vista !== "objeto") return;
-    ev.preventDefault();
-    location.hash = hashSeccion(a.dataset.seccion);
-  });
-}
+});
 $("f-materiales").addEventListener("change", () => {
   if (!$("f-materiales").checked) filtro.familia = "";
   pintarProfesiones();
@@ -972,7 +908,6 @@ function pintarCalidades() {
  */
 function pintarProfesiones() {
   const d = pagina;
-  if (fabEstado.profesiones) pintarFabProfesiones();   // los iconos de las profesiones llegan con la página
   // «Materiales de profesiones» y sus familias.
   $("n-materiales").textContent = d ? d.materiales_total.toLocaleString("es") : "";
   const ulF = $("familias");
@@ -1316,9 +1251,9 @@ function pintarMigas(d) {
 }
 const PERIODO_TXT = { "24h": "24 h", "3d": "3 días", "7d": "7 días" };
 
-function ponerVista(v, { guardar = true } = {}) {
+function ponerVista(v) {
   vista = v;
-  if (guardar) local.escribir("mw_vista", v);
+  local.escribir("mw_vista", v);
   for (const b of document.querySelectorAll(".btn-vista[data-modo]")) b.setAttribute("aria-pressed", String(b.dataset.modo === v));
   $("mapa").hidden = v !== "mapa";
   $("vista-lista").hidden = v === "mapa";
@@ -1613,7 +1548,7 @@ function cerrarDetalle() {
   for (const tr of $("tbody").querySelectorAll("tr.activa")) tr.classList.remove("activa");
 }
 function salirDelDetalle() {
-  if (leerRuta(location.hash).vista === "objeto") location.hash = hashSeccion(seccion);
+  if (leerRuta(location.hash).vista === "objeto") location.hash = "#/";
   else cerrarDetalle();
 }
 $("det-cerrar").addEventListener("click", salirDelDetalle);
@@ -1625,7 +1560,7 @@ document.addEventListener("keydown", (ev) => {
   else if (!$("panel-ficha").hidden) salirDelDetalle();
 });
 
-function seccionDet(titulo, abierto = false) {
+function seccion(titulo, abierto = false) {
   const d = el("details", "det-sec");
   d.open = abierto;
   d.append(el("summary", "", titulo));
@@ -1854,7 +1789,7 @@ async function cargarHistorialEn(cont, id, rango) {
 
 /** Recetas que fabrican el objeto y recetas que lo usan (datos de AHledger), al desplegar. */
 function seccionRecetas(id) {
-  const sec = seccionDet("Recetas y profesiones");
+  const sec = seccion("Recetas y profesiones");
   const cuerpo = el("div");
   cuerpo.append(el("p", "muted small", "Cargando…"));
   sec.append(cuerpo);
@@ -1941,7 +1876,7 @@ function seccionRegion(f) {
   const est = f.region_estado;
   if (!est) return null;   // mercado de demostración o sin archivo regional importado
   const r = f.region;
-  const sec = seccionDet(`Región ${est.region} (no es PvP Horda)`, false);
+  const sec = seccion(`Región ${est.region} (no es PvP Horda)`, false);
   if (!r) {
     sec.append(el("p", "muted small", "El archivo regional de TSM no trae este objeto."));
   } else {
@@ -1962,7 +1897,7 @@ function seccionRegion(f) {
 const ORIGEN_MATERIAL = { subasta: "subasta", fabricar: "fabricado", npc: "NPC" };
 
 function seccionPropiedades(f) {
-  const sec = seccionDet("Propiedades");
+  const sec = seccion("Propiedades");
   sec.append(kv([
     ["Compra al NPC", f.compra_npc == null ? null
       : el("span", "", formatearMoneda(f.compra_npc) + (f.compra_npc_origen === "usuario" ? " (introducido por ti)" : ""))],
@@ -2301,7 +2236,7 @@ async function cargarAvisos() {
 
 /** Detalle: a qué listas pertenece el objeto y sus alertas. */
 function seccionListasAlertas(f) {
-  const sec = seccionDet("Listas y alertas");
+  const sec = seccion("Listas y alertas");
   const id = f.id;
   const cuerpo = el("div");
   sec.append(cuerpo);
@@ -2405,7 +2340,7 @@ async function bloqueRecomendacion(id) {
     else rec.append(el("span", "etiqueta " + ({ VENDER: "rec-vender", GUARDAR: "rec-guardar", OBSERVACION: "rec-obs" }[l.rec] || ""),
       NOMBRE_REC[l.rec]));
     rec.lastChild.title = l.resumen ?? "";
-    const motivo = seccionDet("Ver motivo");
+    const motivo = seccion("Ver motivo");
     motivo.classList.add("motivo");
     const ul = el("ul", "det-lista");
     for (const t of [l.resumen, ...d.motivos]) if (t) ul.append(el("li", "", t));
@@ -2473,267 +2408,14 @@ async function abrirObjeto(id, { silencioso = false } = {}) {
   }
 }
 
-// ---------- Fabricación: recetas de una profesión con coste, venta y beneficio estimados ----------
-const fabEstado = {
-  profesion: local.leer("mw_fab_prof", "Alchemy"),
-  texto: "",
-  rentables: local.leer("mw_fab_rentables", false) === true,
-  completas: local.leer("mw_fab_completas", false) === true,
-  profesiones: null, profesionesDe: null,   // lista de profesiones y de qué mercado es
-  datos: null, abiertas: new Set(), n: 0,
-};
-{
-  const o = local.leer("mw_fab_orden", "margen:desc");
-  if ([...$("fab-orden").options].some((x) => x.value === o)) $("fab-orden").value = o;
-}
-const NOMBRE_ORIGEN = { subasta: "Subasta", fabricar: "Fabricado", npc: "NPC" };
-
-function esqueletoFab() {
-  const tb = $("fab-tbody");
-  tb.replaceChildren();
-  for (let i = 0; i < 10; i++) {
-    const tr = el("tr", "esq");
-    for (let k = 0; k < 5; k++) { const td = el("td", k && k < 4 ? "num" : ""); if (k < 4) td.append(el("span", "barra-esq")); tr.append(td); }
-    tb.append(tr);
-  }
-  $("fab-vacio").hidden = true;
-}
-
-async function pedirJson(url) {
-  const r = await fetch(url, { cache: "no-store" });
-  const d = await r.json().catch(() => ({}));
-  if (r.status === 401) { await cargar(); throw new Error("sesión caducada"); }
-  if (!r.ok) throw new Error(d.error || "HTTP " + r.status);
-  return d;
-}
-
-/** Pide la lista de profesiones (una vez por mercado) y las recetas de la elegida. */
-async function cargarFabricacion({ silencioso = false } = {}) {
-  if (!ultimo?.mercado?.clave) return;
-  const n = ++fabEstado.n;
-  const clave = ultimo.mercado.clave;
-  const sec = $("vista-fabricacion");
-  if (!silencioso) { sec.classList.add("cargando"); sec.setAttribute("aria-busy", "true"); if (!fabEstado.datos) esqueletoFab(); }
-  try {
-    if (fabEstado.profesionesDe !== clave) {
-      fabEstado.profesiones = await pedirJson(`/api/recetas?mercado=${urlMercado()}`);
-      fabEstado.profesionesDe = clave;
-    }
-    if (n !== fabEstado.n) return;
-    const profs = Array.isArray(fabEstado.profesiones) ? fabEstado.profesiones : [];
-    if (!profs.some((p) => p.profesion === fabEstado.profesion)) fabEstado.profesion = profs[0]?.profesion ?? "";
-    pintarFabProfesiones();
-    const d = fabEstado.profesion
-      ? await pedirJson(`/api/recetas?mercado=${urlMercado()}&profesion=${encodeURIComponent(fabEstado.profesion)}&base=tsm`)
-      : { recetas: [], profesion: "" };
-    if (n !== fabEstado.n) return;
-    fabEstado.datos = d;
-    fabEstado.datosDe = clave;
-    pintarFabricacion();
-  } catch (e) {
-    if (n !== fabEstado.n || (silencioso && fabEstado.datos)) return;   // un refresco fallido no borra lo que se ve
-    $("fab-tbody").replaceChildren();
-    $("fab-vacio").hidden = false;
-    $("fab-vacio-txt").textContent = "No se pudieron cargar las recetas: " + e.message;
-    $("fab-quitar").hidden = true;
-  } finally {
-    if (n === fabEstado.n) { sec.classList.remove("cargando"); sec.setAttribute("aria-busy", "false"); }
-  }
-}
-
-/** Profesiones como pestañas con icono y número de recetas. */
-function pintarFabProfesiones() {
-  const iconos = new Map((pagina?.profesiones_roles ?? []).map((p) => [p.profesion, p.icono]));
-  const profs = (Array.isArray(fabEstado.profesiones) ? fabEstado.profesiones : []).filter((p) => p.recetas > 0)
-    .sort((a, b) => nombreProf(a.profesion).localeCompare(nombreProf(b.profesion), "es"));
-  $("fab-profesiones").replaceChildren(...profs.map((p) => {
-    const b = el("button", "fab-prof");
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(p.profesion === fabEstado.profesion));
-    b.append(iconoNodo(iconos.get(p.profesion), nombreProf(p.profesion)), el("span", "", nombreProf(p.profesion)),
-      el("span", "fab-prof-n", p.recetas.toLocaleString("es")));
-    b.addEventListener("click", () => {
-      if (p.profesion === fabEstado.profesion) return;
-      fabEstado.profesion = p.profesion;
-      fabEstado.abiertas.clear();
-      local.escribir("mw_fab_prof", p.profesion);
-      pintarFabProfesiones();
-      cargarFabricacion();
-    });
-    return b;
-  }));
-}
-
-/** Celda de beneficio: cifra con signo, porcentaje debajo; desconocido = «—» con el motivo. */
-function celdaBeneficio(r) {
-  const td = el("td", "num c-margen");
-  if (r.margen == null) {
-    td.append(sinDato(!r.completa ? "Falta el precio de algún material" : "El objeto fabricado no tiene precio en este mercado"));
-    return td;
-  }
-  td.classList.add(r.margen > 0 ? "positivo" : r.margen < 0 ? "negativo" : "igual");
-  td.append(el("span", "signo", r.margen > 0 ? "+" : r.margen < 0 ? "−" : ""), monedaNodo(Math.abs(r.margen)));
-  // La receta da el margen como fracción del coste (0,25); formatearPct espera el porcentaje (25).
-  if (r.margen_pct != null) td.append(el("span", "margen-pct", formatearPct(r.margen_pct * 100)));
-  return td;
-}
-
-/** Desglose de una receta: materiales con su origen y coste, y acceso al objeto fabricado. */
-function filaMateriales(r, idFila) {
-  const tr = el("tr", "fab-detalle");
-  tr.id = idFila;
-  const td = el("td");
-  td.colSpan = 5;
-  const ul = el("ul", "fab-mat");
-  for (const x of r.reactivos) {
-    const li = el("li");
-    li.dataset.id = x.id;
-    const b = el("button", "enlace" + (x.calidad ? ` q-${x.calidad}` : ""));
-    b.type = "button"; b.dataset.ir = x.id;
-    b.append(el("span", "fab-mat-cant", `${x.cantidad} ×`), " ", x.nombre);
-    const origen = el("span", "fab-origen " + (x.origen ?? "sin"), x.origen ? NOMBRE_ORIGEN[x.origen] + (x.origen === "npc" && x.npc_tuyo ? " (tuyo)" : "") : "Sin precio");
-    origen.title = [["Subasta", x.subasta], ["Fabricar", x.fabricar], ["NPC", x.npc]]
-      .map(([k, v]) => `${k}: ${v == null ? "—" : formatearMoneda(v) + " c/u"}`).join(" · ");
-    const unidad = el("span", "fab-mat-ud muted small");
-    if (x.precio != null) unidad.append(monedaNodo(x.precio), " c/u");
-    li.append(iconoNodo(x.icono, x.nombre, x.calidad), b, origen, unidad, x.coste == null ? sinDato("Sin precio") : monedaNodo(x.coste));
-    ul.append(li);
-  }
-  const pie = el("div", "fab-mat-pie");
-  const vr = r.resultado ?? {};
-  if (vr.id) {
-    const ver = el("button", "btn btn-piedra btn-small", `Ver ${nombreReceta(r, nom)} en el mercado`);
-    ver.type = "button"; ver.dataset.ir = vr.id;
-    pie.append(ver);
-  }
-  const notas = [];
-  if (vr.rendimiento > 1) notas.push(`La receta da ${vr.cantidad_min === vr.cantidad_max ? vr.rendimiento : `${vr.cantidad_min}–${vr.cantidad_max}`} unidades`);
-  if (vr.fuente_valor) notas.push(`venta con ${vr.fuente_valor === "compra_minima" ? "la compra mínima" : "el valor de mercado (sin ofertas)"}` +
-    (vr.tope_aplicado ? ` y tope del ${fabEstado.datos?.tope_valor_pct ?? 150} % del valor de mercado` : ""));
-  if (notas.length) pie.append(el("span", "muted small", notas.join(" · ")));
-  td.append(ul, pie);
-  tr.append(td);
-  return tr;
-}
-
-function pintarFabricacion() {
-  const d = fabEstado.datos;
-  if (!d) return;
-  // Nombres en español (si se conocen) para mostrar, buscar y ordenar.
-  const base = (d.recetas ?? []).map((r) => ({
-    ...r, nombre: nombreReceta(r, nom), reactivos: (r.reactivos ?? []).map((x) => ({ ...x, nombre: nom(x.id, x.nombre) })),
-  }));
-  const lista = ordenarRecetas(filtrarRecetas(base, {
-    texto: fabEstado.texto, soloRentables: fabEstado.rentables, soloConMargen: fabEstado.completas,
-  }), $("fab-orden").value);
-  const res = resumenRecetas(base);
-  $("titulo-fab").textContent = d.profesion ? `Fabricación · ${nombreProf(d.profesion)}` : "Fabricación";
-  $("fab-contador").textContent = res.total
-    ? `${res.conBeneficio.toLocaleString("es")} con beneficio de ${res.total.toLocaleString("es")} recetas` : "";
-  $("fab-hora").textContent = hace(d.hora_precios);
-  $("ayuda-fab").dataset.ayuda =
-    "Coste: cada material al más barato entre comprarlo en la subasta (compra mínima o, sin ofertas, valor de mercado), " +
-    "fabricarlo o comprarlo al NPC si has puesto ese precio. Venta: precio del objeto fabricado, con tope del " +
-    `${d.tope_valor_pct ?? 150} % de su valor de mercado, menos la comisión del ${d.comision_pct ?? 5} %. ` +
-    "Beneficio = venta − coste. Es una estimación: no descuenta depósitos ni asegura que se venda. " +
-    `Precios ${hace(d.hora_precios)}.`;
-  $("fab-rentables").setAttribute("aria-pressed", String(fabEstado.rentables));
-  $("fab-completas").setAttribute("aria-pressed", String(fabEstado.completas));
-  // La búsqueda activa, como etiqueta que se quita.
-  const chip = $("fab-texto");
-  chip.hidden = !fabEstado.texto;
-  if (fabEstado.texto) {
-    const b = el("button", "chip-filtro");
-    b.type = "button"; b.setAttribute("aria-label", `Quitar búsqueda: ${fabEstado.texto}`);
-    const x = el("span", "x", "×"); x.setAttribute("aria-hidden", "true");
-    b.append(`«${fabEstado.texto}»`, x);
-    b.addEventListener("click", () => { fabEstado.texto = ""; $("buscador").value = ""; $("btn-borrar-busqueda").hidden = true; pintarFabricacion(); });
-    chip.replaceChildren(b);
-  }
-  const frag = document.createDocumentFragment();
-  for (const r of lista) {
-    const tr = el("tr", "fab-fila");
-    const vr = r.resultado ?? {};
-    if (vr.id) tr.dataset.id = vr.id;
-    const abierta = fabEstado.abiertas.has(r.spell);
-    const idFila = `fab-mat-${r.spell}`;
-    const tdObj = el("td", "c-rec");
-    const b = el("button", "objeto");
-    b.type = "button";
-    b.dataset.spell = r.spell;
-    b.setAttribute("aria-expanded", String(abierta));
-    if (abierta) b.setAttribute("aria-controls", idFila);
-    const txt = el("span", "objeto-txt");
-    // Debajo del nombre: nivel, unidades si da más de una y los materiales (distinguen dos recetas del mismo objeto).
-    const sub = [r.nivel != null ? `Nivel ${r.nivel}` : null,
-      vr.rendimiento > 1 ? `da ${vr.cantidad_min === vr.cantidad_max ? vr.rendimiento : `${vr.cantidad_min}–${vr.cantidad_max}`}` : null,
-      r.reactivos.map((x) => `${x.cantidad} ${x.nombre}`).join(", ")].filter(Boolean).join(" · ");
-    txt.append(el("span", "objeto-nombre" + (vr.calidad ? ` q-${vr.calidad}` : ""), r.nombre), el("span", "objeto-id", sub));
-    b.append(iconoNodo(vr.icono, r.nombre, vr.calidad), txt);
-    b.title = `Ver los materiales de ${r.nombre}`;
-    tdObj.append(b);
-    const tdCoste = el("td", "num");
-    if (r.completa) tdCoste.append(monedaNodo(r.coste));
-    else {
-      const faltan = r.reactivos.filter((x) => x.coste == null).map((x) => x.nombre);
-      tdCoste.append(sinDato(`Falta el precio de: ${faltan.join(", ") || "algún material"}`));
-    }
-    const tdVenta = el("td", "num");
-    if (r.neto == null) tdVenta.append(sinDato("El objeto fabricado no tiene precio en este mercado"));
-    else {
-      tdVenta.append(monedaNodo(r.neto));
-      tdVenta.title = `Precio ${formatearMoneda(vr.precio)} − comisión ${formatearMoneda(r.comision)}`;
-    }
-    const tdAbrir = el("td", "c-abrir");
-    tdAbrir.innerHTML = '<svg aria-hidden="true"><use href="#i-flecha" /></svg>';
-    tr.classList.toggle("abierta", abierta);
-    tr.append(tdObj, tdCoste, tdVenta, celdaBeneficio(r), tdAbrir);
-    frag.append(tr);
-    if (abierta) frag.append(filaMateriales(r, idFila));
-  }
-  $("fab-tbody").replaceChildren(frag);
-  const hayFiltros = !!(fabEstado.texto || fabEstado.rentables || fabEstado.completas);
-  $("fab-vacio").hidden = lista.length > 0;
-  $("fab-vacio-txt").textContent = hayFiltros ? "Ninguna receta coincide con la búsqueda o los filtros."
-    : "Esta profesión no tiene recetas en este mercado.";
-  $("fab-quitar").hidden = !hayFiltros;
-  const a = d.atribucion;
-  $("fab-atribucion").replaceChildren();
-  if (a) {
-    const link = el("a", "", a.texto);
-    link.href = a.url; link.target = "_blank"; link.rel = "noopener";
-    $("fab-atribucion").append(el("span", "muted", "Recetas: "), link);
-  }
-}
-
-$("fab-tbody").addEventListener("click", (ev) => {
-  const ir = ev.target.closest("[data-ir]");
-  if (ir) { location.hash = `#/objeto/${Number(ir.dataset.ir)}`; return; }
-  const fila = ev.target.closest("tr.fab-fila");
-  if (!fila) return;
-  const spell = Number(fila.querySelector("[data-spell]").dataset.spell);
-  if (fabEstado.abiertas.has(spell)) fabEstado.abiertas.delete(spell); else fabEstado.abiertas.add(spell);
-  pintarFabricacion();
-  $("fab-tbody").querySelector(`[data-spell="${spell}"]`)?.focus();
-});
-$("fab-orden").addEventListener("change", () => { local.escribir("mw_fab_orden", $("fab-orden").value); pintarFabricacion(); });
-for (const [id, k, clave] of [["fab-rentables", "rentables", "mw_fab_rentables"], ["fab-completas", "completas", "mw_fab_completas"]]) {
-  $(id).addEventListener("click", () => { fabEstado[k] = !fabEstado[k]; local.escribir(clave, fabEstado[k]); pintarFabricacion(); });
-}
-$("fab-quitar").addEventListener("click", () => {
-  Object.assign(fabEstado, { texto: "", rentables: false, completas: false });
-  local.escribir("mw_fab_rentables", false); local.escribir("mw_fab_completas", false);
-  $("buscador").value = ""; $("btn-borrar-busqueda").hidden = true;
-  pintarFabricacion();
-});
-
-// ---------- rutas: #/ (mercado), #/fabricacion, #/oportunidades y #/objeto/ID (sobre la sección actual) ----------
+// ---------- rutas: #/ (mercado) y #/objeto/ID ----------
 function aplicarRuta() {
   if (!ultimo) return;
   const r = leerRuta(location.hash);
-  if (r.vista === "objeto") { if (r.id !== objetoActual || $("panel-ficha").hidden) abrirObjeto(r.id); return; }
-  if (r.vista !== seccion) ponerSeccion(r.vista);
-  if (!$("panel-ficha").hidden) {
+  if ($("vista-login").hidden) mostrar("mercado");
+  if (r.vista === "fabricacion" || r.vista === "oportunidades") { vistaFab.mostrar(r.vista === "oportunidades" ? "oportunidades" : "tabla"); return; }
+  if (r.vista === "objeto") { if (r.id !== objetoActual || $("panel-ficha").hidden) abrirObjeto(r.id); }
+  else if (!$("panel-ficha").hidden) {
     const id = objetoActual;
     cerrarDetalle();
     // El foco vuelve a donde estaba (la fila, el buscador…); si se abrió desde la dirección, a su fila.
@@ -2744,6 +2426,12 @@ function aplicarRuta() {
   }
 }
 window.addEventListener("hashchange", aplicarRuta);
+
+const vistaFab = crearVistaFabricacion({
+  $, el, monedaNodo, iconoNodo, nom, nombreProf, fecha, hace, local, avisar, formatear: formatearMoneda,
+  abrirObjeto: (id) => abrirObjeto(id),
+  mercado: () => ultimo?.mercado?.clave ?? null,
+});
 window.matchMedia("(max-width: 1339px)").addEventListener("change", () => {
   if (!$("panel-ficha").hidden) $("velo-detalle").hidden = !detalleSuperpuesto();
 });
@@ -2802,6 +2490,8 @@ function confirmarSugerencia(k) {
   ac = { ...ac, abierto: false, activo: -1 };
   pintarSugerencias();
   guardarReciente({ id: s.id, nombre: s.nombre, icono: s.icono, calidad: s.calidad });
+  // En «Fabricación», el objeto elegido se busca en sus recetas (con el desglose) sin salir de la sección.
+  if (enFab()) { vistaFab.buscarObjeto(s.id); return; }
   location.hash = `#/objeto/${s.id}`;
   if (leerRuta(location.hash).id === objetoActual) abrirObjeto(s.id);
 }
@@ -2813,6 +2503,7 @@ function buscarEnMercado() {
   pintarSugerencias();
   ocultarRecientes();
   if (filtro.texto) guardarReciente({ texto: filtro.texto });
+  if (enFab()) { vistaFab.buscarTexto(filtro.texto); return; }
   repintar();
 }
 
@@ -2822,7 +2513,7 @@ function guardarReciente(item) { local.escribir("mw_recientes", agregarReciente(
 function ocultarRecientes() { $("recientes").hidden = true; }
 function mostrarRecientes() {
   const lista = leerRecientes();
-  if (!lista.length || seccion === "fabricacion" || $("buscador").value.trim() || !$("sugerencias").hidden) { ocultarRecientes(); return; }
+  if (!lista.length || $("buscador").value.trim() || !$("sugerencias").hidden) { ocultarRecientes(); return; }
   $("lista-recientes").replaceChildren(...lista.map((x, k) => {
     const li = el("li");
     const b = el("button", "reciente");
@@ -2843,7 +2534,8 @@ $("lista-recientes").addEventListener("click", (ev) => {
   if (x.id != null) {
     $("buscador").value = nom(x.id, x.nombre); $("btn-borrar-busqueda").hidden = false;
     guardarReciente(x);
-    location.hash = `#/objeto/${x.id}`;
+    if (enFab()) vistaFab.buscarObjeto(x.id);
+    else location.hash = `#/objeto/${x.id}`;
   } else {
     $("buscador").value = x.texto; $("btn-borrar-busqueda").hidden = false;
     buscarEnMercado();
@@ -2863,8 +2555,7 @@ $("btn-borrar-busqueda").addEventListener("click", () => {
   $("buscador").value = "";
   $("btn-borrar-busqueda").hidden = true;
   sugerencias = []; ac = conSugerencias(ac, 0); pintarSugerencias();
-  if (seccion === "fabricacion") { fabEstado.texto = ""; pintarFabricacion(); }
-  else if (filtro.texto) { filtro.texto = ""; repintar(); }
+  if (filtro.texto) { filtro.texto = ""; repintar(); }
   $("buscador").focus();
 });
 // «/» lleva al buscador cuando no se está escribiendo en otro campo.
@@ -2877,14 +2568,8 @@ document.addEventListener("keydown", (ev) => {
 });
 
 $("buscador").addEventListener("input", () => {
-  $("btn-borrar-busqueda").hidden = !$("buscador").value;
-  // Fabricación: el buscador filtra las recetas al escribir (sin lista de sugerencias).
-  if (seccion === "fabricacion") {
-    clearTimeout(temporizadorAc);
-    temporizadorAc = setTimeout(() => { fabEstado.texto = $("buscador").value.trim(); pintarFabricacion(); }, 120);
-    return;
-  }
   ac = alEscribir(ac);
+  $("btn-borrar-busqueda").hidden = !$("buscador").value;
   if ($("buscador").value) ocultarRecientes();
   if (!$("buscador").value.trim() && filtro.texto) { filtro.texto = ""; repintar(); }
   clearTimeout(temporizadorAc);
@@ -2892,10 +2577,6 @@ $("buscador").addEventListener("input", () => {
 });
 $("buscador").addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && !$("recientes").hidden) { ocultarRecientes(); ev.preventDefault(); return; }
-  if (seccion === "fabricacion") {
-    if (ev.key === "Enter") { ev.preventDefault(); fabEstado.texto = $("buscador").value.trim(); pintarFabricacion(); }
-    return;
-  }
   if (ev.key === "ArrowDown" && !$("recientes").hidden) {
     ev.preventDefault();
     $("lista-recientes").querySelector("button")?.focus();
@@ -3023,8 +2704,8 @@ async function vigilar() {
           await cargar();
           await cargarPagina({ silencioso: true });
           if (vista === "mapa") cargarMapa();
-          if (seccion === "fabricacion") cargarFabricacion({ silencioso: true });
           if (objetoActual != null) abrirObjeto(objetoActual, { silencioso: true });
+          if (enFab()) vistaFab.refrescar(); else vistaFab.invalidar();
         }
         firmaVersion = firma;
       }
@@ -3055,8 +2736,7 @@ async function refrescar() {
   await Promise.all([cargarPerfilSubasta(), cargarListas(), cargarNombresEs()]);   // antes de pintar la tabla o un objeto
   cargarAvisos();         // alertas cumplidas desde la última vez (sin bloquear la tabla)
   aplicarRuta();          // un objeto pedido en la dirección se abre sin esperar a la tabla
-  if (seccion === "fabricacion") cargarFabricacion();
-  await cargarPagina();   // también en Fabricación: da los iconos de las profesiones
+  await cargarPagina();
   if (vista === "mapa") cargarMapa();
   cargarCobertura();      // contador del panel «Catálogo» (sin bloquear la tabla)
 }
@@ -3091,11 +2771,5 @@ $("btn-salir").addEventListener("click", async () => {
 
 restaurarEstado();   // filtros, orden y búsqueda de la última visita
 ponerVista(vista);   // la vista elegida (Lista o Mapa) se recuerda en este navegador
-{
-  // Sección de la dirección; con un objeto abierto en la dirección, la última sección usada.
-  const r = leerRuta(location.hash);
-  const guardada = local.leer("mw_seccion", "mercado");
-  ponerSeccion(r.vista === "objeto" ? (SECCIONES.includes(guardada) ? guardada : "mercado") : r.vista, { cargarDatos: false });
-}
 refrescar();
 vigilar();

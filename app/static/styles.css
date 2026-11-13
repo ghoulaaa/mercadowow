@@ -903,6 +903,176 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 
 .g-tip-baja { color: var(--muted); max-width: 240px; }
 
+/* ---------- Fabricación (etapa 2) ---------- */
+.modo-fab #grupo-cat, .modo-fab #grupo-prof, .modo-fab #grupo-filtros,
+.modo-fab #grupo-banda, .modo-fab #grupo-catalogo { display: none; }
+.fab-estado { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 var(--esp-2); }
+.fab-filtros { display: grid; gap: var(--esp-2); margin-bottom: var(--esp-3); padding: var(--esp-2);
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.fab-profesiones { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-prof {
+  font: inherit; font-size: var(--fs-sec); padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+}
+.chip-prof:hover { border-color: var(--border-ctl); }
+.chip-prof[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+.fab-campos { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: end; }
+.fab-campos label { display: grid; gap: 2px; font-size: var(--fs-sec); color: var(--muted); }
+.fab-campos input, .fab-campos select { padding: 5px 8px; font-size: var(--fs-sec); width: 7.5em; }
+.fab-campos .fab-buscar { flex: 1 1 220px; }
+.fab-campos .fab-buscar input { width: 100%; }
+.fab-campos select { width: auto; }
+.fab-campos input[aria-invalid="true"] { border-color: var(--danger); }
+.fab-casillas { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: var(--fs-sec); }
+.fab-casillas label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.fab-casillas .btn { margin-left: auto; }
+.tabla-fab td.ok .moneda .n, .tabla-fab td.ok { color: var(--sell); }
+.tabla-fab td.bad .moneda .n, .tabla-fab td.bad { color: var(--danger); }
+.tabla-fab tr.perdida td.c-fobj { box-shadow: inset 3px 0 0 var(--danger); }
+.tabla-fab tr.incompleta td { opacity: .78; }
+.tabla-fab tr:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.tabla-fab .c-neta { font-weight: 700; }
+.tabla-fab .cant-ref { font-style: italic; }
+.tabla-fab .c-fobj { min-width: 220px; max-width: 320px; }
+.tabla-fab th { white-space: nowrap; }
+.marca-op.aviso-op { color: var(--watch); }
+.fab-nota { margin-top: var(--esp-3); }
+@media (max-width: 900px) {
+  .tabla-fab .c-bruta, .tabla-fab .c-margen-n, .tabla-fab .c-nivel { display: none; }
+}
+@media (max-width: 560px) {
+  .tabla-fab .c-prof, .tabla-fab .c-disp, .tabla-fab .c-ventas { display: none; }
+  .tabla-fab .c-fobj { min-width: 160px; }
+  .fab-casillas .btn { margin-left: 0; }
+}
+.tabla.tabla-fab { table-layout: auto; min-width: 1020px; }
+@media (max-width: 900px) { .tabla.tabla-fab { min-width: 760px; } }
+@media (max-width: 560px) { .tabla.tabla-fab { min-width: 0; } }
+/* Desglose de una receta */
+.tabla-fab tbody tr[data-spell] { cursor: pointer; }
+.tabla-fab tbody tr[aria-expanded="true"] td { background: rgba(214, 175, 88, .10); }
+.tabla-fab tbody tr[aria-expanded="true"] td.c-fobj { box-shadow: inset 3px 0 0 var(--gold); }
+.tabla-fab tr.fab-desglose > td { padding: 0; background: var(--bg); height: auto; }
+.tabla-fab tr.fab-desglose:hover > td { background: var(--bg); }
+.desglose { padding: var(--esp-3); border-left: 3px solid var(--gold); display: grid; gap: var(--esp-3); }
+.d-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.d-cab .btn { margin-left: auto; }
+.tabla.d-tabla { width: 100%; table-layout: auto; min-width: 640px; }
+.tabla.d-tabla td { height: auto; padding-top: 6px; padding-bottom: 6px; }
+.tabla.d-tabla .icono { flex-basis: 26px; width: 26px; height: 26px; }
+.tabla.d-tabla tr.d-hijo td { color: var(--muted); font-size: var(--fs-sec); border-bottom-style: dashed; }
+.tabla.d-tabla tfoot td { font-weight: 700; border-top: 2px solid var(--border-ctl); border-bottom: 0; }
+.tabla.d-tabla .d-coste { font-weight: 600; }
+.origen { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: var(--fs-min); border: 1px solid var(--border-ctl); white-space: nowrap; }
+.origen.o-subasta { color: var(--text); }
+.origen.o-subasta_sin_ofertas { color: var(--watch); border-color: var(--watch); }
+.origen.o-npc, .origen.o-npc_tuyo { color: var(--hold); border-color: var(--hold); }
+.origen.o-fabricar { color: var(--gold); border-color: var(--gold); }
+.origen.o-manual { color: var(--copper); border-color: var(--copper); }
+.d-res { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; max-width: 640px; }
+.d-res dt { color: var(--muted); }
+.d-res dd { margin: 0; font-variant-numeric: tabular-nums; }
+.d-avisos { margin: 0; padding-left: 18px; }
+@media (max-width: 560px) {
+  .desglose { padding: var(--esp-2); }
+  .d-res { grid-template-columns: 1fr; gap: 0 0; }
+  .d-res dd { margin-bottom: 6px; }
+}
+/* La tabla del desglose va dentro de .tabla-mercado: no hereda sus columnas ocultas ni su cabecera fija. */
+.tabla-fab .tabla.d-tabla th, .tabla-fab .tabla.d-tabla td { display: table-cell; }
+.tabla-fab .tabla.d-tabla thead th { position: static; }
+/* Calculadora (etapa 3) */
+.d-cab .d-acciones { margin-left: auto; display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.d-cab .d-acciones .btn { margin-left: 0; }
+.d-veces { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.d-veces input { width: 6.5em; padding: 4px 6px; font-size: var(--fs-ctl); }
+.d-precio { width: 9.5em; padding: 3px 6px; font-size: var(--fs-sec); text-align: right; font-variant-numeric: tabular-nums; }
+.d-precio.d-manual { border-color: var(--copper); color: var(--copper); box-shadow: inset 0 0 0 1px var(--copper); }
+.d-precio[aria-invalid="true"] { border-color: var(--danger); }
+.d-res dd .d-precio { text-align: left; }
+.d-sim { margin: 0; color: var(--copper); }
+.d-falta { font-weight: 700; }
+.desglose input.d-precio { width: 9.5em; }
+.desglose .d-veces input { width: 6.5em; }
+
+/* ---------- Mejores oportunidades (etapa 4) ---------- */
+#vista-fabricacion.modo-oport .solo-tabla { display: none !important; }
+.res-cab .vistas a.btn-vista { text-decoration: none; }
+.res-cab .vistas a.btn-vista[aria-current="page"] { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+.fab-oport { display: grid; gap: var(--esp-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); align-items: start; }
+.op-intro, .op-como { grid-column: 1 / -1; margin: 0; }
+.op-lista { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--esp-2) var(--esp-3); }
+.op-lista h2 { font-size: var(--fs-h3); margin: 0 0 2px; color: var(--gold); }
+.op-lista > p { margin: 0 0 var(--esp-2); }
+.op-perdidas h2 { color: var(--danger); }
+.op-descartadas h2 { color: var(--watch); }
+.op-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; counter-reset: op; }
+.op-boton {
+  display: grid; gap: 3px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
+}
+.op-boton:hover { border-color: var(--border-ctl); }
+.op-boton:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.op-cab { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.op-cab .icono { flex-basis: 26px; width: 26px; height: 26px; }
+.op-nombre { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.op-prof { margin-left: auto; white-space: nowrap; }
+.op-cifras { display: flex; flex-wrap: wrap; align-items: center; gap: 0 2px; }
+.op-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip-ind { font-size: var(--fs-min); padding: 0 7px; border-radius: 999px; border: 1px solid var(--border-ctl); white-space: nowrap; }
+.chip-ind.ind-demanda.n-alta, .chip-ind.ind-competencia.n-baja, .chip-ind.ind-competencia.n-ninguna, .chip-ind.ind-riesgo.n-bajo { color: var(--sell); border-color: var(--sell); }
+.chip-ind.ind-demanda.n-media, .chip-ind.ind-competencia.n-media, .chip-ind.ind-riesgo.n-medio { color: var(--watch); border-color: var(--watch); }
+.chip-ind.ind-demanda.n-baja, .chip-ind.ind-demanda.n-nula, .chip-ind.ind-competencia.n-alta, .chip-ind.ind-riesgo.n-alto { color: var(--danger); border-color: var(--danger); }
+.op-motivo { white-space: normal; }
+.op-como summary { cursor: pointer; color: var(--gold); }
+.op-como p { margin: 6px 0 0; color: var(--muted); }
+/* Historial de una receta (etapa 5) */
+.d-hist { border-top: 1px solid var(--border); padding-top: var(--esp-2); display: grid; gap: var(--esp-2); }
+.d-hist-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.d-hist-cab h3 { margin: 0; font-size: var(--fs-h3); color: var(--gold); }
+.d-hist-cuerpo { display: grid; gap: 8px; min-width: 0; }
+.d-hist-cuerpo p, .d-hist-cuerpo h4 { margin: 0; }
+.d-hist-cuerpo h4 { color: var(--muted); font-weight: 600; margin-top: 6px; }
+.tabla.d-hist-tabla { width: auto; min-width: 520px; }
+.tabla.d-hist-tabla th[scope="row"] { text-align: left; font-weight: 600; color: var(--muted); }
+.tabla-fab .tabla.d-hist-tabla th, .tabla-fab .tabla.d-hist-tabla td { display: table-cell; height: auto; padding: 4px 10px; }
+.tabla-fab .tabla.d-hist-tabla thead th { position: static; }
+.d-hist-graf { min-width: 0; max-width: 900px; }
+
+/* ---------- Etapa 6: favoritas, comparador y alertas ---------- */
+.estrella-fab { background: none; border: 0; padding: 0 6px 0 0; font-size: 18px; line-height: 1; color: var(--muted); cursor: pointer; }
+.estrella-fab[aria-pressed="true"] { color: var(--gold); }
+.estrella-fab:hover { color: var(--gold); }
+.tabla-fab td.c-fobj { white-space: nowrap; }
+.tabla-fab td.c-fobj .objeto { display: inline-flex; width: auto; max-width: calc(100% - 26px); vertical-align: middle; }
+.d-extras { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.d-alerta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.desglose .d-alerta select { width: auto; padding: 3px 6px; font-size: var(--fs-sec); }
+.desglose .d-alerta input { width: 8em; padding: 3px 6px; font-size: var(--fs-sec); }
+.fab-comparar { margin-bottom: var(--esp-3); background: var(--panel); border: 1px solid var(--gold); border-radius: var(--radius); padding: var(--esp-2); display: grid; gap: var(--esp-2); }
+.cmp-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cmp-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--border-ctl); border-radius: 999px; font-size: var(--fs-sec); }
+.cmp-quitar { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: var(--fs-sec); }
+.cmp-quitar:hover { color: var(--danger); }
+.tabla.cmp-tabla { width: auto; min-width: 520px; table-layout: auto; }
+.tabla.cmp-tabla th[scope="row"] { text-align: left; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.tabla.cmp-tabla td, .tabla.cmp-tabla th { height: auto; padding: 5px 10px; }
+.tabla.cmp-tabla .cmp-receta { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 140px; }
+.tabla.cmp-tabla .cmp-receta .icono { flex-basis: 26px; width: 26px; height: 26px; }
+.tabla.cmp-tabla td.cmp-mejor { background: rgba(99, 201, 149, .12); font-weight: 700; }
+.fab-alertas-cfg { margin: 0 0 var(--esp-3); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--esp-2) var(--esp-3); }
+.fab-alertas-cfg summary { cursor: pointer; font-weight: 600; color: var(--gold); }
+.fab-alertas-cfg p { margin: 6px 0; }
+.fab-alertas-lista { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.fab-alertas-lista li { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sec); }
+.fab-alerta-nueva { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.fab-alerta-nueva select, .fab-alerta-nueva input[type="text"] { width: auto; padding: 4px 6px; font-size: var(--fs-sec); }
+.fab-alerta-nueva input[type="text"] { width: 9em; }
+.fab-alerta-nueva label { display: inline-flex; gap: 4px; align-items: center; }
+.fab-alertas-cumplidas { margin: 0 0 var(--esp-2); padding: var(--esp-2) var(--esp-3); border: 1px solid var(--sell); border-radius: var(--radius); background: rgba(99, 201, 149, .08); }
+.fab-alertas-cumplidas ul { margin: 6px 0 0; padding-left: 18px; font-size: var(--fs-sec); }
+.fab-alertas-cumplidas .enlace { background: none; border: 0; padding: 0; font: inherit; color: var(--gold); text-decoration: underline; cursor: pointer; }
+
 /* Cuadro del objeto al estilo del juego (texto oficial de Blizzard). Colores de los tooltips de WoW. */
 .wow-tip {
   position: fixed; z-index: 80; pointer-events: none; max-width: 320px; min-width: 200px; padding: 8px 10px;
@@ -917,124 +1087,3 @@ h1, .det-cab h2, .marca, .lat-nav a { font-weight: 400; }.arbol, .arbol ul { gri
 .wow-tip .tt-der { text-align: right; white-space: nowrap; }
 .wow-tip .tt-venta { justify-content: flex-start; gap: 6px; margin-top: 2px; }
 .wow-tip .moneda .n { color: #ffffff; }.wow-tip .tt-separador { height: 8px; }
-
-/* =====================================================================
-   V8: tres secciones (Mercado · Fabricación · Oportunidades).
-   ===================================================================== */
-/* Menú lateral: tres entradas; la actual en dorado, las demás con un fondo al pasar. */
-.lat-nav { display: grid; gap: 4px; }
-.lat-nav a:not([aria-current="page"]):hover { background: var(--panel-2); color: var(--gold); }
-.lat-nav a:focus-visible { outline-offset: 0; }
-
-/* Oportunidades: pestañas con su número. */
-.op-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-1); margin: 0 0 var(--esp-2); }
-.op-tab {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
-  font: inherit; font-size: var(--fs-ctl); color: var(--text); background: var(--panel-2); border: 1px solid var(--border-ctl);
-}
-.op-tab:hover { border-color: var(--muted); }
-.op-tab[aria-pressed="true"] { background: var(--gold); border-color: var(--gold); color: var(--on-gold); font-weight: 700; }
-.op-n { font-size: var(--fs-sec); font-variant-numeric: tabular-nums; padding: 0 7px; border-radius: 999px; background: rgba(0, 0, 0, .28); }
-.op-n:empty { display: none; }
-.op-tab[aria-pressed="true"] .op-n { background: rgba(20, 17, 10, .18); }
-/* Bajo el precio, la referencia con la que se compara (solo con la columna de margen a la vista). */
-.ref-valor { display: none; }
-.tabla-mercado.con-margen .ref-valor { display: block; margin-top: 2px; font-size: var(--fs-sec); font-weight: 400; color: var(--muted); }
-.ref-valor .moneda .n { color: var(--muted); }
-.ref-valor { white-space: nowrap; }
-.tabla-mercado.con-margen th:nth-child(2) { width: 12.5em; }
-@container resultados (max-width: 760px) { .tabla-mercado.con-margen th:nth-child(2) { width: 10.5em; } .ref-k { display: none; } }
-.c-margen:not(.negativo) .moneda .n { color: var(--sell); }
-.tabla-mercado .c-margen .margen-pct { color: var(--sell); }
-.tabla-mercado .c-margen.negativo .margen-pct { color: var(--danger); }
-
-/* Fabricación: profesiones como pestañas con icono y número de recetas. */
-.fab-profesiones { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 var(--esp-2); }
-.fab-prof {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 12px 4px 6px; border-radius: 8px; cursor: pointer;
-  font: inherit; font-size: var(--fs-ctl); color: var(--text); background: var(--panel-2); border: 1px solid var(--border);
-}
-.fab-prof .icono { flex-basis: 28px; width: 28px; height: 28px; }
-.fab-prof:hover { border-color: var(--border-ctl); }
-.fab-prof[aria-pressed="true"] { border-color: var(--gold); background: rgba(214, 175, 88, .14); box-shadow: inset 0 0 0 1px var(--gold); }
-.fab-prof-n { font-size: var(--fs-sec); color: var(--muted); font-variant-numeric: tabular-nums; }
-.fab-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-1); margin: 0 0 var(--esp-2); }
-.fab-nota { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.fabricacion .tabla-wrap { margin-bottom: var(--esp-2); }
-.fab-atribucion { margin: 0 0 var(--esp-3); color: var(--muted); }
-.fab-atribucion a { color: var(--muted); }
-.fab-atribucion a:hover { color: var(--gold); }
-
-/* Tabla de recetas: el nombre se queda con el espacio; cifras alineadas; fila que se despliega. */
-.tabla-fab { table-layout: fixed; }
-.tabla-fab thead th { position: sticky; top: var(--alto-barra); z-index: 5; background: var(--panel); }
-.tabla-fab thead th:first-child { border-top-left-radius: 10px; }
-.tabla-fab thead th:last-child { border-top-right-radius: 10px; }
-.tabla-fab th:nth-child(2), .tabla-fab th:nth-child(3) { width: 9em; }
-.tabla-fab th:nth-child(4) { width: 10.5em; }
-.tabla-fab th.c-abrir { width: 40px; }
-.tabla-fab tbody td { height: 60px; padding-top: 6px; padding-bottom: 6px; }
-.tabla-fab td.num { font-size: var(--fs-ctl); }
-.tabla-fab .icono { flex-basis: 38px; width: 38px; height: 38px; }
-.tabla-fab tr.fab-fila { cursor: pointer; }
-.tabla-fab tr.fab-fila:hover td { background: rgba(241, 237, 227, .05); }
-.tabla-fab tr.fab-fila.abierta td { background: rgba(214, 175, 88, .08); border-bottom-color: transparent; }
-.tabla-fab tr.fab-fila.abierta td:first-child { box-shadow: inset 4px 0 0 var(--gold); }
-.c-abrir { text-align: center; color: var(--muted); }
-.c-abrir svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-  transition: transform .15s; vertical-align: middle; }
-.fab-fila.abierta .c-abrir svg { transform: rotate(90deg); color: var(--gold); }
-.fab-fila:hover .c-abrir { color: var(--gold); }
-.tabla-fab .c-margen { white-space: nowrap; font-weight: 600; }
-.tabla-fab .c-margen .margen-pct { display: block; font-size: var(--fs-sec); font-weight: 500; }
-.tabla-fab .c-margen.positivo, .tabla-fab .c-margen.positivo .moneda .n { color: var(--sell); }
-.tabla-fab .c-margen.negativo, .tabla-fab .c-margen.negativo .moneda .n { color: var(--danger); }
-.tabla-fab .c-margen.igual .moneda .n { color: var(--muted); }
-.tabla-fab tbody tr:last-child td { border-bottom: 0; }
-.resultados.cargando .tabla-fab tbody { opacity: .45; transition: opacity .15s .15s; }
-
-/* Desglose de materiales. */
-.fab-detalle td { background: rgba(214, 175, 88, .04); box-shadow: inset 4px 0 0 var(--gold); padding: 4px var(--esp-3) var(--esp-2) 56px; }
-.fab-mat { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.fab-mat li {
-  display: grid; grid-template-columns: 26px minmax(0, 1fr) auto 9em 8em; align-items: center; gap: var(--esp-2);
-  padding: 5px 0; border-bottom: 1px solid rgba(57, 65, 72, .6); font-size: var(--fs-ctl);
-}
-.fab-mat li > .moneda, .fab-mat li > .sin-dato { text-align: right; }
-.fab-mat .icono { flex-basis: 26px; width: 26px; height: 26px; }
-.fab-mat .enlace { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
-.fab-mat .enlace:hover { text-decoration: underline; }
-.fab-mat-cant { color: var(--muted); font-variant-numeric: tabular-nums; }
-.fab-mat-ud { text-align: right; white-space: nowrap; }
-.fab-mat-ud .moneda .n { color: var(--muted); }
-.fab-origen { font-size: var(--fs-min); font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-ctl);
-  color: var(--muted); cursor: help; white-space: nowrap; }
-.fab-origen.subasta { color: var(--hold); border-color: rgba(112, 183, 232, .5); }
-.fab-origen.fabricar { color: var(--gold); border-color: rgba(214, 175, 88, .5); }
-.fab-origen.npc { color: var(--silver); }
-.fab-mat-pie { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); margin-top: var(--esp-2); }
-
-.tabla-fab td.c-rec { overflow: hidden; }
-@container resultados (max-width: 640px) {
-  /* Profesiones en una fila que se desliza: no ocupan toda la pantalla. */
-  .fab-profesiones { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; margin-inline: -4px; padding-inline: 4px; }
-  .fab-prof { flex: 0 0 auto; }
-  .fab-filtros .btn-alterna { flex: 1 1 auto; justify-content: center; }
-  /* Con columnas ocultas, el reparto fijo deja huecos: el nombre se queda con todo lo que sobra. */
-  .tabla-fab { table-layout: auto; }
-  .tabla-fab td.c-rec { width: 100%; max-width: 0; }
-  .tabla-fab th:nth-child(n+2) { width: auto; }
-  .tabla-fab th:nth-child(3), .tabla-fab td:nth-child(3) { display: none; }
-  .fab-detalle td { padding-left: var(--esp-2); }
-  .fab-mat li { grid-template-columns: 26px minmax(0, 1fr) auto 7em; }
-  .fab-mat-ud { display: none; }
-  .fab-nota { margin-left: 0; }
-}
-@container resultados (max-width: 440px) {
-  .tabla-fab th:nth-child(2), .tabla-fab td:nth-child(2) { display: none; }
-  .tabla-fab .icono { flex-basis: 32px; width: 32px; height: 32px; }
-  .fab-mat li { grid-template-columns: 26px minmax(0, 1fr) 7em; }
-  .fab-origen { display: none; }
-}
-@media (pointer: coarse) { .op-tab, .fab-prof { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .c-abrir svg { transition: none; } }

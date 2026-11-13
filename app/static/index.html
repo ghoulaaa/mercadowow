@@ -24,10 +24,8 @@
     <symbol id="i-estrella" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" /></symbol>
     <symbol id="i-copiar" viewBox="0 0 24 24"><path d="M9 9h10v10H9zM5 15V5h10" /></symbol>
     <symbol id="i-lupa" viewBox="0 0 24 24"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" /></symbol>
+    <symbol id="i-yunque" viewBox="0 0 24 24"><path d="M3 8h13a5 5 0 0 0 5-3H8M7 8v3a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V8M9 15l-2 5h10l-2-5" /></symbol>
     <symbol id="i-campana" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0" /></symbol>
-    <symbol id="i-yunque" viewBox="0 0 24 24"><path d="M3 7h13a5 5 0 0 0 5 3v1h-5l-2 3v2h3v3H7v-3h3v-2L6 11H3zM6 7V5" /></symbol>
-    <symbol id="i-ganga" viewBox="0 0 24 24"><path d="M3 12l9-9h8v8l-9 9zM15.5 8.5h.01" /></symbol>
-    <symbol id="i-flecha" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></symbol>
   </svg>
 
   <div class="app" id="app">
@@ -42,9 +40,9 @@
       </div>
 
       <nav class="lat-nav" aria-label="Sección">
-        <a href="#/" data-seccion="mercado" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
-        <a href="#/fabricacion" data-seccion="fabricacion"><svg aria-hidden="true"><use href="#i-yunque" /></svg>Fabricación</a>
-        <a href="#/oportunidades" data-seccion="oportunidades"><svg aria-hidden="true"><use href="#i-ganga" /></svg>Oportunidades</a>
+        <a href="#/" id="nav-mercado" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
+        <a href="#/fabricacion" id="nav-fabricacion"><svg aria-hidden="true"><use href="#i-yunque" /></svg>Fabricación</a>
+        <a href="#/oportunidades" id="nav-oportunidades"><svg aria-hidden="true"><use href="#i-estrella" /></svg>Mejores oportunidades</a>
       </nav>
 
       <div class="lat-grupo" id="grupo-mercado">
@@ -96,6 +94,15 @@
         </div>
         <p id="f-precio-error" class="bad small" role="alert" hidden></p>
         <label class="check"><input id="f-ofertas" type="checkbox"> Solo con ofertas</label>
+        <span class="lab con-ayuda"><label for="f-oportunidad">Oportunidad</label>
+          <button type="button" class="ayuda" aria-label="Ayuda: oportunidades" id="ayuda-oportunidad"
+                  data-ayuda="Gangas: compra mínima muy por debajo de su valor de mercado. Bajo precio de NPC: se compra por menos de lo que paga un vendedor. Se calcula con el último escaneo: compruébalo en el juego antes de comprar.">?</button></span>
+        <select id="f-oportunidad">
+          <option value="">Todas</option>
+          <option value="todas">Todas las oportunidades</option>
+          <option value="ganga">Gangas</option>
+          <option value="npc">Bajo precio de NPC</option>
+        </select>
         <span class="lab con-ayuda"><label for="f-region">Ventas en la región</label>
           <button type="button" class="ayuda" aria-label="Ayuda: ventas en la región" id="ayuda-region"
                   data-ayuda="Ventas al día en toda la región US según TSM, no solo en PvP Horda. Es una referencia: no cambia las recomendaciones.">?</button></span>
@@ -259,22 +266,6 @@
               <option value="margen_pct:desc">Margen % ↓</option>
             </select></label>
         </div>
-        <!-- Oportunidades: tipo elegido con pestañas (el select oculto conserva el valor para los filtros). -->
-        <div id="op-tabs" class="op-tabs" role="group" aria-label="Tipo de oportunidad" hidden>
-          <button type="button" class="op-tab" data-op="todas" aria-pressed="true">Todas <span class="op-n"></span></button>
-          <button type="button" class="op-tab" data-op="ganga" aria-pressed="false"
-                  title="Compra mínima muy por debajo de su valor de mercado">Gangas <span class="op-n"></span></button>
-          <button type="button" class="op-tab" data-op="npc" aria-pressed="false"
-                  title="Se compra por menos de lo que paga un vendedor NPC">Bajo precio de NPC <span class="op-n"></span></button>
-          <button type="button" class="ayuda" aria-label="Ayuda: oportunidades" id="ayuda-oportunidad"
-                  data-ayuda="Gangas: compra mínima muy por debajo de su valor de mercado. Bajo precio de NPC: se compra por menos de lo que paga un vendedor. Se calcula con el último escaneo: compruébalo en el juego antes de comprar.">?</button>
-        </div>
-        <select id="f-oportunidad" hidden aria-hidden="true" tabindex="-1">
-          <option value="">Todas</option>
-          <option value="todas">Todas las oportunidades</option>
-          <option value="ganga">Gangas</option>
-          <option value="npc">Bajo precio de NPC</option>
-        </select>
         <div id="chips-filtros" class="chips-filtros" aria-label="Filtros activos" hidden></div>
         <div id="nuevo-orden" class="nuevo-orden" role="status" hidden>
           <span>Precios actualizados. El orden puede haber cambiado.</span>
@@ -337,50 +328,91 @@
         </nav>
       </section>
 
-      <!-- Fabricación: recetas de una profesión con coste de materiales, venta y beneficio estimados. -->
-      <section id="vista-fabricacion" class="resultados fabricacion" aria-labelledby="titulo-fab" hidden>
+      <section id="vista-fabricacion" class="resultados fabricacion" aria-labelledby="titulo-fabricacion" hidden>
         <div class="res-cab">
-          <h1 id="titulo-fab">Fabricación</h1>
+          <h1 id="titulo-fabricacion">Fabricación</h1>
+          <div class="vistas" role="group" aria-label="Qué ver">
+            <a class="btn-vista" href="#/fabricacion" id="modo-tabla">Todas las recetas</a>
+            <a class="btn-vista" href="#/oportunidades" id="modo-oport">Mejores oportunidades</a>
+          </div>
           <span id="fab-contador" class="muted small" aria-live="polite"></span>
-          <label class="orden"><span class="sr-only">Ordenar recetas por</span>
-            <select id="fab-orden">
-              <option value="margen:desc">Beneficio ↓</option>
-              <option value="margen_pct:desc">Beneficio % ↓</option>
-              <option value="coste:asc">Coste ↑</option>
-              <option value="neto:desc">Venta ↓</option>
-              <option value="nivel:desc">Nivel ↓</option>
+          <button id="fab-csv" type="button" class="btn btn-piedra btn-small solo-tabla" title="Descarga las recetas filtradas, en el orden actual">Exportar CSV</button>
+        </div>
+        <div id="fab-alertas-cumplidas" class="fab-alertas-cumplidas" role="status" hidden></div>
+        <p class="fab-estado"><span id="fab-estado" class="muted small">Cargando…</span>
+          <span id="fab-calculo" class="muted small"></span></p>
+
+        <form id="fab-filtros" class="fab-filtros">
+          <div id="fab-profesiones" class="fab-profesiones" role="group" aria-label="Profesiones (las elegidas se recuerdan)"></div>
+          <div class="fab-campos">
+            <label class="fab-buscar solo-tabla"><span class="sr-only">Buscar</span>
+              <input id="fab-texto" type="search" placeholder="Objeto, receta o ID" autocomplete="off"></label>
+            <label class="solo-tabla">ROI mín. %<input id="fab-roi" type="number" step="1" inputmode="numeric"></label>
+            <label class="solo-tabla" title="Ganancia neta mínima por fabricación: 1o 20p, 50p, 300 (cobre)…">Ganancia mín.<input id="fab-neta" type="text" placeholder="p. ej. 50p"></label>
+            <label class="solo-tabla">Nivel<input id="fab-nivel-min" type="number" min="0" max="450" placeholder="desde"></label>
+            <label class="solo-tabla"><span class="sr-only">Nivel hasta</span><input id="fab-nivel-max" type="number" min="0" max="450" placeholder="hasta"></label>
+            <label>Casa<select id="fab-casa" title="Comisión por venta (sin verificar en Forever)">
+              <option value="5">Facción (5 %)</option><option value="15">Neutral (15 %)</option></select></label>
+            <label class="solo-tabla">Orden<select id="fab-orden">
+              <option value="neta:desc">Ganancia neta ↓</option>
+              <option value="roi:desc">ROI ↓</option>
+              <option value="margen:desc">Margen ↓</option>
+              <option value="precio:desc">Precio de venta ↓</option>
+              <option value="ventas:desc">Demanda (ventas/día) ↓</option>
+              <option value="disponible:asc">Competencia (disponible) ↑</option>
+              <option value="profesion:asc">Profesión A–Z</option>
               <option value="nivel:asc">Nivel ↑</option>
-              <option value="nombre:asc">Nombre A–Z</option>
+              <option value="neta:asc">Pérdidas primero</option>
             </select></label>
-        </div>
-        <div id="fab-profesiones" class="fab-profesiones" role="group" aria-label="Profesión"></div>
-        <div class="fab-filtros">
-          <button id="fab-rentables" type="button" class="btn-alterna" aria-pressed="false">Solo con beneficio</button>
-          <button id="fab-completas" type="button" class="btn-alterna" aria-pressed="false"
-                  title="Oculta las recetas con algún material o el resultado sin precio">Solo con todos los precios</button>
-          <span id="fab-texto" class="chip-filtro" hidden></span>
-          <span class="fab-nota muted small">Estimación al estilo TSM · precios <span id="fab-hora">—</span>
-            <button type="button" class="ayuda" aria-label="Cómo se calcula el beneficio" id="ayuda-fab">?</button></span>
-        </div>
-        <div class="tabla-wrap">
-          <table class="tabla tabla-fab" id="tabla-fab">
-            <thead>
-              <tr>
-                <th scope="col">Receta</th>
-                <th scope="col" class="num" title="Lo que cuestan los materiales, cada uno al más barato entre subasta, fabricarlo o NPC">Coste</th>
-                <th scope="col" class="num" title="Lo que se recibe al venderlo en la subasta, ya sin la comisión">Venta</th>
-                <th scope="col" class="num">Beneficio</th>
-                <th scope="col" class="c-abrir"><span class="sr-only">Materiales</span></th>
-              </tr>
-            </thead>
+          </div>
+          <div class="fab-casillas">
+            <label class="solo-tabla"><input id="fab-soloCompletas" type="checkbox"> Con todos los precios</label>
+            <label class="solo-tabla"><input id="fab-soloRentables" type="checkbox"> Solo con ganancia</label>
+            <label class="solo-tabla"><input id="fab-soloConVenta" type="checkbox"> Producto con ofertas ahora</label>
+            <label class="solo-tabla"><input id="fab-soloMaterialesEnVenta" type="checkbox"> Materiales con ofertas ahora</label>
+            <label class="solo-tabla"><input id="fab-soloConVentas" type="checkbox"> Se vende (ventas/día &gt; 0)</label>
+            <label class="solo-tabla"><input id="fab-soloFavoritas" type="checkbox"> Solo favoritas ★</label>
+            <label title="Si un material no tiene ofertas ahora, usar su valor de mercado (la fila lo marca). Desactivado: esa receta queda incompleta salvo que el material venga del NPC o se fabrique.">
+              <input id="fab-valor-sin-ofertas" type="checkbox"> Valor de mercado si no hay ofertas</label>
+            <label title="Para cada material, compara comprarlo con fabricarlo con materiales más básicos y usa lo más barato">
+              <input id="fab-intermedios" type="checkbox"> Fabricar materiales intermedios si sale más barato</label>
+            <button id="fab-quitar" type="button" class="btn btn-piedra btn-small solo-tabla">Quitar filtros</button>
+          </div>
+        </form>
+
+        <details class="fab-alertas-cfg" id="fab-alertas">
+          <summary>Alertas de fabricación<span id="fab-alertas-n"></span></summary>
+          <p class="small muted">Se revisan cada vez que llegan precios nuevos con esta página abierta, y solo en este navegador.
+            Para una receta concreta, créala desde su desglose.</p>
+          <ul id="fab-alertas-lista" class="fab-alertas-lista"></ul>
+          <div class="fab-alerta-nueva">
+            <span class="small">Avísame de cualquier receta con</span>
+            <select id="fab-alerta-campo" aria-label="Qué vigilar"><option value="neta">Ganancia neta</option><option value="roi">ROI</option></select>
+            <span class="small">≥</span>
+            <input id="fab-alerta-umbral" type="text" placeholder="p. ej. 1o o 50" aria-label="Umbral">
+            <label class="small"><input id="fab-alerta-mias" type="checkbox" checked> solo de las profesiones elegidas</label>
+            <button id="fab-alerta-crear" type="button" class="btn btn-piedra btn-small">Crear alerta</button>
+          </div>
+        </details>
+
+        <div id="fab-oport" class="fab-oport" hidden></div>
+
+        <div id="fab-comparar" class="fab-comparar solo-tabla" hidden></div>
+
+        <div class="tabla-wrap solo-tabla">
+          <table class="tabla tabla-mercado tabla-fab">
+            <thead><tr id="fab-cab"></tr></thead>
             <tbody id="fab-tbody"></tbody>
           </table>
         </div>
-        <div id="fab-vacio" class="vacio" hidden>
-          <p id="fab-vacio-txt" class="muted">Ninguna receta coincide.</p>
-          <button id="fab-quitar" type="button" class="btn btn-piedra btn-small">Quitar filtros</button>
-        </div>
-        <p id="fab-atribucion" class="fab-atribucion small"></p>
+        <div id="fab-vacio" class="vacio solo-tabla" hidden><p class="muted">Ninguna receta coincide con los filtros.</p></div>
+        <nav class="paginador solo-tabla" id="fab-paginador" aria-label="Páginas de recetas" hidden>
+          <button id="fab-pag-ant" type="button" class="btn btn-piedra btn-small">‹ Anterior</button>
+          <span id="fab-pag-txt" class="muted small" aria-live="polite"></span>
+          <button id="fab-pag-sig" type="button" class="btn btn-piedra btn-small">Siguiente ›</button>
+        </nav>
+        <p class="muted small fab-nota">Estimaciones con los precios agregados del último escaneo: no garantizan que se venda a ese precio.
+          La comisión y el depósito están sin verificar en Forever. Pulsa una fila para ver el objeto, su gráfico y sus recetas.</p>
       </section>
 
       <footer class="pie" id="pie"></footer>

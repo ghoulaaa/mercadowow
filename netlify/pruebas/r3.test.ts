@@ -89,11 +89,10 @@ describe("rutas", () => {
     ["#/historial", { vista: "mercado", id: null }],
     ["#/inventario", { vista: "mercado", id: null }],
     ["#/objeto/abc", { vista: "mercado", id: null }],
-    // Secciones (V8): Fabricación y Oportunidades; «#/recetas» de V2 lleva a Fabricación.
-    ["#/fabricacion", { vista: "fabricacion", id: null }],
-    ["#/recetas", { vista: "fabricacion", id: null }],
-    ["#/oportunidades", { vista: "oportunidades", id: null }],
     ["#/no-existe", { vista: "mercado", id: null }],
+    ["#/fabricacion", { vista: "fabricacion", id: null }],
+    ["#/fabricacion/123", { vista: "mercado", id: null }],
+    ["#/oportunidades", { vista: "oportunidades", id: null }],
     ["", { vista: "mercado", id: null }],
   ] as const) {
     test(`${hash || "(vacío)"}`, () => assert.deepEqual(leerRuta(hash), esperado));
