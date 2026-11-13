@@ -20,6 +20,7 @@ export function filtrarRecetas(recetas, f = {}) {
   return recetas.filter((r) => {
     if (f.soloCompletas && !r.completa) return false;
     if (f.soloRentables && !(r.margen > 0)) return false;
+    if (f.soloConMargen && r.margen == null) return false;
     if (f.soloConVentas && !(r.resultado?.ventas_dia > 0)) return false;
     if (f.nivelMin != null && !(r.nivel >= f.nivelMin)) return false;
     if (f.nivelMax != null && !(r.nivel <= f.nivelMax)) return false;
@@ -55,6 +56,22 @@ export function ordenarRecetas(recetas, orden = "margen:desc") {
     if (x > y) return s;
     return a.spell - b.spell;
   });
+}
+
+/**
+ * Resumen de una lista de recetas para la cabecera de Fabricación: cuántas hay, cuántas tienen beneficio
+ * estimado y cuántas no se pueden calcular (falta algún precio). Nunca cuenta un desconocido como 0.
+ */
+export function resumenRecetas(recetas) {
+  const lista = Array.isArray(recetas) ? recetas : [];
+  const conBeneficio = lista.filter((r) => r.margen > 0).length;
+  const sinCalculo = lista.filter((r) => r.margen == null).length;
+  return { total: lista.length, conBeneficio, sinCalculo };
+}
+
+/** Nombre de una receta para mostrar: el del objeto que fabrica (en español si se conoce), o el de la receta. */
+export function nombreReceta(r, nombreDe = (id, en) => en) {
+  return r?.resultado?.id ? nombreDe(r.resultado.id, r.resultado.nombre ?? r.nombre) : r?.nombre ?? "";
 }
 
 /** Peso de cada reactivo en el coste (0–1); null si el coste está incompleto. */

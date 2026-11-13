@@ -79,7 +79,7 @@ def test_configuracion_invalida_se_rechaza(tmp_path, env, msg):
 def test_migraciones_en_orden():
     nombres = [p.name for p in db.migration_files()]
     assert nombres == sorted(nombres)
-    assert nombres[:41] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
+    assert nombres[:42] == ["0001_esquema.sql", "0002_supabase.sql", "0003_web.sql", "0004_demo_csv.sql",
                            "0005_tabla.sql", "0006_motor.sql", "0007_inventario.sql", "0008_ventas.sql",
                            "0009_ahledger.sql", "0010_catalogo.sql", "0011_catalogo_cron.sql",
                            "0012_busqueda_mercado.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
@@ -95,7 +95,8 @@ def test_migraciones_en_orden():
                            "0036_nombres_es_extra.sql", "0037_nombres_es_extra_cron.sql",
                            "0038_planes_a_medida.sql",
                            "0039_cantidades_ahledger.sql",
-                           "0040_fichas_blizzard.sql", "0041_fichas_cron.sql"]
+                           "0040_fichas_blizzard.sql", "0041_fichas_cron.sql",
+                           "0042_recetas_iconos.sql"]
 
 
 # ---------- estado y botón (base de datos simulada) ----------
@@ -457,14 +458,18 @@ def test_paginas_nuevas_se_sirven(cliente):
         assert id_ in html
 
 
-def test_una_sola_vista_de_mercado(cliente):
-    """V3: sin pestañas superiores ni secciones retiradas en la página."""
+def test_secciones_del_menu(cliente):
+    """V8: el menú lateral tiene tres secciones (Mercado, Fabricación, Oportunidades); las retiradas en V3 no vuelven."""
     html = cliente.get("/").text
     for retirado in ('id="nav-secciones"', 'class="accesos"', 'data-vista=', 'id="form-calc"', 'id="inv-tbody"',
                      'href="#/inventario"', 'href="#/rentabilidad"', "Actualización solicitada"):
         assert retirado not in html
     seccion = html.split('class="lat-nav"', 1)[1].split("</nav>", 1)[0]
-    assert html.count('aria-label="Sección"') == 1 and seccion.count("<a ") == 1 and 'aria-current="page"' in seccion
+    assert html.count('aria-label="Sección"') == 1 and seccion.count("<a ") == 3
+    assert seccion.count('aria-current="page"') == 1
+    for href in ('href="#/"', 'href="#/fabricacion"', 'href="#/oportunidades"'):
+        assert href in seccion
+    assert 'id="vista-fabricacion"' in html and 'id="op-tabs"' in html
 
 
 @pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])

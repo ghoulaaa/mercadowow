@@ -51,7 +51,7 @@ describe("recetas TSM (SQL)", () => {
                      "0008_ventas.sql", "0009_ahledger.sql", "0010_catalogo.sql", "0013_textos_fuente.sql", "0014_tasas.sql",
                      "0015_recetas.sql", "0017_mercado_pagina.sql", "0018_evidencia.sql", "0019_catalogo_ampliado.sql",
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0025_oportunidades.sql", "0026_region.sql",
-                     "0028_recetas_tsm.sql"]) await pg.exec(leer(n));
+                     "0028_recetas_tsm.sql", "0042_recetas_iconos.sql"]) await pg.exec(leer(n));
     const cat = [
       [2770, "Copper Ore"], [2840, "Copper Bar"], [2880, "Weak Flux"], [3371, "Empty Vial"], [2447, "Peacebloom"],
       [118, "Minor Healing Potion"], [2589, "Linen Cloth"], [2996, "Bolt of Linen Cloth"], [4343, "Brown Linen Pants"],
@@ -99,6 +99,17 @@ describe("recetas TSM (SQL)", () => {
     const p = (await objeto(4343)).fabricacion[0];
     assert.equal(p.reactivos[0].origen, "fabricar");
     assert.equal(p.coste, 40);
+  });
+
+  test("iconos del catálogo para el producto y los materiales (V8); sin icono conocido, null", async () => {
+    const ICONO = "https://render.worldofwarcraft.com/classic1x-us/icons/56/inv_misc_flux.jpg";
+    await pg.query("update catalogo set icono_url = $1 where item_id in (2880, 2840)", [ICONO]);
+    const r = (await uno("select recetas_profesion($1, 'Blacksmithing', 'tsm') as r", [TSM])).r.recetas[0];
+    assert.equal(r.resultado.icono, ICONO);
+    assert.equal(r.reactivos[0].icono, ICONO);
+    const m = (await uno("select recetas_profesion($1, 'Mining', 'tsm') as r", [TSM])).r.recetas[0];
+    assert.equal(m.reactivos[0].icono, null);      // mineral sin icono en ningún sitio: no se inventa
+    assert.equal(m.coste, 100);                     // el cálculo no cambia
   });
 
   test("las bases de siempre siguen igual", async () => {

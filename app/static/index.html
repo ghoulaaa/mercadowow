@@ -25,6 +25,9 @@
     <symbol id="i-copiar" viewBox="0 0 24 24"><path d="M9 9h10v10H9zM5 15V5h10" /></symbol>
     <symbol id="i-lupa" viewBox="0 0 24 24"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" /></symbol>
     <symbol id="i-campana" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0" /></symbol>
+    <symbol id="i-yunque" viewBox="0 0 24 24"><path d="M3 7h13a5 5 0 0 0 5 3v1h-5l-2 3v2h3v3H7v-3h3v-2L6 11H3zM6 7V5" /></symbol>
+    <symbol id="i-ganga" viewBox="0 0 24 24"><path d="M3 12l9-9h8v8l-9 9zM15.5 8.5h.01" /></symbol>
+    <symbol id="i-flecha" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></symbol>
   </svg>
 
   <div class="app" id="app">
@@ -39,7 +42,9 @@
       </div>
 
       <nav class="lat-nav" aria-label="Sección">
-        <a href="#/" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
+        <a href="#/" data-seccion="mercado" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
+        <a href="#/fabricacion" data-seccion="fabricacion"><svg aria-hidden="true"><use href="#i-yunque" /></svg>Fabricación</a>
+        <a href="#/oportunidades" data-seccion="oportunidades"><svg aria-hidden="true"><use href="#i-ganga" /></svg>Oportunidades</a>
       </nav>
 
       <div class="lat-grupo" id="grupo-mercado">
@@ -91,15 +96,6 @@
         </div>
         <p id="f-precio-error" class="bad small" role="alert" hidden></p>
         <label class="check"><input id="f-ofertas" type="checkbox"> Solo con ofertas</label>
-        <span class="lab con-ayuda"><label for="f-oportunidad">Oportunidad</label>
-          <button type="button" class="ayuda" aria-label="Ayuda: oportunidades" id="ayuda-oportunidad"
-                  data-ayuda="Gangas: compra mínima muy por debajo de su valor de mercado. Bajo precio de NPC: se compra por menos de lo que paga un vendedor. Se calcula con el último escaneo: compruébalo en el juego antes de comprar.">?</button></span>
-        <select id="f-oportunidad">
-          <option value="">Todas</option>
-          <option value="todas">Todas las oportunidades</option>
-          <option value="ganga">Gangas</option>
-          <option value="npc">Bajo precio de NPC</option>
-        </select>
         <span class="lab con-ayuda"><label for="f-region">Ventas en la región</label>
           <button type="button" class="ayuda" aria-label="Ayuda: ventas en la región" id="ayuda-region"
                   data-ayuda="Ventas al día en toda la región US según TSM, no solo en PvP Horda. Es una referencia: no cambia las recomendaciones.">?</button></span>
@@ -263,6 +259,22 @@
               <option value="margen_pct:desc">Margen % ↓</option>
             </select></label>
         </div>
+        <!-- Oportunidades: tipo elegido con pestañas (el select oculto conserva el valor para los filtros). -->
+        <div id="op-tabs" class="op-tabs" role="group" aria-label="Tipo de oportunidad" hidden>
+          <button type="button" class="op-tab" data-op="todas" aria-pressed="true">Todas <span class="op-n"></span></button>
+          <button type="button" class="op-tab" data-op="ganga" aria-pressed="false"
+                  title="Compra mínima muy por debajo de su valor de mercado">Gangas <span class="op-n"></span></button>
+          <button type="button" class="op-tab" data-op="npc" aria-pressed="false"
+                  title="Se compra por menos de lo que paga un vendedor NPC">Bajo precio de NPC <span class="op-n"></span></button>
+          <button type="button" class="ayuda" aria-label="Ayuda: oportunidades" id="ayuda-oportunidad"
+                  data-ayuda="Gangas: compra mínima muy por debajo de su valor de mercado. Bajo precio de NPC: se compra por menos de lo que paga un vendedor. Se calcula con el último escaneo: compruébalo en el juego antes de comprar.">?</button>
+        </div>
+        <select id="f-oportunidad" hidden aria-hidden="true" tabindex="-1">
+          <option value="">Todas</option>
+          <option value="todas">Todas las oportunidades</option>
+          <option value="ganga">Gangas</option>
+          <option value="npc">Bajo precio de NPC</option>
+        </select>
         <div id="chips-filtros" class="chips-filtros" aria-label="Filtros activos" hidden></div>
         <div id="nuevo-orden" class="nuevo-orden" role="status" hidden>
           <span>Precios actualizados. El orden puede haber cambiado.</span>
@@ -323,6 +335,52 @@
           <span id="pag-txt" class="muted small" aria-live="polite"></span>
           <button id="pag-sig" type="button" class="btn btn-piedra btn-small">Siguiente ›</button>
         </nav>
+      </section>
+
+      <!-- Fabricación: recetas de una profesión con coste de materiales, venta y beneficio estimados. -->
+      <section id="vista-fabricacion" class="resultados fabricacion" aria-labelledby="titulo-fab" hidden>
+        <div class="res-cab">
+          <h1 id="titulo-fab">Fabricación</h1>
+          <span id="fab-contador" class="muted small" aria-live="polite"></span>
+          <label class="orden"><span class="sr-only">Ordenar recetas por</span>
+            <select id="fab-orden">
+              <option value="margen:desc">Beneficio ↓</option>
+              <option value="margen_pct:desc">Beneficio % ↓</option>
+              <option value="coste:asc">Coste ↑</option>
+              <option value="neto:desc">Venta ↓</option>
+              <option value="nivel:desc">Nivel ↓</option>
+              <option value="nivel:asc">Nivel ↑</option>
+              <option value="nombre:asc">Nombre A–Z</option>
+            </select></label>
+        </div>
+        <div id="fab-profesiones" class="fab-profesiones" role="group" aria-label="Profesión"></div>
+        <div class="fab-filtros">
+          <button id="fab-rentables" type="button" class="btn-alterna" aria-pressed="false">Solo con beneficio</button>
+          <button id="fab-completas" type="button" class="btn-alterna" aria-pressed="false"
+                  title="Oculta las recetas con algún material o el resultado sin precio">Solo con todos los precios</button>
+          <span id="fab-texto" class="chip-filtro" hidden></span>
+          <span class="fab-nota muted small">Estimación al estilo TSM · precios <span id="fab-hora">—</span>
+            <button type="button" class="ayuda" aria-label="Cómo se calcula el beneficio" id="ayuda-fab">?</button></span>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla tabla-fab" id="tabla-fab">
+            <thead>
+              <tr>
+                <th scope="col">Receta</th>
+                <th scope="col" class="num" title="Lo que cuestan los materiales, cada uno al más barato entre subasta, fabricarlo o NPC">Coste</th>
+                <th scope="col" class="num" title="Lo que se recibe al venderlo en la subasta, ya sin la comisión">Venta</th>
+                <th scope="col" class="num">Beneficio</th>
+                <th scope="col" class="c-abrir"><span class="sr-only">Materiales</span></th>
+              </tr>
+            </thead>
+            <tbody id="fab-tbody"></tbody>
+          </table>
+        </div>
+        <div id="fab-vacio" class="vacio" hidden>
+          <p id="fab-vacio-txt" class="muted">Ninguna receta coincide.</p>
+          <button id="fab-quitar" type="button" class="btn btn-piedra btn-small">Quitar filtros</button>
+        </div>
+        <p id="fab-atribucion" class="fab-atribucion small"></p>
       </section>
 
       <footer class="pie" id="pie"></footer>

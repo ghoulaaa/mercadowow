@@ -3,7 +3,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_COMPARAR, anadirComparar, costeUnidad, filtrarRecetas, mejorReceta, ordenarRecetas, pesosReactivos,
+  MAX_COMPARAR, anadirComparar, costeUnidad, filtrarRecetas, mejorReceta, nombreReceta, ordenarRecetas, pesosReactivos,
+  resumenRecetas,
 } from "../../app/static/recetas.js";
 import { crearApi } from "../lib/api.ts";
 
@@ -34,6 +35,16 @@ describe("filtros de recetas", () => {
     assert.deepEqual(filtrarRecetas(LISTA, { texto: "loto purpura" }).map((r) => r.spell), [2]);
     assert.deepEqual(filtrarRecetas(LISTA, { texto: "8831" }).map((r) => r.spell), [2]);
     assert.deepEqual(filtrarRecetas(LISTA, { texto: "1003" }).map((r) => r.spell), [3]);   // ID del resultado
+  });
+  test("Fabricación (V8): solo las que se pueden calcular, resumen y nombre del producto", () => {
+    assert.deepEqual(filtrarRecetas(LISTA, { soloConMargen: true }).map((r) => r.spell), [1, 2, 4]);
+    // Desconocido no cuenta como 0: la receta sin precio no está «con beneficio» ni «sin beneficio».
+    assert.deepEqual(resumenRecetas(LISTA), { total: 4, conBeneficio: 2, sinCalculo: 1 });
+    assert.deepEqual(resumenRecetas(null), { total: 0, conBeneficio: 0, sinCalculo: 0 });
+    const es = new Map([[1001, "Poción de maná (es)"]]);
+    assert.equal(nombreReceta(LISTA[0], (id: number, en: string) => es.get(id) ?? en), "Poción de maná (es)");
+    assert.equal(nombreReceta(LISTA[1], (id: number, en: string) => es.get(id) ?? en), "Objeto 2");
+    assert.equal(nombreReceta({ nombre: "Sin resultado" }), "Sin resultado");
   });
 });
 
