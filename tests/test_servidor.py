@@ -467,10 +467,12 @@ def test_una_sola_vista_de_mercado(cliente):
         assert retirado not in html
     seccion = html.split('class="lat-nav"', 1)[1].split("</nav>", 1)[0]
     assert html.count('aria-label="Sección"') == 1 and seccion.count('aria-current="page"') == 1
-    # Mercado, Fabricación y Mejores oportunidades: las únicas entradas del menú lateral.
-    assert seccion.count("<a ") == 3
-    for ruta in ('href="#/"', 'href="#/fabricacion"', 'href="#/oportunidades"'):
+    # Mercado y Fabricación: las únicas entradas del menú lateral. «Oportunidades» es una pestaña de Fabricación.
+    assert seccion.count("<a ") == 2
+    for ruta in ('href="#/"', 'href="#/fabricacion"'):
         assert ruta in seccion
+    pestanas = html.split('class="fab-tabs"', 1)[1].split("</nav>", 1)[0]
+    assert 'href="#/fabricacion"' in pestanas and 'href="#/oportunidades"' in pestanas
 
 
 @pytest.mark.parametrize("cuerpo", [{"id": "1", "cambios": {}}, {"id": True, "cambios": {}}, {"id": 1}, {"id": 1, "cambios": []}])

@@ -27,7 +27,7 @@ describe("favoritas y comparador", () => {
     assert.deepEqual(alternar([1], 2), [1, 2]);
     assert.deepEqual(normalizarExtras(null), { favoritas: [], comparar: [], alertas: [] });
     assert.deepEqual(normalizarExtras({ favoritas: [1, 1, "x", -3, 2], comparar: [1, 2, 3, 4, 5], alertas: [{ tipo: "raro" }] }),
-                     { favoritas: [1, 2], comparar: [1, 2, 3, 4], alertas: [] });
+                     { favoritas: [1, 2], comparar: [1, 2, 3], alertas: [] });   // el comparador admite 3 (rediseño V2)
   });
   test("comparador: sin duplicados y con máximo", () => {
     assert.deepEqual(anadirComparar([1], 2), { lista: [1, 2], error: null });

@@ -79,7 +79,8 @@ export function indicadores(x, objetos = {}) {
   // Riesgo y sus motivos.
   const altos = [], medios = [];
   if (sospechoso) altos.push("Precio de venta sospechoso");
-  if (demanda === "nula") altos.push("No se vende (0 ventas al día)");
+  // 0 ventas registradas no prueba que no se venda (las fuentes estiman): se dice lo que se sabe.
+  if (demanda === "nula") altos.push(regional ? "Sin ventas registradas en la región (TSM)" : "Sin ventas registradas en este reino");
   if (demanda === "sin_dato") altos.push("Sin datos de ventas");
   if (demanda === "baja") medios.push("Se vende poco (menos de 1 al día)");
   if (competencia === "alta") medios.push(`Mucha competencia (≈ ${Math.round(dias)} días para vender lo publicado)`);

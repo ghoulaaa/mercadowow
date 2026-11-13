@@ -24,6 +24,11 @@
     <symbol id="i-estrella" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" /></symbol>
     <symbol id="i-copiar" viewBox="0 0 24 24"><path d="M9 9h10v10H9zM5 15V5h10" /></symbol>
     <symbol id="i-lupa" viewBox="0 0 24 24"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" /></symbol>
+    <symbol id="i-puntos" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3" /></symbol>
+    <symbol id="i-abajo" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></symbol>
+    <symbol id="i-derecha" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" /></symbol>
+    <symbol id="i-columnas" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM10 5v14M15 5v14" /></symbol>
+    <symbol id="i-lista" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /></symbol>
     <symbol id="i-yunque" viewBox="0 0 24 24"><path d="M3 8h13a5 5 0 0 0 5-3H8M7 8v3a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4V8M9 15l-2 5h10l-2-5" /></symbol>
     <symbol id="i-campana" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0" /></symbol>
   </svg>
@@ -42,7 +47,6 @@
       <nav class="lat-nav" aria-label="Sección">
         <a href="#/" id="nav-mercado" aria-current="page"><svg aria-hidden="true"><use href="#i-mercado" /></svg>Mercado</a>
         <a href="#/fabricacion" id="nav-fabricacion"><svg aria-hidden="true"><use href="#i-yunque" /></svg>Fabricación</a>
-        <a href="#/oportunidades" id="nav-oportunidades"><svg aria-hidden="true"><use href="#i-estrella" /></svg>Mejores oportunidades</a>
       </nav>
 
       <div class="lat-grupo" id="grupo-mercado">
@@ -329,90 +333,177 @@
       </section>
 
       <section id="vista-fabricacion" class="resultados fabricacion" aria-labelledby="titulo-fabricacion" hidden>
-        <div class="res-cab">
+        <!-- Cabecera: título fijo, antigüedad del dato, recarga y acciones secundarias. -->
+        <div class="fab-cab">
           <h1 id="titulo-fabricacion">Fabricación</h1>
-          <div class="vistas" role="group" aria-label="Qué ver">
-            <a class="btn-vista" href="#/fabricacion" id="modo-tabla">Todas las recetas</a>
-            <a class="btn-vista" href="#/oportunidades" id="modo-oport">Mejores oportunidades</a>
+          <div class="fab-cab-der">
+            <button id="fab-dato" type="button" class="estado-dato fab-dato">Datos: —</button>
+            <button id="fab-recargar" type="button" class="btn-icono" aria-label="Volver a cargar recetas y precios"
+                    title="Volver a cargar recetas y precios"><svg aria-hidden="true"><use href="#i-recargar" /></svg></button>
+            <div class="fab-menu-caja">
+              <button id="fab-menu-btn" type="button" class="btn-icono" aria-haspopup="menu" aria-expanded="false"
+                      aria-controls="fab-menu" aria-label="Más acciones" title="Más acciones"><svg aria-hidden="true"><use href="#i-puntos" /></svg></button>
+              <div id="fab-menu" class="fab-menu" role="menu" aria-label="Más acciones" hidden>
+                <button type="button" role="menuitem" id="fab-csv">Exportar CSV</button>
+              </div>
+            </div>
           </div>
-          <span id="fab-contador" class="muted small" aria-live="polite"></span>
-          <button id="fab-csv" type="button" class="btn btn-piedra btn-small solo-tabla" title="Descarga las recetas filtradas, en el orden actual">Exportar CSV</button>
         </div>
-        <div id="fab-alertas-cumplidas" class="fab-alertas-cumplidas" role="status" hidden></div>
-        <p class="fab-estado"><span id="fab-estado" class="muted small">Cargando…</span>
-          <span id="fab-calculo" class="muted small"></span></p>
+        <nav class="fab-tabs" aria-label="Vista de fabricación">
+          <a href="#/fabricacion" id="modo-tabla" class="fab-tab">Recetas</a>
+          <a href="#/oportunidades" id="modo-oport" class="fab-tab">Oportunidades</a>
+        </nav>
 
-        <form id="fab-filtros" class="fab-filtros">
-          <div id="fab-profesiones" class="fab-profesiones" role="group" aria-label="Profesiones (las elegidas se recuerdan)"></div>
-          <div class="fab-campos">
-            <label class="fab-buscar solo-tabla"><span class="sr-only">Buscar</span>
-              <input id="fab-texto" type="search" placeholder="Objeto, receta o ID" autocomplete="off"></label>
-            <label class="solo-tabla">ROI mín. %<input id="fab-roi" type="number" step="1" inputmode="numeric"></label>
-            <label class="solo-tabla" title="Ganancia neta mínima por fabricación: 1o 20p, 50p, 300 (cobre)…">Ganancia mín.<input id="fab-neta" type="text" placeholder="p. ej. 50p"></label>
-            <label class="solo-tabla">Nivel<input id="fab-nivel-min" type="number" min="0" max="450" placeholder="desde"></label>
-            <label class="solo-tabla"><span class="sr-only">Nivel hasta</span><input id="fab-nivel-max" type="number" min="0" max="450" placeholder="hasta"></label>
-            <label>Casa<select id="fab-casa" title="Comisión por venta (sin verificar en Forever)">
-              <option value="5">Facción (5 %)</option><option value="15">Neutral (15 %)</option></select></label>
-            <label class="solo-tabla">Orden<select id="fab-orden">
-              <option value="neta:desc">Ganancia neta ↓</option>
-              <option value="roi:desc">ROI ↓</option>
-              <option value="margen:desc">Margen ↓</option>
-              <option value="precio:desc">Precio de venta ↓</option>
-              <option value="ventas:desc">Demanda (ventas/día) ↓</option>
-              <option value="disponible:asc">Competencia (disponible) ↑</option>
-              <option value="profesion:asc">Profesión A–Z</option>
-              <option value="nivel:asc">Nivel ↑</option>
+        <!-- Fila principal: búsqueda, profesión, solo rentables, filtros y orden. -->
+        <div class="fab-barra">
+          <div class="fab-buscar" id="fab-combo">
+            <label class="sr-only" for="fab-texto">Buscar objeto o receta</label>
+            <svg class="ic-lupa" aria-hidden="true"><use href="#i-lupa" /></svg>
+            <input id="fab-texto" type="text" placeholder="Buscar objeto o receta" autocomplete="off" spellcheck="false"
+                   enterkeyhint="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fab-sug">
+            <button id="fab-texto-borrar" type="button" class="btn-borrar" aria-label="Borrar la búsqueda" hidden>
+              <svg aria-hidden="true"><use href="#i-cerrar" /></svg></button>
+            <kbd class="atajo" aria-hidden="true">/</kbd>
+            <ul id="fab-sug" class="sugerencias" role="listbox" aria-label="Sugerencias" hidden></ul>
+          </div>
+          <div class="fab-pop-caja">
+            <button id="fab-prof-btn" type="button" class="fab-ctl" aria-haspopup="dialog" aria-expanded="false" aria-controls="fab-prof-pop">
+              <span id="fab-prof-icono" class="fab-prof-icono" aria-hidden="true"></span>
+              <span id="fab-prof-txt">Todas las profesiones</span>
+              <svg class="ic-abajo" aria-hidden="true"><use href="#i-abajo" /></svg></button>
+            <div id="fab-prof-pop" class="fab-pop" role="dialog" aria-label="Elegir profesiones" hidden>
+              <input id="fab-prof-buscar" type="search" placeholder="Buscar profesión" aria-label="Buscar profesión" autocomplete="off">
+              <ul id="fab-prof-lista" class="fab-prof-lista"></ul>
+            </div>
+          </div>
+          <label class="fab-switch"><input id="fab-soloRentables" type="checkbox" role="switch">
+            <span class="fab-switch-pista" aria-hidden="true"></span>Solo rentables</label>
+          <button id="fab-filtros-btn" type="button" class="fab-ctl" aria-haspopup="dialog" aria-expanded="false" aria-controls="fab-panel-filtros">
+            <svg aria-hidden="true"><use href="#i-filtro" /></svg>Filtros<span id="fab-filtros-n" class="fab-n" hidden></span></button>
+          <label class="fab-orden solo-tabla"><span class="sr-only">Ordenar recetas por</span>
+            <select id="fab-orden">
+              <option value="neta:desc">Mayor ganancia neta</option>
+              <option value="roi:desc">Mayor retorno</option>
+              <option value="venta:desc">Mayor venta estimada</option>
+              <option value="coste:asc">Menor coste</option>
+              <option value="ventas:desc">Más ventas al día</option>
+              <option value="margen:desc">Mayor margen</option>
+              <option value="disponible:asc">Menos unidades a la venta</option>
+              <option value="nivel:asc">Nivel de profesión ↑</option>
+              <option value="nivel:desc">Nivel de profesión ↓</option>
+              <option value="nombre:asc">Nombre A–Z</option>
               <option value="neta:asc">Pérdidas primero</option>
             </select></label>
+          <span class="fab-orden solo-oport">
+            <label class="sr-only" for="fab-criterio">Ordenar oportunidades por</label>
+            <select id="fab-criterio">
+              <option value="equilibrio">Equilibrio</option>
+              <option value="ganancia">Mayor ganancia</option>
+              <option value="roi">Mayor retorno</option>
+            </select>
+            <button type="button" class="ayuda" id="ayuda-criterio" aria-label="Ayuda: criterio de orden">?</button>
+          </span>
+        </div>
+        <div id="fab-chips" class="chips-filtros" aria-label="Filtros activos" hidden></div>
+
+        <!-- Recuento y herramientas: columnas, densidad, comparar, lista y alertas. -->
+        <div class="fab-herr">
+          <span id="fab-contador" class="fab-contador" aria-live="polite"></span>
+          <button type="button" class="ayuda solo-oport" id="ayuda-oport-resumen" aria-label="Qué recetas se muestran" hidden>?</button>
+          <div class="fab-herr-der">
+            <div class="fab-pop-caja solo-tabla">
+              <button id="fab-col-btn" type="button" class="fab-ctl fab-ctl-s" aria-haspopup="dialog" aria-expanded="false" aria-controls="fab-col-pop">
+                <svg aria-hidden="true"><use href="#i-columnas" /></svg>Columnas</button>
+              <div id="fab-col-pop" class="fab-pop fab-pop-der" role="dialog" aria-label="Columnas visibles" hidden></div>
+            </div>
+            <div class="vistas fab-densidad" role="group" aria-label="Densidad">
+              <button type="button" class="btn-vista" data-densidad="comoda" aria-pressed="true">Cómodo</button>
+              <button type="button" class="btn-vista" data-densidad="compacta" aria-pressed="false">Compacto</button>
+            </div>
+            <button id="fab-cmp-btn" type="button" class="fab-ctl fab-ctl-s" aria-haspopup="dialog" aria-controls="fab-cmp" hidden>
+              Comparar<span id="fab-cmp-n" class="fab-n"></span></button>
+            <button id="fab-lista-btn" type="button" class="fab-ctl fab-ctl-s" aria-haspopup="dialog" aria-controls="fab-lista">
+              <svg aria-hidden="true"><use href="#i-lista" /></svg>Lista<span id="fab-lista-n" class="fab-n" hidden></span></button>
+            <button id="fab-alertas-btn" type="button" class="fab-ctl fab-ctl-s" aria-haspopup="dialog" aria-controls="fab-alertas">
+              <svg aria-hidden="true"><use href="#i-campana" /></svg>Alertas<span id="fab-alertas-n" class="fab-n" hidden></span></button>
           </div>
-          <div class="fab-casillas">
-            <label class="solo-tabla"><input id="fab-soloCompletas" type="checkbox"> Con todos los precios</label>
-            <label class="solo-tabla"><input id="fab-soloRentables" type="checkbox"> Solo con ganancia</label>
-            <label class="solo-tabla"><input id="fab-soloConVenta" type="checkbox"> Producto con ofertas ahora</label>
-            <label class="solo-tabla"><input id="fab-soloMaterialesEnVenta" type="checkbox"> Materiales con ofertas ahora</label>
-            <label class="solo-tabla"><input id="fab-soloConVentas" type="checkbox"> Se vende (ventas/día &gt; 0)</label>
-            <label class="solo-tabla"><input id="fab-soloFavoritas" type="checkbox"> Solo favoritas ★</label>
-            <label title="Si un material no tiene ofertas ahora, usar su valor de mercado (la fila lo marca). Desactivado: esa receta queda incompleta salvo que el material venga del NPC o se fabrique.">
-              <input id="fab-valor-sin-ofertas" type="checkbox"> Valor de mercado si no hay ofertas</label>
-            <label title="Para cada material, compara comprarlo con fabricarlo con materiales más básicos y usa lo más barato">
-              <input id="fab-intermedios" type="checkbox"> Fabricar materiales intermedios si sale más barato</label>
-            <button id="fab-quitar" type="button" class="btn btn-piedra btn-small solo-tabla">Quitar filtros</button>
-          </div>
-        </form>
+        </div>
+        <div id="fab-alertas-cumplidas" class="fab-cumplidas" role="status" hidden></div>
+        <div id="fab-nuevo-orden" class="nuevo-orden" role="status" hidden>
+          <span>Precios actualizados. El orden puede haber cambiado.</span>
+          <button id="fab-reordenar" type="button" class="btn btn-piedra btn-small">Reordenar</button>
+        </div>
+        <div id="fab-error" class="fab-error" role="alert" hidden>
+          <span id="fab-error-txt"></span>
+          <button id="fab-reintentar" type="button" class="btn btn-piedra btn-small">Reintentar</button>
+        </div>
 
-        <details class="fab-alertas-cfg" id="fab-alertas">
-          <summary>Alertas de fabricación<span id="fab-alertas-n"></span></summary>
-          <p class="small muted">Se revisan cada vez que llegan precios nuevos con esta página abierta, y solo en este navegador.
-            Para una receta concreta, créala desde su desglose.</p>
-          <ul id="fab-alertas-lista" class="fab-alertas-lista"></ul>
-          <div class="fab-alerta-nueva">
-            <span class="small">Avísame de cualquier receta con</span>
-            <select id="fab-alerta-campo" aria-label="Qué vigilar"><option value="neta">Ganancia neta</option><option value="roi">ROI</option></select>
-            <span class="small">≥</span>
-            <input id="fab-alerta-umbral" type="text" placeholder="p. ej. 1o o 50" aria-label="Umbral">
-            <label class="small"><input id="fab-alerta-mias" type="checkbox" checked> solo de las profesiones elegidas</label>
-            <button id="fab-alerta-crear" type="button" class="btn btn-piedra btn-small">Crear alerta</button>
-          </div>
-        </details>
-
-        <div id="fab-oport" class="fab-oport" hidden></div>
-
-        <div id="fab-comparar" class="fab-comparar solo-tabla" hidden></div>
-
+        <!-- Resultados -->
         <div class="tabla-wrap solo-tabla">
-          <table class="tabla tabla-mercado tabla-fab">
+          <table class="tabla tabla-fab" id="tabla-fab">
             <thead><tr id="fab-cab"></tr></thead>
             <tbody id="fab-tbody"></tbody>
           </table>
         </div>
-        <div id="fab-vacio" class="vacio solo-tabla" hidden><p class="muted">Ninguna receta coincide con los filtros.</p></div>
-        <nav class="paginador solo-tabla" id="fab-paginador" aria-label="Páginas de recetas" hidden>
+        <ol id="fab-oport" class="fab-oport solo-oport" aria-label="Oportunidades"></ol>
+        <div id="fab-vacio" class="vacio" hidden>
+          <p id="fab-vacio-txt" class="muted">Ninguna receta coincide con los filtros.</p>
+          <button id="fab-limpiar-vacio" type="button" class="btn btn-piedra btn-small">Limpiar filtros</button>
+        </div>
+        <nav class="paginador" id="fab-paginador" aria-label="Páginas de recetas" hidden>
           <button id="fab-pag-ant" type="button" class="btn btn-piedra btn-small">‹ Anterior</button>
           <span id="fab-pag-txt" class="muted small" aria-live="polite"></span>
           <button id="fab-pag-sig" type="button" class="btn btn-piedra btn-small">Siguiente ›</button>
         </nav>
-        <p class="muted small fab-nota">Estimaciones con los precios agregados del último escaneo: no garantizan que se venda a ese precio.
-          La comisión y el depósito están sin verificar en Forever. Pulsa una fila para ver el objeto, su gráfico y sus recetas.</p>
+
+        <!-- Paneles laterales (uno a la vez). -->
+        <div id="fab-velo" class="fab-velo" hidden></div>
+        <aside id="fab-panel-filtros" class="fab-drawer" role="dialog" aria-modal="true" aria-labelledby="fab-pf-tit" hidden>
+          <div class="fab-drawer-cab"><h2 id="fab-pf-tit">Filtros</h2>
+            <button type="button" class="btn-icono" data-cerrar aria-label="Cerrar filtros"><svg aria-hidden="true"><use href="#i-cerrar" /></svg></button></div>
+          <div class="fab-drawer-cuerpo">
+            <fieldset class="fab-grupo">
+              <legend>Rentabilidad</legend>
+              <label class="fab-campo">Ganancia neta mínima
+                <input id="fab-neta" type="text" placeholder="p. ej. 50p o 1o 20p" autocomplete="off"></label>
+              <label class="fab-campo">Retorno mínimo (%)
+                <input id="fab-roi" type="number" step="1" inputmode="numeric" placeholder="p. ej. 20"></label>
+              <div class="fab-par">
+                <label class="fab-campo">Nivel desde<input id="fab-nivel-min" type="number" min="0" max="450" inputmode="numeric"></label>
+                <label class="fab-campo">Nivel hasta<input id="fab-nivel-max" type="number" min="0" max="450" inputmode="numeric"></label>
+              </div>
+            </fieldset>
+            <fieldset class="fab-grupo">
+              <legend>Disponibilidad</legend>
+              <label class="check"><input id="fab-soloCompletas" type="checkbox"> Precios completos</label>
+              <label class="check"><input id="fab-soloConVenta" type="checkbox"> Producto con ofertas ahora</label>
+              <label class="check"><input id="fab-soloMaterialesEnVenta" type="checkbox"> Materiales con ofertas ahora</label>
+              <label class="check"><input id="fab-soloConVentas" type="checkbox"> Con datos de ventas</label>
+              <label class="check"><input id="fab-soloFavoritas" type="checkbox"> Solo favoritas</label>
+            </fieldset>
+            <fieldset class="fab-grupo">
+              <legend>Cálculo <span class="fab-legend-nota">cambia los resultados</span></legend>
+              <span class="fab-campo-ayuda"><label class="fab-campo">Casa de subastas
+                <select id="fab-casa"><option value="5">Facción · comisión 5 %</option><option value="15">Neutral · comisión 15 %</option></select></label>
+                <button type="button" class="ayuda" aria-label="Ayuda: casa de subastas"
+                        data-ayuda="Porcentaje que se queda la subasta al vender. Las cifras son las de WoW Classic: sin verificar en Forever.">?</button></span>
+              <span class="fab-campo-ayuda"><label class="check"><input id="fab-valor-sin-ofertas" type="checkbox"> Usar valor de mercado cuando falten ofertas</label>
+                <button type="button" class="ayuda" aria-label="Ayuda: valor de mercado"
+                        data-ayuda="Si un material o el producto no tiene ofertas ahora, se usa su valor de mercado y la receta lleva la marca «Referencia». Desactivado: esa receta queda sin calcular salvo que el material venga del NPC o se fabrique.">?</button></span>
+              <span class="fab-campo-ayuda"><label class="check"><input id="fab-intermedios" type="checkbox"> Fabricar componentes si resulta más barato</label>
+                <button type="button" class="ayuda" aria-label="Ayuda: fabricar componentes"
+                        data-ayuda="Para cada material, compara comprarlo con fabricarlo con materiales más básicos y usa lo más barato. El detalle de la receta dice qué conviene fabricar.">?</button></span>
+            </fieldset>
+          </div>
+          <div class="fab-drawer-pie">
+            <button id="fab-quitar" type="button" class="btn btn-piedra">Limpiar filtros</button>
+            <button type="button" class="btn btn-rojo" data-cerrar>Ver <span id="fab-pf-n">0</span> recetas</button>
+          </div>
+        </aside>
+        <aside id="fab-det" class="fab-drawer fab-drawer-det" role="dialog" aria-modal="true" aria-labelledby="fab-det-tit" hidden></aside>
+        <aside id="fab-lista" class="fab-drawer" role="dialog" aria-modal="true" aria-labelledby="fab-lista-tit" hidden></aside>
+        <aside id="fab-alertas" class="fab-drawer" role="dialog" aria-modal="true" aria-labelledby="fab-al-tit" hidden></aside>
+        <aside id="fab-cmp" class="fab-drawer fab-drawer-ancho" role="dialog" aria-modal="true" aria-labelledby="fab-cmp-tit" hidden></aside>
       </section>
 
       <footer class="pie" id="pie"></footer>

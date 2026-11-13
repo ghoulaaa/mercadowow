@@ -3,7 +3,7 @@
 
 import { indicadores } from "./oportunidades.js";
 
-export const MAX_COMPARAR = 4;
+export const MAX_COMPARAR = 3;
 export const MAX_ALERTAS = 50;
 export const CAMPOS_ALERTA = Object.freeze({ neta: "Ganancia neta", roi: "ROI" });
 

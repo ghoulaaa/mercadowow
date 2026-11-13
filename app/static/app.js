@@ -133,7 +133,9 @@ function mostrar(vista) {
   $("vista-mercado").hidden = vista !== "mercado" || fab;
   $("vista-fabricacion").hidden = !fab;
   document.body.classList.toggle("modo-fab", fab);
-  for (const [id, activo] of [["nav-mercado", !fab], ["nav-fabricacion", fab && !oport], ["nav-oportunidades", oport]]) {
+  // «Oportunidades» es una pestaña dentro de Fabricación: el menú marca Fabricación en los dos casos.
+  void oport;
+  for (const [id, activo] of [["nav-mercado", !fab], ["nav-fabricacion", fab]]) {
     if (activo) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
   }
   for (const id of ["grupo-mercado", "barra"]) $(id).hidden = vista === "login";
@@ -730,7 +732,8 @@ function restaurarEstado() {
 // Densidad de la tabla: cómoda (por defecto) o compacta.
 function ponerDensidad(d) {
   document.body.classList.toggle("compacta", d === "compacta");
-  for (const b of document.querySelectorAll("#densidad [data-densidad]")) b.setAttribute("aria-pressed", String(b.dataset.densidad === d));
+  // Los botones del Mercado y los de Fabricación comparten la preferencia.
+  for (const b of document.querySelectorAll("[data-densidad]")) b.setAttribute("aria-pressed", String(b.dataset.densidad === d));
   local.escribir("mw_densidad", d);
 }
 for (const b of document.querySelectorAll("#densidad [data-densidad]")) b.addEventListener("click", () => ponerDensidad(b.dataset.densidad));
@@ -766,7 +769,7 @@ function cajaTip() {
 }
 /** ID del objeto al que pertenece un icono (fila de la tabla, detalle o sugerencia del buscador). */
 function idDeIcono(ic) {
-  const fila = ic.closest("tr[data-id]");
+  const fila = ic.closest("[data-id]");   // fila de la tabla, receta, tarjeta o material de Fabricación
   if (fila) return Number(fila.dataset.id);
   if (ic.closest(".det-objeto")) return objetoActual;
   const sug = ic.closest("[data-k]");
@@ -813,7 +816,9 @@ function mostrarTipDe(ic, x, y) {
 }
 document.addEventListener("pointerover", (ev) => {
   const ic = ev.target.closest?.(".icono");
-  if (ic && (ic.closest("#tbody") || ic.closest(".det-objeto") || ic.closest("#sugerencias"))) mostrarTipDe(ic, ev.clientX, ev.clientY);
+  if (ic && (ic.closest("#tbody") || ic.closest(".det-objeto") || ic.closest("#sugerencias") || ic.closest("#vista-fabricacion"))) {
+    mostrarTipDe(ic, ev.clientX, ev.clientY);
+  }
 });
 document.addEventListener("pointerout", (ev) => { if (ev.target.closest?.(".icono")) ocultarTip(); });
 // Teclado: al enfocar un objeto de la tabla, su cuadro junto al icono.
@@ -2431,6 +2436,8 @@ const vistaFab = crearVistaFabricacion({
   $, el, monedaNodo, iconoNodo, nom, nombreProf, fecha, hace, local, avisar, formatear: formatearMoneda,
   abrirObjeto: (id) => abrirObjeto(id),
   mercado: () => ultimo?.mercado?.clave ?? null,
+  copiarTexto, ponerDensidad,
+  iconoProfesion: (p) => pagina?.profesiones_roles?.find((x) => x.profesion === p)?.icono ?? null,
 });
 window.matchMedia("(max-width: 1339px)").addEventListener("change", () => {
   if (!$("panel-ficha").hidden) $("velo-detalle").hidden = !detalleSuperpuesto();
@@ -2562,6 +2569,7 @@ $("btn-borrar-busqueda").addEventListener("click", () => {
 document.addEventListener("keydown", (ev) => {
   if (!atajoBuscar(ev, document.activeElement) || $("barra").hidden) return;
   ev.preventDefault();
+  if (enFab()) { vistaFab.enfocarBuscador(); return; }   // Fabricación tiene su propio buscador
   if (estrecho()) cerrarLateral();
   $("buscador").focus();
   $("buscador").select();

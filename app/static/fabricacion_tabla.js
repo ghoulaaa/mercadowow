@@ -207,6 +207,7 @@ const CLAVES = {
   profesion: (x) => x.profesion,
   nivel: (x) => x.nivel,
   precio: (x) => x.precioVenta,
+  venta: (x) => x.a?.ingresoBruto ?? null,   // venta estimada de una fabricación (precio × unidades)
   coste: (x) => x.coste,
   bruta: (x) => x.bruta,
   neta: (x) => x.neta,
