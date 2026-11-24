@@ -1326,3 +1326,74 @@ body.fab-con-panel { overflow: hidden; }
 .wow-tip .tt-der { text-align: right; white-space: nowrap; }
 .wow-tip .tt-venta { justify-content: flex-start; gap: 6px; margin-top: 2px; }
 .wow-tip .moneda .n { color: #ffffff; }.wow-tip .tt-separador { height: 8px; }
+
+/* =====================================================================
+   Crafting Sniper (pestaña «Sniper» de Fabricación y panel «Alertas Discord»).
+   Colores de clase inspirados en las calidades de objetos de WoW; verde solo para ganancias.
+   ===================================================================== */
+#vista-fabricacion:not(.modo-sniper) .solo-sniper { display: none !important; }
+#vista-fabricacion.modo-sniper .fab-barra, #vista-fabricacion.modo-sniper #fab-chips, #vista-fabricacion.modo-sniper .fab-herr,
+#vista-fabricacion.modo-sniper .solo-tabla, #vista-fabricacion.modo-sniper .solo-oport, #vista-fabricacion.modo-sniper #fab-vacio,
+#vista-fabricacion.modo-sniper #fab-paginador, #vista-fabricacion.modo-sniper #fab-nuevo-orden,
+#vista-fabricacion.modo-sniper #fab-alertas-cumplidas { display: none !important; }
+.fab-sniper { display: grid; gap: var(--esp-3); margin-bottom: var(--esp-4); }
+.sn-estado { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); padding: var(--esp-2) var(--esp-3);
+  border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.sn-info { display: grid; gap: 2px; flex: 1 1 260px; min-width: 0; }
+.sn-acciones { display: flex; flex-wrap: wrap; gap: var(--esp-1); }
+.sn-acciones .btn { min-height: 40px; }
+.sn-pill { padding: 3px 12px; border-radius: 999px; font-size: var(--fs-sec); font-weight: 700; border: 1px solid var(--border-ctl); color: var(--muted); }
+.sn-pill.on { color: var(--sell); border-color: var(--sell); }
+.sn-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--esp-1); margin: 0; }
+.sn-kpis > div { padding: var(--esp-2); border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.sn-kpis dt { font-size: var(--fs-sec); color: var(--muted); }
+.sn-kpis dd { margin: 2px 0 0; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sn-sec { display: grid; gap: var(--esp-2); padding: var(--esp-3); border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.sn-sec h2 { margin: 0; font-size: var(--fs-h3); font-family: var(--fuente-texto); }
+.sn-sec > summary { cursor: pointer; font-weight: 600; }
+.sn-sec-cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--esp-1); }
+.sn-filtros { display: flex; flex-wrap: wrap; gap: var(--esp-1); }
+.sn-filtros input, .sn-filtros select { width: auto; min-width: 160px; }
+.sn-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--esp-1); }
+.sn-op { display: grid; gap: 6px; padding: var(--esp-2); border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
+.sn-op-cab { display: flex; align-items: center; gap: var(--esp-2); min-width: 0; }
+.sn-op-cab .icono { flex: 0 0 38px; width: 38px; height: 38px; }
+.sn-op-nombre { display: grid; flex: 1; min-width: 0; }
+.sn-op-nombre .objeto-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-op-cifras { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.sn-neta { font-size: 18px; font-weight: 700; color: var(--sell); }
+.sn-neta .moneda .n { color: var(--sell); }
+.sn-score { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sec); }
+.sn-barra { width: 70px; height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.sn-barra > span { display: block; height: 100%; background: var(--gold); }
+.sn-riesgo { font-size: var(--fs-sec); }
+.sn-riesgo.r-bajo { color: var(--sell); } .sn-riesgo.r-medio { color: var(--watch); } .sn-riesgo.r-alto { color: var(--danger); }
+.sn-riesgo.r-desconocido { color: var(--muted); }
+.sn-op-sec { margin: 0; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.sn-motivos { margin: 0; color: var(--watch); }
+.sn-op-acc { display: flex; flex-wrap: wrap; gap: var(--esp-1); }
+.sn-clase { flex: 0 0 auto; padding: 2px 10px; border-radius: 999px; font-size: var(--fs-min); font-weight: 700; white-space: nowrap;
+  border: 1px solid currentColor; }
+.sn-rentable { color: #1EFF00; } .sn-ganga { color: #3d9bff; } .sn-epica { color: #b467f0; } .sn-legendaria { color: #ff8000; }
+.sn-excepcional { color: #E6CC80; background: rgba(230, 204, 128, .12); } .sn-baja { color: #9D9D9D; } .sn-no_rentable { color: var(--danger); }
+.sn-presu { display: flex; flex-wrap: wrap; align-items: end; gap: var(--esp-1); }
+.sn-presu .fab-campo { min-width: 180px; }
+.sn-plan { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sn-plan li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.sn-plan-c { margin-left: auto; font-variant-numeric: tabular-nums; }
+.sn-plan-tot { margin: 0; font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.sn-hist-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sn-hist-lista li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.sn-h-obj { font-weight: 600; }
+.sn-h-error { border-left: 3px solid var(--danger); padding-left: 8px; }
+.sn-wh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.sn-wh-txt { display: grid; flex: 1 1 200px; min-width: 0; }
+.sn-wh-txt span { overflow-wrap: anywhere; }
+.sn-alta { display: grid; gap: var(--esp-1); padding-top: var(--esp-1); }
+.sn-alta .btn { justify-self: start; }
+.sn-umbrales { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--esp-1); }
+.sn-ayuda { font-size: var(--fs-min); color: var(--muted); }
+#fab-sniper-cfg select[multiple] { min-height: 96px; }
+#fab-sniper-cfg textarea { font: inherit; font-size: var(--fs-sec); padding: 6px 8px; border-radius: 6px; resize: vertical;
+  border: 1px solid var(--border-ctl); background: var(--panel-2); color: var(--text); }
+@media (pointer: coarse) { .sn-op-acc .btn, .sn-acciones .btn { min-height: 44px; } }

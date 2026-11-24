@@ -1,10 +1,11 @@
-{
+﻿{
   "name": "mercadowow",
   "private": true,
   "type": "module",
   "description": "Funciones de Supabase y Netlify, y sus pruebas con Postgres simulado (PGlite).",
   "scripts": {
     "vercel": "node vercel/empaquetar.mjs",
+    "motor": "node supabase/sincronizar-motor.mjs",
     "test": "node --test \"supabase/pruebas/*.test.ts\" \"netlify/pruebas/*.test.ts\""
   },
   "dependencies": {

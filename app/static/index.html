@@ -352,7 +352,10 @@
         <nav class="fab-tabs" aria-label="Vista de fabricación">
           <a href="#/fabricacion" id="modo-tabla" class="fab-tab">Recetas</a>
           <a href="#/oportunidades" id="modo-oport" class="fab-tab">Oportunidades</a>
+          <a href="#/sniper" id="modo-sniper" class="fab-tab">Sniper</a>
         </nav>
+        <!-- Crafting Sniper: estado, ranking del último análisis, presupuesto e historial (sniper_vista.js). -->
+        <div id="fab-sniper" class="fab-sniper solo-sniper" aria-live="polite"></div>
 
         <!-- Fila principal: búsqueda, profesión, solo rentables, filtros y orden. -->
         <div class="fab-barra">
@@ -504,6 +507,7 @@
         <aside id="fab-lista" class="fab-drawer" role="dialog" aria-modal="true" aria-labelledby="fab-lista-tit" hidden></aside>
         <aside id="fab-alertas" class="fab-drawer" role="dialog" aria-modal="true" aria-labelledby="fab-al-tit" hidden></aside>
         <aside id="fab-cmp" class="fab-drawer fab-drawer-ancho" role="dialog" aria-modal="true" aria-labelledby="fab-cmp-tit" hidden></aside>
+        <aside id="fab-sniper-cfg" class="fab-drawer" role="dialog" aria-modal="true" aria-labelledby="sn-cfg-tit" tabindex="-1" hidden></aside>
       </section>
 
       <footer class="pie" id="pie"></footer>

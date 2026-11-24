@@ -716,6 +716,30 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /**
+     * Crafting Sniper. GET: configuración, webhooks (sin URL: solo una pista), último análisis e historial.
+     * POST {accion}: config | webhook_alta | webhook_editar | webhook_borrar (gestionar_sniper)
+     * y prueba | manual | analizar (sniper_solicitar: los envíos los hace la Edge Function, nunca la página).
+     */
+    async sniper(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") return json(200, await llamar(db, "select sniper_estado() as r", []));
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 20_000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.accion !== "string") return json(400, { error: "Falta accion" });
+        if (["prueba", "manual", "analizar"].includes(c.accion)) {
+          await llamar(db, "select sniper_solicitar($1::text::jsonb) as r", [JSON.stringify(c)]);
+          return json(202, { ok: true });
+        }
+        return json(200, await llamar(db, "select gestionar_sniper($1::text::jsonb) as r", [JSON.stringify(c)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Reglas de comisión y depósito (auction_fee_rules): leer y editar. */
     async tasas(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

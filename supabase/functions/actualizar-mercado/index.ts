@@ -11,6 +11,7 @@
 
 import postgres from "npm:postgres@3.4.9";
 import { actualizarFichas, actualizarNombresEs, actualizarNombresEsExtra, actualizarRecetas, actualizarRegion, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
+import { ejecutarSniper } from "./sniper.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -21,8 +22,14 @@ Deno.serve(async (req) => {
     return new Response("Método no permitido", { status: 405 });
   }
   try {
-    const cuerpo = await req.json().catch(() => ({})) as { tarea?: string };
-    const resultado = cuerpo?.tarea === "catalogo"
+    const cuerpo = await req.json().catch(() => ({})) as { tarea?: string; modo?: string; webhook?: number; spell?: number };
+    const modos = ["auto", "analizar", "prueba", "manual"] as const;
+    const resultado = cuerpo?.tarea === "sniper"
+      ? { sniper: await ejecutarSniper(db, { fetch,
+            modo: modos.includes(cuerpo.modo as never) ? cuerpo.modo as typeof modos[number] : "auto",
+            webhook: Number.isInteger(cuerpo.webhook) ? cuerpo.webhook : undefined,
+            spell: Number.isInteger(cuerpo.spell) ? cuerpo.spell : undefined }) }
+      : cuerpo?.tarea === "catalogo"
       ? { catalogo: await completarCatalogo(db, { fetch }) }
       : cuerpo?.tarea === "recetas"
         ? { recetas: await actualizarRecetas(db, { fetch }) }

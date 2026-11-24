@@ -8,6 +8,7 @@ export function leerRuta(hash) {
   if (["objeto", "historial", "rentabilidad"].includes(vista) && /^\d{1,9}$/.test(arg ?? "")) {
     return { vista: "objeto", id: Number(arg) };
   }
-  if ((vista === "fabricacion" || vista === "oportunidades") && arg === undefined) return { vista, id: null };
+  // Pestañas de Fabricación: Recetas, Oportunidades y Sniper (avisos a Discord).
+  if (["fabricacion", "oportunidades", "sniper"].includes(vista) && arg === undefined) return { vista, id: null };
   return { vista: "mercado", id: null };
 }

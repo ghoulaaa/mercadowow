@@ -494,6 +494,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return r
 
+    # Crafting Sniper: misma lógica que /api/sniper en Vercel (la validación está en SQL).
+    @app.get("/api/sniper")
+    def sniper_leer():
+        try:
+            with db.connect(settings.database_url) as conn:
+                r = conn.execute("select sniper_estado() as r").fetchone()["r"]
+        except Exception as exc:
+            log.warning("Fallo al leer el sniper: %s", exc)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(r, headers=SIN_CACHE)
+
+    @app.post("/api/sniper")
+    def sniper_gestionar(c: dict = Body(...)):
+        if not isinstance(c.get("accion"), str):
+            return JSONResponse(status_code=400, content={"error": "Falta accion"})
+        envio = c["accion"] in ("prueba", "manual", "analizar")
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                sql = "select sniper_solicitar(%s::jsonb) as r" if envio else "select gestionar_sniper(%s::jsonb) as r"
+                r = conn.execute(sql, (Jsonb(c),)).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al gestionar el sniper: %s", type(exc).__name__)   # sin detalles: podría llevar la URL
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(status_code=202, content={"ok": True}) if envio else r
+
     @app.get("/api/alertas")
     def alertas_leer(mercado: str | None = Query(default=None, max_length=100),
                      objeto: int | None = Query(default=None, gt=0, le=2147483647)):

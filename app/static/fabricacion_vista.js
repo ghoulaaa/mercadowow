@@ -4,6 +4,7 @@
 // indicadores (oportunidades.js) y la presentación sin DOM (fabricacion_ui.js), todo probado en Node.
 
 import { filasACsv, filtrarFilas, ordenarFilas, simularReceta, calcularFilas, NOMBRE_ORIGEN } from "./fabricacion_tabla.js";
+import { crearVistaSniper } from "./sniper_vista.js";
 import { REGLA_POR_DEFECTO } from "./fabricacion.js";
 import { parsearMoneda } from "./moneda.js";
 import { NIVEL_TEXTO, UMBRAL, indicadores, oportunidades } from "./oportunidades.js";
@@ -910,7 +911,8 @@ export function crearVistaFabricacion(d) {
     acc.append(boton("Añadir a lista", "btn btn-rojo btn-small", { anadirLista: x.spell }),
       boton("Copiar materiales", "btn btn-piedra btn-small", { copiarMateriales: "1" }),
       boton(extras.comparar.includes(x.spell) ? "Quitar de comparar" : "Comparar", "btn btn-piedra btn-small", { comparar: x.spell }),
-      boton("Ver ficha del objeto", "btn btn-piedra btn-small", { verObjeto: x.id }));
+      boton("Ver ficha del objeto", "btn btn-piedra btn-small", { verObjeto: x.id }),
+      boton("Enviar a Discord", "btn btn-piedra btn-small", { enviarDiscord: x.spell }));
     nodos.push(acc);
     nodos.push(formAlertaReceta(x));
 
@@ -1464,22 +1466,40 @@ export function crearVistaFabricacion(d) {
     pintarDato();
     $("fab-error").hidden = !error;
     $("fab-pf-n").textContent = filtradas().length.toLocaleString("es");   // «Ver N recetas» del panel de filtros
+    if (modo === "sniper") return;   // la pestaña Sniper la pinta sniper_vista.js
     if (modo === "oportunidades") pintarOportunidades(); else pintarTabla();
   }
 
   filtrosAControles();
   pintarBotones();
 
+  // Pestaña «Sniper»: avisos a Discord. Abre las recetas en este mismo detalle.
+  const vistaSniper = crearVistaSniper({
+    ...d,
+    abrirReceta: async (spell, desde) => {
+      await cargar();
+      if (porSpell.has(spell)) abrirDetalle(spell, desde);
+      else d.avisar("Esa receta no está en los datos de este mercado.", "bad");
+    },
+    profesiones: () => profesionesDisponibles(),
+  });
+  $("fab-det").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-enviar-discord]");
+    if (b) vistaSniper.enviar(Number(b.dataset.enviarDiscord));
+  });
+
   return {
-    /** Muestra la vista (pestaña Recetas u Oportunidades) y carga los datos del mercado actual si hace falta. */
+    /** Muestra la vista (pestaña Recetas, Oportunidades o Sniper) y carga los datos del mercado actual si hace falta. */
     mostrar(m = "tabla") {
       modo = m;
-      const oport = m === "oportunidades";
+      const oport = m === "oportunidades", sniper = m === "sniper";
       $("vista-fabricacion").classList.toggle("modo-oport", oport);
-      for (const [id, activo] of [["modo-tabla", !oport], ["modo-oport", oport]]) {
+      $("vista-fabricacion").classList.toggle("modo-sniper", sniper);
+      for (const [id, activo] of [["modo-tabla", m === "tabla"], ["modo-oport", oport], ["modo-sniper", sniper]]) {
         if (activo) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
       }
       $("ayuda-oport-resumen").hidden = !oport;
+      if (sniper) vistaSniper.mostrar();
       if (datos && datosMercado === d.mercado()) pintar();
       return cargar();
     },
