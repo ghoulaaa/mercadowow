@@ -68,6 +68,35 @@ del mercado, así que los costes de muchas unidades son estimaciones y así se i
    - mención de un rol (por su ID, nunca `@everyone`) desde la clase elegida.
 5. Puedes tener varios webhooks y elegir las profesiones de cada uno (por ejemplo, uno para Alquimia).
 
+## Apariencia del mensaje (migración 0047)
+
+Cada oportunidad es **un solo embed**:
+
+| Parte | Contenido |
+|---|---|
+| Autor | Clase de la oportunidad (p. ej. «GANGA LEGENDARIA»; «· ENVÍO MANUAL» si se envió a mano) |
+| Título | Nombre del objeto, con enlace a su ficha en MercadoWoW |
+| Descripción | Profesión (en detallado: nivel, mercado y por qué se avisa) |
+| Miniatura | Icono real del objeto (catálogo de MercadoWoW, servido por Blizzard). Sin icono: el de «objeto desconocido» de Blizzard |
+| Fila 1 | Fabricación · Venta · Beneficio neto |
+| Fila 2 | ROI · Stock material (fabricaciones posibles con lo publicado) · Riesgo |
+| Materiales | Cantidad × nombre · coste total |
+| Enlaces | MercadoWoW y Wowhead Forever |
+| Pie | «MercadoWoW · Actualización automática» y la hora (la pone Discord en la zona de cada uno) |
+
+Desde *Alertas Discord → Apariencia del mensaje*, con **vista previa en vivo** (con una oportunidad real
+del último análisis), se puede cambiar:
+- nombre y avatar del webhook (Discord no admite «discord» ni «clyde» en el nombre);
+- modo **compacto** o **detallado** (añade Score y confianza, ventas al día, escenario conservador y avisos);
+- mostrar u ocultar icono, materiales, medianas de 7 y 30 días y enlaces;
+- monedas `125g 40s 20c`, `125o 40p 20c` o los **emojis del servidor** (`<:oro:id>`; si falta alguno, se usa la letra);
+- el color de la barra lateral de cada clase (por defecto: verde #1EFF00, azul #0070DD, morado #A335EE,
+  naranja #FF8000 y dorado #FFD700).
+
+La vista previa no carga avatares ni emojis externos (la página solo muestra imágenes de Blizzard); en Discord sí.
+Lo que bloquearía un aviso automático (escaneo viejo, sin ventas, precio disparado) siempre sale en «⚠️ A tener
+en cuenta»: solo puede llegar en un envío manual.
+
 ## Seguridad
 
 - La URL del webhook solo se lee en la Edge Function (servidor) y nunca aparece en la página, en las

@@ -3,7 +3,7 @@
 // La página nunca ve ni envía a Discord: guarda la configuración por /api/sniper y pide a la Edge Function
 // las pruebas y los envíos. La URL del webhook solo viaja una vez (al darla de alta) y no se vuelve a mostrar.
 
-import { CLASES, claseDe, planConPresupuesto } from "./sniper.js";
+import { APARIENCIA_DEFECTO, CLASES, COLORES_DEFECTO, claseDe, mensajeDiscord, normalizarApariencia, planConPresupuesto } from "./sniper.js";
 import { parsearMoneda } from "./moneda.js";
 
 const RIESGO = { bajo: "Bajo", medio: "Medio", alto: "Alto", desconocido: "Desconocido" };
@@ -382,10 +382,169 @@ export function crearVistaSniper(d) {
     mn.append(campo("Mencionar a un rol", rol, "Solo el rol indicado (Discord: activa el modo desarrollador y copia el ID del rol). Nunca @everyone."),
       campo("…desde la clase", desde), campo("Dirección de MercadoWoW (para los enlaces)", sitio));
 
-    cuerpo.append(wh, q, fr, cl, mn);
+    cuerpo.append(wh, seccionApariencia(c), q, fr, cl, mn);
     const pie = el("div", "fab-drawer-pie");
     pie.append(boton("Cerrar", "btn btn-piedra", { snCerrar: "1" }), boton("Guardar", "btn btn-rojo", { snGuardar: "1" }));
     panel.replaceChildren(cab, cuerpo, pie);
+  }
+
+  // ---------- apariencia del mensaje y vista previa ----------
+  let ejemplo = null;   // spell del objeto de la vista previa
+  const ejemplos = () => {
+    const r = estado.config.ultimo_resultado;
+    const vistos = new Set();
+    return [...(r?.top ?? []), ...(r?.revisar ?? [])].filter((o) => !vistos.has(o.spell) && vistos.add(o.spell));
+  };
+
+  function seccionApariencia(c) {
+    const a = normalizarApariencia(c.apariencia);
+    const f = el("fieldset", "fab-grupo sn-apariencia");
+    f.append(el("legend", "", "Apariencia del mensaje"));
+
+    // Vista previa (con una oportunidad real del último análisis).
+    const lista = ejemplos();
+    if (!lista.some((o) => o.spell === ejemplo)) ejemplo = lista[0]?.spell ?? null;
+    const sel = el("select"); sel.name = "ap_ejemplo";
+    for (const o of lista) sel.append(new Option(`${o.nombre} · ${claseDe(o.clase).nombre}`, o.spell));
+    if (ejemplo != null) sel.value = String(ejemplo);
+    const prev = el("div", "dc-previa"); prev.dataset.snPrevia = "1"; prev.setAttribute("aria-live", "polite");
+    f.append(campo("Ejemplo (oportunidades del último análisis)", sel), prev);
+    const acc = el("div", "sn-ap-acc");
+    acc.append(boton("Enviar este ejemplo a Discord", "btn btn-piedra btn-small", { snEjemplo: "1" }));
+    acc.append(el("span", "sn-ayuda", "Usa los ajustes guardados: guarda antes de enviar."));
+    f.append(acc);
+
+    const texto = (nombre, valor, extra = {}) => { const i = el("input"); i.type = "text"; i.name = nombre; i.value = valor ?? ""; Object.assign(i, extra); return i; };
+    const casilla = (nombre, marcado, etiqueta) => {
+      const l = el("label", "check small"); const i = el("input"); i.type = "checkbox"; i.name = nombre; i.checked = marcado;
+      l.append(i, ` ${etiqueta}`); return l;
+    };
+    const opciones = (nombre, pares, valor) => {
+      const s = el("select"); s.name = nombre;
+      for (const [v, t] of pares) s.append(new Option(t, v));
+      s.value = valor; return s;
+    };
+    f.append(
+      campo("Nombre del webhook", texto("ap_nombre", c.apariencia?.nombre ?? "", { placeholder: APARIENCIA_DEFECTO.nombre, maxLength: 80 }),
+        "Discord no permite «discord» ni «clyde» en el nombre."),
+      campo("Avatar (dirección https de una imagen, opcional)", texto("ap_avatar", a.avatar ?? "", { placeholder: "Vacío = el avatar del webhook en Discord", spellcheck: false }),
+        "La vista previa no lo carga (la página solo muestra imágenes de Blizzard); en Discord sí se verá."),
+      campo("Modo", opciones("ap_modo", [["compacto", "Compacto"], ["detallado", "Detallado (Score, ventas, escenario conservador y avisos)"]], a.modo)));
+    const casillas = el("div", "sn-ap-casillas");
+    casillas.append(casilla("ap_imagen", a.imagen, "Icono del objeto"), casilla("ap_materiales", a.materiales, "Materiales"),
+      casilla("ap_historial", a.historial, "Medianas de 7 y 30 días"), casilla("ap_enlaces", a.enlaces, "Enlaces (MercadoWoW y Wowhead)"));
+    f.append(casillas);
+    f.append(campo("Monedas", opciones("ap_monedas", [["gsc", "125g 40s 20c"], ["opc", "125o 40p 20c"], ["emojis", "Emojis del servidor"]], a.monedas)));
+    const emo = el("div", "sn-ap-emojis"); emo.dataset.snEmojis = "1"; emo.hidden = a.monedas !== "emojis";
+    for (const [k, t] of [["oro", "Oro"], ["plata", "Plata"], ["cobre", "Cobre"]]) {
+      emo.append(campo(t, texto(`ap_emoji_${k}`, a.emojis[k] ?? "", { placeholder: `<:${k}:123456789012345678>`, spellcheck: false })));
+    }
+    emo.append(el("span", "sn-ayuda", "En Discord escribe \\:tu_emoji: en un canal y copia lo que aparece (<:nombre:id>). Si falta alguno, se usa la letra."));
+    f.append(emo);
+    const col = el("div", "sn-ap-colores");
+    for (const k of ORDEN_CLASES) {
+      const i = el("input"); i.type = "color"; i.name = `ap_color_${k}`; i.value = a.colores[k].toLowerCase();
+      col.append(campo(claseDe(k).nombre, i));
+    }
+    f.append(el("p", "small muted sn-ap-tit", "Color de la barra lateral por clase"), col,
+      boton("Restaurar colores", "enlace small", { snColores: "1" }));
+    requestAnimationFrame(pintarPrevia);
+    return f;
+  }
+
+  /** Lo que hay en el formulario, en el formato que valida SQL (null = valor por defecto). */
+  function leerApariencia() {
+    const v = (n) => panel.querySelector(`[name="${n}"]`);
+    if (!v("ap_modo")) return undefined;
+    const t = (n) => v(n).value.trim() || null;
+    const emojis = {};
+    for (const k of ["oro", "plata", "cobre"]) emojis[k] = t(`ap_emoji_${k}`);
+    return {
+      nombre: t("ap_nombre"), avatar: t("ap_avatar"), modo: v("ap_modo").value, monedas: v("ap_monedas").value,
+      imagen: v("ap_imagen").checked, materiales: v("ap_materiales").checked, historial: v("ap_historial").checked, enlaces: v("ap_enlaces").checked,
+      emojis, colores: Object.fromEntries(ORDEN_CLASES.map((k) => [k, v(`ap_color_${k}`).value.toUpperCase()])),
+    };
+  }
+
+  function pintarPrevia() {
+    const caja = panel.querySelector("[data-sn-previa]");
+    if (!caja) return;
+    const o = ejemplos().find((x) => x.spell === ejemplo);
+    if (!o) { caja.replaceChildren(el("p", "muted small", "Sin oportunidades en el último análisis: pulsa «Analizar ahora» para tener un ejemplo real.")); return; }
+    const c = estado.config;
+    const mercado = estado.mercados.find((m) => m.key === c.market_key)?.nombre ?? c.market_key;
+    const cuerpo = mensajeDiscord(o, { sitio: c.sitio_url, mercado, motivo: "Oportunidad nueva", apariencia: limpiar(leerApariencia()) });
+    caja.replaceChildren(dibujarMensaje(cuerpo));
+    if (!o.materiales && normalizarApariencia(limpiar(leerApariencia())).materiales) {
+      caja.append(el("p", "sn-ayuda", "Los materiales aparecerán en la vista previa tras el próximo análisis."));
+    }
+  }
+  const limpiar = (a) => a && Object.fromEntries(Object.entries(a).filter(([, x]) => x != null));
+
+  // Discord por dentro: negrita, cursiva, enlaces y emojis personalizados (estos, como :nombre:).
+  function markdown(texto) {
+    const frag = document.createDocumentFragment();
+    const re = /\*\*(.+?)\*\*|_(.+?)_|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|<a?:(\w+):\d+>|\n/g;
+    let i = 0, mt;
+    while ((mt = re.exec(texto))) {
+      if (mt.index > i) frag.append(texto.slice(i, mt.index));
+      if (mt[1] != null || mt[2] != null) { const n = el(mt[1] != null ? "strong" : "em"); n.append(markdown(mt[1] ?? mt[2])); frag.append(n); }
+      else if (mt[3] != null) { const a = el("a", "", mt[3]); a.href = mt[4]; a.target = "_blank"; a.rel = "noopener noreferrer"; frag.append(a); }
+      else if (mt[5] != null) frag.append(el("span", "dc-emoji", `:${mt[5]}:`));
+      else frag.append(el("br"));
+      i = re.lastIndex;
+    }
+    if (i < texto.length) frag.append(texto.slice(i));
+    return frag;
+  }
+
+  function dibujarMensaje(cuerpo) {
+    const e = cuerpo.embeds[0];
+    const hora = new Date(e.timestamp).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+    const msg = el("div", "dc-msg");
+    const av = el("div", "dc-avatar", (cuerpo.username || "M").slice(0, 1).toUpperCase());
+    if (cuerpo.avatar_url) {
+      const img = el("img"); img.alt = ""; img.src = cuerpo.avatar_url; img.onerror = () => img.remove(); av.append(img);
+    }
+    const col = el("div", "dc-col");
+    const cab = el("div", "dc-cab");
+    cab.append(el("span", "dc-usuario", cuerpo.username), el("span", "dc-app", "APP"), el("span", "dc-hora", `Hoy a las ${hora}`));
+    col.append(cab);
+    if (cuerpo.content) col.append(el("div", "dc-contenido", "@rol"));
+    const emb = el("div", "dc-embed");
+    emb.style.borderLeftColor = `#${e.color.toString(16).padStart(6, "0")}`;
+    const izq = el("div", "dc-emb-izq");
+    if (e.author) izq.append(el("div", "dc-autor", e.author.name));
+    if (e.title) {
+      const t = el(e.url ? "a" : "div", "dc-titulo", e.title);
+      if (e.url) { t.href = e.url; t.target = "_blank"; t.rel = "noopener noreferrer"; }
+      izq.append(t);
+    }
+    if (e.description) { const dsc = el("div", "dc-desc"); dsc.append(markdown(e.description)); izq.append(dsc); }
+    // Campos: los «inline» seguidos comparten fila (hasta 3), como en Discord.
+    const campos = el("div", "dc-campos");
+    const fs = e.fields ?? [];
+    for (let k = 0; k < fs.length;) {
+      if (!fs[k].inline) { campos.append(campoDc(fs[k], 12)); k++; continue; }
+      let n = 0; while (n < 3 && fs[k + n]?.inline) n++;
+      for (let j = 0; j < n; j++) campos.append(campoDc(fs[k + j], 12 / n));
+      k += n;
+    }
+    izq.append(campos);
+    emb.append(izq);
+    if (e.thumbnail) { const th = el("img", "dc-mini"); th.src = e.thumbnail.url; th.alt = ""; th.onerror = () => th.remove(); emb.append(th); }
+    const pie = el("div", "dc-pie", `${e.footer?.text ?? ""} • Hoy a las ${hora}`);
+    emb.append(pie);
+    col.append(emb);
+    msg.append(av, col);
+    return msg;
+  }
+  function campoDc(f, ancho) {
+    const c = el("div", "dc-campo");
+    c.style.gridColumn = `span ${ancho}`;
+    if (f.name !== "​") c.append(el("div", "dc-campo-n", f.name));
+    const v = el("div", "dc-campo-v"); v.append(markdown(f.value)); c.append(v);
+    return c;
   }
 
   const ids = (t) => [...new Set(String(t).split(/[\s,;]+/).filter(Boolean).map(Number))];
@@ -406,6 +565,7 @@ export function crearVistaSniper(d) {
       comision_pct: num("comision_pct"), recorte_pct: num("recorte_pct"),
       umbrales: Object.fromEntries(ORDEN_CLASES.map((k) => [k, num(`u_${k}`)])),
       mencion_rol: v("mencion_rol").value.trim(), mencion_desde: v("mencion_desde").value, sitio_url: v("sitio_url").value.trim(),
+      apariencia: leerApariencia(),
     };
     try { estado = await pedir("POST", { accion: "config", cambios }); pintar(); pintarConfig(); d.avisar("Configuración guardada."); }
     catch (e) { d.avisar(e.message, "bad"); }
@@ -415,6 +575,14 @@ export function crearVistaSniper(d) {
     const t = ev.target;
     if (t.closest("[data-sn-cerrar]")) return cerrarConfig();
     if (t.closest("[data-sn-guardar]")) return guardarConfig();
+    if (t.closest("[data-sn-colores]")) {
+      for (const k of ORDEN_CLASES) panel.querySelector(`[name="ap_color_${k}"]`).value = COLORES_DEFECTO[k].toLowerCase();
+      return pintarPrevia();
+    }
+    if (t.closest("[data-sn-ejemplo]")) {
+      if (ejemplo == null) { d.avisar("No hay ningún ejemplo para enviar.", "bad"); return; }
+      return solicitar({ accion: "manual", spell: ejemplo }, "Ejemplo pedido: mira el canal de Discord.");
+    }
     if (t.closest("[data-sn-alta]")) {
       const v = (n) => panel.querySelector(`[name="${n}"]`);
       const url = v("wh_url").value.trim();
@@ -435,6 +603,14 @@ export function crearVistaSniper(d) {
       try { estado = await pedir("POST", { accion: "webhook_borrar", id: Number(br.dataset.snBorrar) }); pintar(); pintarConfig(); d.avisar("Webhook borrado."); }
       catch (e) { d.avisar(e.message, "bad"); }
     }
+  });
+  // Vista previa en vivo mientras se cambia la apariencia.
+  panel.addEventListener("input", (ev) => {
+    const n = ev.target.name ?? "";
+    if (!n.startsWith("ap_")) return;
+    if (n === "ap_ejemplo") ejemplo = Number(ev.target.value);
+    if (n === "ap_monedas") panel.querySelector("[data-sn-emojis]").hidden = ev.target.value !== "emojis";
+    pintarPrevia();
   });
   panel.addEventListener("change", async (ev) => {
     const a = ev.target.closest("[data-sn-wh-activo]");

@@ -7,7 +7,7 @@ import { calcularFilas } from "../../app/static/fabricacion_tabla.js";
 import { indicadores } from "../../app/static/oportunidades.js";
 import {
   CLASES, PESOS, clasificar, decidirEnvio, escenarioConservador, evaluar, mencionPara, mensajeDiscord, mensajePrueba,
-  planConPresupuesto, puntuar, revisarOportunidad,
+  monedaDiscord, planConPresupuesto, puntuar, revisarOportunidad,
 } from "../../app/static/sniper.js";
 
 const ESCANEO = "2026-11-24T14:00:00Z";
@@ -115,6 +115,25 @@ describe("mensaje de Discord", () => {
     const msg = mensajeDiscord(o, { mercado: "TSM", mencion: "123456789012" });
     assert.deepEqual([msg.content, msg.allowed_mentions], ["<@&123456789012>", { roles: ["123456789012"] }]);
     assert.equal(JSON.stringify(mensajePrueba({})).match(/\d+[opc]\b/), null);
+  });
+  test("monedas al estilo WoW: g/s/c, o/p/c o emojis del servidor; sin decimales", () => {
+    assert.equal(monedaDiscord(1254020), "125g 40s 20c");
+    assert.equal(monedaDiscord(50500), "5g 05s");
+    assert.equal(monedaDiscord(90000), "9g");
+    assert.equal(monedaDiscord(2000), "20s");
+    assert.equal(monedaDiscord(null), "—");
+    assert.equal(monedaDiscord(1254020, { monedas: "opc" }), "125o 40p 20c");
+    assert.equal(monedaDiscord(50500, { monedas: "emojis", emojis: { oro: "<:oro:123456789>" } }), "5 <:oro:123456789> 05s");
+  });
+  test("compacto: 6 cifras, materiales y enlaces; detallado añade Score, ventas y conservador", () => {
+    const c = mensajeDiscord(o, { sitio: "https://mercadowow.vercel.app", mercado: "TSM", ahora: AHORA }).embeds[0];
+    assert.deepEqual(c.fields.slice(0, 6).map((f: any) => f.name), ["Fabricación", "Venta", "Beneficio neto", "ROI", "Stock material", "Riesgo"]);
+    assert.ok(c.fields.some((f: any) => f.name === "Materiales"));
+    assert.equal(c.fields.some((f: any) => f.name === "Score"), false);
+    assert.equal(c.description, "Alquimia");
+    const det = mensajeDiscord(o, { mercado: "TSM", ahora: AHORA, motivo: "Oportunidad nueva", apariencia: { modo: "detallado", historial: true } }).embeds[0];
+    assert.ok(["Score", "Ventas", "Conservador", "Mediana de venta"].every((n) => det.fields.some((f: any) => f.name === n)));
+    assert.match(det.description, /Oportunidad nueva/);
   });
 });
 

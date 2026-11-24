@@ -54,7 +54,7 @@ describe("sniper (SQL + tarea)", () => {
                      "0015_recetas.sql", "0017_mercado_pagina.sql", "0018_evidencia.sql", "0019_catalogo_ampliado.sql",
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
-                     "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql"]) await pg.exec(leer(n));
+                     "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql", "0047_sniper_apariencia.sql"]) await pg.exec(leer(n));
     const cat = [[2453, "Bruiseweed"], [3389, "Elixir of Defense"], [2589, "Linen Cloth"], [2580, "Wool Bandage"]]
       .map(([id, name]) => ({ id, name, itemClass: "Trade Goods", itemSubclass: "Herb", quality: "COMMON" }));
     await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify(cat)]);
@@ -94,13 +94,16 @@ describe("sniper (SQL + tarea)", () => {
     assert.match(d.recibidos[0].url, /\?wait=true$/);
     const e = d.recibidos[0].cuerpo.embeds[0];
     assert.equal(e.title, "Elixir of Defense");
-    assert.match(e.author.name, /GANGA LEGENDARIA DETECTADA/);        // ROI = (2000 − 100 − 800) / 800 = 137,5 % (100–200 %)
+    assert.equal(e.author.name, "GANGA LEGENDARIA");                 // ROI = (2000 − 100 − 800) / 800 = 137,5 % (100–200 %)
     const campo = (n: string) => e.fields.find((x: any) => x.name === n)?.value;
-    assert.equal(campo("Coste de fabricación"), "8p");
-    assert.equal(campo("Beneficio neto"), "**+11p**");               // 2000 − 100 (5 %) − 800 = 1100 c
-    assert.equal(campo("ROI"), "**138 %**");                          // 137,5 % sin decimales, como en la página
+    assert.equal(campo("Fabricación"), "8s");
+    assert.equal(campo("Beneficio neto"), "**+11s**");               // 2000 − 100 (5 %) − 800 = 1100 c
+    assert.equal(campo("ROI"), "**138%**");                          // 137,5 % sin decimales, como en la página
     assert.equal(e.color, 0xFF8000);                                 // legendaria (100–200 %)
     assert.deepEqual(d.recibidos[0].cuerpo.allowed_mentions, { parse: [] });
+    assert.equal(d.recibidos[0].cuerpo.username, "MercadoWoW");
+    assert.match(e.thumbnail.url, /^https:\/\/render\.worldofwarcraft\.com\//);   // icono real (o el de respaldo)
+    assert.match(e.fields.at(-1).value, /\[Wowhead\]\(https:\/\/www\.wowhead\.com\/forever\/item=3389\)/);
     // Segunda ronda con los mismos precios: no se repite.
     const d2 = discord();
     const r2 = await ejecutarSniper(db, { fetch: d2.f, ahora, espera: sinEspera });
@@ -111,6 +114,7 @@ describe("sniper (SQL + tarea)", () => {
   });
 
   test("vuelve a avisar si la ganancia sube lo suficiente o si pasó el intervalo", async () => {
+    await configurar({ apariencia: { modo: "detallado" } });   // el motivo del envío sale en el modo detallado
     await ejecutarSniper(db, { fetch: discord().f, ahora, espera: sinEspera });
     await escaneo("2026-11-24T15:00:00Z", [[3389, 2000, 2000, 20, 6], [2453, 250, 250, 300, 30]]);   // coste 800 → 500
     const d = discord();
@@ -140,6 +144,27 @@ describe("sniper (SQL + tarea)", () => {
     const d2 = discord();
     await ejecutarSniper(db, { fetch: d2.f, ahora: () => new Date("2026-11-24T20:00:00Z"), espera: sinEspera });
     assert.equal(d2.recibidos.length, 0);
+  });
+
+  test("apariencia: se valida en SQL y cambia el mensaje (nombre, avatar, monedas, colores, secciones)", async () => {
+    await assert.rejects(configurar({ apariencia: { nombre: "Discord bot" } }), /no permite/);
+    await assert.rejects(configurar({ apariencia: { avatar: "http://x.com/a.png" } }), /https/);
+    await assert.rejects(configurar({ apariencia: { emojis: { oro: ":oro:" } } }), /<:nombre:id>/);
+    await assert.rejects(configurar({ apariencia: { colores: { ganga: "azul" } } }), /#RRGGBB/);
+    await assert.rejects(configurar({ apariencia: { fondo: "rojo" } }), /desconocida/);
+    await assert.rejects(configurar({ apariencia: { modo: "grande" } }), /Modo no válido/);
+    const est = (await configurar({ score_min: 0, apariencia: { nombre: "Gangas WoW", avatar: "https://example.com/a.png", monedas: "opc",
+      colores: { legendaria: "#123456" }, materiales: false, enlaces: false, imagen: false } })).r;
+    assert.equal(est.config.score_min, 0);                           // el resto de la configuración también se guarda
+    assert.equal(est.config.apariencia.nombre, "Gangas WoW");
+    const d = discord();
+    await ejecutarSniper(db, { fetch: d.f, ahora, espera: sinEspera });
+    const c = d.recibidos[0].cuerpo, e = c.embeds[0];
+    assert.deepEqual([c.username, c.avatar_url, e.color, e.thumbnail], ["Gangas WoW", "https://example.com/a.png", 0x123456, undefined]);
+    assert.equal(e.fields.find((x: any) => x.name === "Fabricación").value, "8p");
+    assert.equal(e.fields.some((x: any) => x.name === "Materiales" || x.name === "​"), false);
+    // null devuelve una opción a su valor por defecto.
+    assert.equal((await configurar({ apariencia: { nombre: null } })).r.config.apariencia.nombre, undefined);
   });
 
   test("inactivo no envía; «Analizar ahora» actualiza el panel sin enviar", async () => {

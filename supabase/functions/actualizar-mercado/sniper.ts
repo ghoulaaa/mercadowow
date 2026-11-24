@@ -67,7 +67,8 @@ const resumen = (o: any) => ({
   spell: o.spell, id: o.id, nombre: o.nombre, icono: o.icono, calidad: o.calidad, profesion: o.profesion, nivel: o.nivel,
   unidades: o.unidades, coste: o.coste, ingresoBruto: o.ingresoBruto, precioVenta: o.precioVenta, comision: o.comision, neta: o.neta,
   roi: o.roi, margen: o.margen, score: o.score, partes: o.partes, riesgo: o.riesgo, confianza: o.confianza, clase: o.clase,
-  ventas: o.ventas, regional: o.regional, maxFabricable: o.maxFabricable, conservador: o.conservador, historico: o.historico,
+  ventas: o.ventas, regional: o.regional, maxFabricable: o.maxFabricable, stockIlimitado: o.stockIlimitado, conservador: o.conservador, historico: o.historico,
+  wowhead: o.wowhead, materiales: o.materiales.map((m: any) => ({ id: m.id, nombre: m.nombre, cantidad: m.cantidad, costeTotal: m.costeTotal, origen: m.origen, sinOfertas: m.sinOfertas })),
   avisos: o.avisos, bloquea: o.bloquea, motivoDescarte: o.motivoDescarte ?? null,
 });
 
@@ -97,7 +98,7 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
     if (modo === "prueba") {
       const w = est.webhooks.find((x: any) => x.id === op.webhook);
       if (!w) return { estado: "sin_webhook" };
-      const res = await enviarDiscord(op.fetch, await urlDe(w.id), mensajePrueba({ sitio: cfg.sitio_url, ahora: ahora().getTime() }), espera);
+      const res = await enviarDiscord(op.fetch, await urlDe(w.id), mensajePrueba({ sitio: cfg.sitio_url, ahora: ahora().getTime(), apariencia: cfg.apariencia }), espera);
       await registrar([{ clave: "prueba", market_key: cfg.market_key, webhook_id: w.id, tipo: "prueba",
                          estado: res.ok ? "enviado" : "error", motivo: "Notificación de prueba", error: res.error ?? null }], null, null, null);
       return { estado: res.ok ? "ok" : "error", error: res.error };
@@ -129,7 +130,7 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
       const avisos = [];
       for (const w of destinos) {
         const res = await enviarDiscord(op.fetch, await urlDe(w.id),
-          mensajeDiscord(o, { sitio: cfg.sitio_url, mercado, ahora: ahora().getTime(), manual: true, motivo: "Envío manual desde MercadoWoW" }), espera);
+          mensajeDiscord(o, { sitio: cfg.sitio_url, mercado, ahora: ahora().getTime(), manual: true, motivo: "Envío manual desde MercadoWoW", apariencia: cfg.apariencia }), espera);
         avisos.push({ clave: claveOportunidad(cfg.market_key, o.spell), market_key: cfg.market_key, spell: o.spell, item_id: o.id,
                       webhook_id: w.id, tipo: "manual", estado: res.ok ? "enviado" : "error", motivo: "Envío manual", clase: o.clase,
                       score: o.score, neta: o.neta, coste: o.coste, roi: o.roi, datos: { nombre: o.nombre, icono: o.icono }, error: res.error ?? null });
@@ -155,7 +156,7 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
         if (!d.enviar) continue;
         const destinos = destinosDe(o, activos);
         if (!destinos.length) continue;
-        const cuerpo = mensajeDiscord(o, { sitio: cfg.sitio_url, mercado, ahora: ahora().getTime(), motivo: d.motivo, mencion: mencionPara(o, cfg) });
+        const cuerpo = mensajeDiscord(o, { sitio: cfg.sitio_url, mercado, ahora: ahora().getTime(), motivo: d.motivo, mencion: mencionPara(o, cfg), apariencia: cfg.apariencia });
         for (const w of destinos) {
           const res = await enviarDiscord(op.fetch, await urlDe(w.id), cuerpo, espera);
           avisos.push({ clave, market_key: cfg.market_key, spell: o.spell, item_id: o.id, webhook_id: w.id, tipo: "auto",

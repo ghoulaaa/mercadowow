@@ -1397,3 +1397,50 @@ body.fab-con-panel { overflow: hidden; }
 #fab-sniper-cfg textarea { font: inherit; font-size: var(--fs-sec); padding: 6px 8px; border-radius: 6px; resize: vertical;
   border: 1px solid var(--border-ctl); background: var(--panel-2); color: var(--text); }
 @media (pointer: coarse) { .sn-op-acc .btn, .sn-acciones .btn { min-height: 44px; } }
+
+/* ---------- Crafting Sniper: apariencia del mensaje y vista previa de Discord ---------- */
+.sn-ap-acc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 4px; }
+.sn-ap-casillas { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 4px 12px; margin: 6px 0; }
+.sn-ap-emojis { display: grid; gap: 6px; }
+.sn-ap-tit { margin: 10px 0 4px; }
+.sn-ap-colores { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px 10px; }
+.sn-ap-colores input[type="color"] { width: 100%; min-width: 0; height: 32px; padding: 2px; cursor: pointer; }
+
+/* Imita el tema oscuro de Discord (colores propios de Discord, solo dentro de la vista previa). */
+.dc-previa { background: #313338; color: #dbdee1; border-radius: 8px; padding: 14px 12px; margin-top: 6px;
+  font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.375; overflow: hidden;
+  container-type: inline-size; }
+.dc-previa a { color: #00a8fc; text-decoration: none; }
+.dc-previa a:hover { text-decoration: underline; }
+.dc-msg { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; }
+.dc-avatar { position: relative; width: 40px; height: 40px; border-radius: 50%; background: #5865f2; color: #fff; display: grid; place-items: center;
+  font-weight: 700; overflow: hidden; }
+.dc-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dc-cab { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.dc-usuario { color: #f2f3f5; font-weight: 600; }
+.dc-app { background: #5865f2; color: #fff; font-size: 10px; font-weight: 600; padding: 1px 4px; border-radius: 3px; position: relative; top: -1px; }
+.dc-hora { color: #949ba4; font-size: 12px; }
+.dc-contenido { color: #c9cdfb; background: rgba(88, 101, 242, .3); border-radius: 3px; padding: 0 2px; width: fit-content; }
+.dc-embed { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; max-width: 520px; margin-top: 4px;
+  background: #2b2d31; border-left: 4px solid #1eff00; border-radius: 4px; padding: 8px 16px 16px 12px; }
+.dc-emb-izq { min-width: 0; }
+.dc-autor { color: #f2f3f5; font-size: 14px; font-weight: 600; margin-top: 8px; overflow-wrap: anywhere; }
+.dc-titulo { display: block; margin-top: 8px; font-size: 16px; font-weight: 600; color: #f2f3f5; overflow-wrap: anywhere; }
+a.dc-titulo { color: #00a8fc; }
+.dc-desc { margin-top: 8px; font-size: 14px; overflow-wrap: anywhere; }
+.dc-campos { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px 12px; margin-top: 8px; }
+.dc-campo { min-width: 0; font-size: 14px; }
+.dc-campo-n { color: #f2f3f5; font-weight: 600; margin-bottom: 2px; overflow-wrap: break-word; }
+.dc-campo-v { overflow-wrap: anywhere; }
+.dc-campo-v strong, .dc-desc strong { color: #f2f3f5; }
+.dc-emoji { color: #949ba4; }
+.dc-mini { grid-column: 2; grid-row: 1; width: 80px; height: 80px; object-fit: contain; border-radius: 4px; margin-top: 8px; }
+.dc-pie { grid-column: 1 / -1; margin-top: 8px; color: #b5bac1; font-size: 12px; }
+/* Estrecho (panel lateral, móvil): como Discord en el teléfono, avatar y miniatura más pequeños. */
+@container (max-width: 480px) {
+  .dc-msg { grid-template-columns: 32px minmax(0, 1fr); gap: 8px; }
+  .dc-avatar { width: 32px; height: 32px; }
+  .dc-embed { padding: 6px 10px 12px 10px; column-gap: 10px; }
+  .dc-mini { width: 56px; height: 56px; }
+  .dc-campo, .dc-desc { font-size: 13px; }
+}

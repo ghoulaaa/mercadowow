@@ -14,7 +14,6 @@
 import { calcularFilas } from "./fabricacion_tabla.js";
 import { REGLA_POR_DEFECTO, comisionVenta } from "./fabricacion.js";
 import { indicadores } from "./oportunidades.js";
-import { formatearMoneda } from "./moneda.js";
 
 // ---------- clasificación por ROI ----------
 export const CLASES = Object.freeze([
@@ -24,7 +23,7 @@ export const CLASES = Object.freeze([
   { clave: "ganga", nombre: "Ganga", emoji: "🔵", color: 0x0070DD, rango: 3 },
   { clave: "epica", nombre: "Ganga épica", emoji: "🟣", color: 0xA335EE, rango: 4 },
   { clave: "legendaria", nombre: "Ganga legendaria", emoji: "🟠", color: 0xFF8000, rango: 5 },
-  { clave: "excepcional", nombre: "Ganga excepcional", emoji: "🔥", color: 0xE6CC80, rango: 6 },
+  { clave: "excepcional", nombre: "Ganga excepcional", emoji: "🔥", color: 0xFFD700, rango: 6 },
 ]);
 const CLASE = Object.fromEntries(CLASES.map((c) => [c.clave, c]));
 /** Límite inferior (ROI %) de cada clase. «No rentable» es ROI ≤ 0. */
@@ -60,10 +59,32 @@ export const CONFIG_DEFECTO = Object.freeze({
   umbrales: { ...UMBRALES_DEFECTO },
   mencion_rol: null,
   mencion_desde: "excepcional",
+  apariencia: {},
+});
+
+/** Apariencia del mensaje de Discord. La valida SQL (_sniper_apariencia, migración 0047). */
+export const COLORES_DEFECTO = Object.freeze({ rentable: "#1EFF00", ganga: "#0070DD", epica: "#A335EE", legendaria: "#FF8000", excepcional: "#FFD700" });
+export const APARIENCIA_DEFECTO = Object.freeze({
+  nombre: "MercadoWoW",        // nombre con el que publica el webhook
+  avatar: null,                // https://… o null (el avatar configurado en Discord)
+  imagen: true,                // icono del objeto arriba a la derecha
+  materiales: true,
+  historial: false,            // medianas de 7 y 30 días
+  enlaces: true,               // MercadoWoW y Wowhead
+  modo: "compacto",            // «compacto» o «detallado»
+  monedas: "gsc",              // «gsc» (125g 40s 20c), «opc» (125o 40p 20c) o «emojis» (emojis del servidor)
+  emojis: {},                  // {oro, plata, cobre}: «<:nombre:id>»
+  colores: { ...COLORES_DEFECTO },
+});
+export const normalizarApariencia = (a) => ({
+  ...APARIENCIA_DEFECTO, ...(a ?? {}),
+  emojis: { ...(a?.emojis ?? {}) }, colores: { ...COLORES_DEFECTO, ...(a?.colores ?? {}) },
 });
 
 /** Configuración guardada con los valores por defecto para lo que falte. No valida: eso lo hace SQL. */
-export const normalizarConfig = (c) => ({ ...CONFIG_DEFECTO, ...(c ?? {}), umbrales: { ...UMBRALES_DEFECTO, ...(c?.umbrales ?? {}) } });
+export const normalizarConfig = (c) => ({
+  ...CONFIG_DEFECTO, ...(c ?? {}), umbrales: { ...UMBRALES_DEFECTO, ...(c?.umbrales ?? {}) }, apariencia: normalizarApariencia(c?.apariencia),
+});
 
 // ---------- protección contra falsas gangas ----------
 const minutosDesde = (iso, ahora) => (iso ? (ahora - new Date(iso)) / 60000 : null);
@@ -208,6 +229,7 @@ export function evaluarFila(x, datos, h, cfg, ahora = Date.now()) {
     comision: x.a.comision, deposito: x.a.deposito, neta: x.neta, roi: x.roi, margen: x.margen, equilibrio: x.a.precioEquilibrio,
     historico: { tsm: Number.isFinite(o.h) ? o.h : null, m24: h?.m24 ?? null, m7: h?.m7 ?? null, m30: h?.m30 ?? null },
     maxFabricable: x.a.maxFabricable?.ilimitado ? null : x.a.maxFabricable?.veces ?? null,
+    stockIlimitado: x.a.maxFabricable?.ilimitado === true,
     ventas: i.ventas, regional: i.regional, competencia: i.competencia, demanda: i.demanda,
     conservador: cons, score: s.score, partes: s.partes, desconocido: s.desconocido,
     riesgo, motivosRiesgo: i.motivosRiesgo, confianza: rev.confianza, bloquea: rev.bloquea, avisos: rev.avisos,
@@ -245,59 +267,108 @@ const PROF_ES = {
 };
 export const nombreProfesion = (p) => PROF_ES[p] ?? p;
 const corta = (t, n) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
-const m = (c) => formatearMoneda(c);
-const pct = (v) => (v == null ? "—" : `${v.toLocaleString("es", { maximumFractionDigits: v !== 0 && Math.abs(v) < 10 ? 1 : 0 })} %`);
-const NIVEL_RIESGO = { bajo: "🟢 Bajo", medio: "🟡 Medio", alto: "🔴 Alto", desconocido: "⚪ Desconocido" };
+const pct = (v) => (v == null ? "—" : `${v.toLocaleString("es", { maximumFractionDigits: v !== 0 && Math.abs(v) < 10 ? 1 : 0 })}%`);
+const NIVEL_RIESGO = { bajo: "🟢 Bajo", medio: "🟡 Medio", alto: "🔴 Alto", desconocido: "⚪ Sin datos" };
+/** Icono de «objeto desconocido» del propio Blizzard, si el catálogo no tiene el del objeto. */
+export const ICONO_RESPALDO = "https://render.worldofwarcraft.com/classic1x-us/icons/56/inv_misc_questionmark.jpg";
+const EMOJI_VALIDO = /^<a?:[A-Za-z0-9_]{2,32}:\d{5,25}>$/;
 
 /**
- * Mensaje (webhook de Discord) de una oportunidad. Límites de Discord respetados: título ≤ 256, campos ≤ 25,
- * valor ≤ 1024, total < 6000. `nombreDe(id, en)`: nombre en español si se conoce.
+ * Cobre → texto para Discord según la apariencia: «125g 40s 20c» (gsc), «125o 40p 20c» (opc) o con los emojis
+ * del servidor (si falta alguno, ese usa la letra). Omite las unidades a cero; la plata y el cobre llevan dos
+ * cifras tras una unidad mayor («5g 05s»). Sin decimales. null → «—».
  */
-export function mensajeDiscord(o, { sitio, mercado, ahora = Date.now(), motivo = null, manual = false, mencion = null, nombreDe = (id, en) => en } = {}) {
+export function monedaDiscord(cobre, apariencia = APARIENCIA_DEFECTO) {
+  if (cobre == null || !Number.isFinite(cobre)) return "—";
+  const a = apariencia ?? APARIENCIA_DEFECTO;
+  const letras = a.monedas === "opc" ? ["o", "p", "c"] : ["g", "s", "c"];
+  const emo = a.monedas === "emojis" ? [a.emojis?.oro, a.emojis?.plata, a.emojis?.cobre] : [];
+  const suf = (k) => (EMOJI_VALIDO.test(emo[k] ?? "") ? ` ${emo[k]}` : letras[k]);
+  let resto = Math.round(Math.abs(cobre));
+  const oro = Math.floor(resto / 10000); resto -= oro * 10000;
+  const plata = Math.floor(resto / 100), cob = resto - plata * 100;
+  const partes = [];
+  if (oro) partes.push(`${oro.toLocaleString("es")}${suf(0)}`);
+  if (plata) partes.push(`${partes.length ? String(plata).padStart(2, "0") : plata}${suf(1)}`);
+  if (cob || !partes.length) partes.push(`${partes.length ? String(cob).padStart(2, "0") : cob}${suf(2)}`);
+  return (cobre < 0 ? "−" : "") + partes.join(" ");
+}
+
+/**
+ * Mensaje (webhook de Discord) de una oportunidad: un solo embed, compacto o detallado según la apariencia.
+ * Límites de Discord respetados: título ≤ 256, campos ≤ 25, valor ≤ 1024, total < 6000.
+ * `nombreDe(id, en)`: nombre en español si se conoce.
+ */
+export function mensajeDiscord(o, { sitio, mercado, ahora = Date.now(), motivo = null, manual = false, mencion = null,
+                                    nombreDe = (id, en) => en, apariencia = null } = {}) {
+  const ap = normalizarApariencia(apariencia);
+  const m = (c) => monedaDiscord(c, ap);
+  const detallado = ap.modo === "detallado";
   const clase = claseDe(o.clase);
   const nombre = nombreDe(o.id, o.nombre);
   const url = sitio ? `${sitio.replace(/\/+$/, "")}/#/objeto/${o.id}` : null;
-  const materiales = o.materiales.slice(0, 12).map((x) =>
-    `${x.cantidad} × ${corta(nombreDe(x.id, x.nombre), 40)} — ${m(x.costeTotal)}${x.sinOfertas ? " (valor de mercado)" : x.origen === "fabricar" ? " (fabricado)" : x.origen === "npc" ? " (NPC)" : ""}`);
-  if (o.materiales.length > 12) materiales.push(`y ${o.materiales.length - 12} más`);
-  const hist = [o.historico.m7 != null ? `mediana 7 d ${m(o.historico.m7)}` : null, o.historico.m30 != null ? `30 d ${m(o.historico.m30)}` : null,
-    o.historico.tsm != null ? `histórico TSM ${m(o.historico.tsm)}` : null].filter(Boolean).join(" · ") || "Sin historial";
-  const ventas = o.ventas == null ? "Sin datos" : `${o.ventas.toLocaleString("es", { maximumFractionDigits: 1 })}/día${o.regional ? " (región)" : ""}`;
+  const wowhead = o.wowhead ?? (o.id ? `https://www.wowhead.com/forever/item=${o.id}` : null);
+  const color = /^#[0-9A-Fa-f]{6}$/.test(ap.colores[clase.clave] ?? "") ? parseInt(ap.colores[clase.clave].slice(1), 16) : clase.color;
+  const stock = o.maxFabricable != null ? `${o.maxFabricable.toLocaleString("es")}` : o.stockIlimitado ? "Sin límite" : "Sin datos";
+  const venta = o.unidades > 1 ? `${m(o.ingresoBruto)}\n${o.unidades} × ${m(o.precioVenta)}` : m(o.ingresoBruto);
+
   const campos = [
-    { name: "Coste de fabricación", value: m(o.coste), inline: true },
-    { name: o.unidades === 1 ? "Precio de venta" : `Venta (${o.unidades} u.)`, value: `${m(o.ingresoBruto)}${o.unidades === 1 ? "" : `\n${m(o.precioVenta)} c/u`}`, inline: true },
-    { name: "Comisión", value: `${m(o.comision)}`, inline: true },
-    { name: "Beneficio neto", value: `**+${m(o.neta)}**`, inline: true },
+    { name: "Fabricación", value: m(o.coste), inline: true },
+    { name: "Venta", value: venta, inline: true },
+    { name: "Beneficio neto", value: `**${o.neta >= 0 ? "+" : ""}${m(o.neta)}**`, inline: true },
     { name: "ROI", value: `**${pct(o.roi)}**`, inline: true },
-    { name: "Margen", value: pct(o.margen), inline: true },
-    { name: "MercadoWoW Score", value: `**${o.score}/100** · confianza ${o.confianza}`, inline: true },
+    { name: "Stock material", value: stock, inline: true },
     { name: "Riesgo", value: NIVEL_RIESGO[o.riesgo] ?? o.riesgo, inline: true },
-    { name: "Ventas", value: ventas, inline: true },
-    { name: "Escenario conservador", value: o.conservador.neta == null ? "—" : `${o.conservador.neta >= 0 ? "+" : ""}${m(o.conservador.neta)} (venta a ${m(o.conservador.precio)})`, inline: true },
-    { name: "Equilibrio", value: `${m(o.equilibrio)} c/u`, inline: true },
-    { name: "Máx. fabricable", value: o.maxFabricable == null ? "Sin límite conocido" : `${o.maxFabricable.toLocaleString("es")} veces`, inline: true },
-    { name: "Precio de referencia", value: corta(hist, 1024) },
-    { name: "Materiales", value: corta(materiales.join("\n") || "—", 1024) },
   ];
-  const avisos = [...o.avisos].slice(0, 4);
-  if (avisos.length) campos.push({ name: "A tener en cuenta", value: corta(avisos.map((a) => `• ${a}`).join("\n"), 1024) });
-  const enlaces = [url ? `[Ver en MercadoWoW](${url})` : null, o.wowhead ? `[Wowhead](${o.wowhead})` : null].filter(Boolean).join(" · ");
-  if (enlaces) campos.push({ name: "Enlaces", value: enlaces });
+  if (detallado) {
+    const ventas = o.ventas == null ? "Sin datos" : `${o.ventas.toLocaleString("es", { maximumFractionDigits: 1 })}/día${o.regional ? " (región)" : ""}`;
+    const cons = o.conservador?.neta == null ? "Sin datos" : `${o.conservador.neta >= 0 ? "+" : ""}${m(o.conservador.neta)}`;
+    campos.push(
+      { name: "Score", value: `${o.score}/100 · confianza ${o.confianza}`, inline: true },
+      { name: "Ventas", value: ventas, inline: true },
+      { name: "Conservador", value: cons, inline: true },
+    );
+  }
+  if (ap.historial) {
+    const h = o.historico ?? {};
+    const hist = [h.m7 != null ? `7 d ${m(h.m7)}` : null, h.m30 != null ? `30 d ${m(h.m30)}` : null,
+      detallado && h.tsm != null ? `TSM ${m(h.tsm)}` : null].filter(Boolean).join(" · ");
+    campos.push({ name: "Mediana de venta", value: hist || "Sin historial" });
+  }
+  if (ap.materiales && o.materiales?.length) {
+    const tope = detallado ? 12 : 8;
+    const lineas = o.materiales.slice(0, tope).map((x) => {
+      const nota = !detallado ? "" : x.sinOfertas ? " _(valor de mercado)_" : x.origen === "fabricar" ? " _(fabricado)_" : x.origen === "npc" ? " _(NPC)_" : "";
+      return `${x.cantidad} × ${corta(nombreDe(x.id, x.nombre), 40)} · ${m(x.costeTotal)}${nota}`;
+    });
+    if (o.materiales.length > tope) lineas.push(`y ${o.materiales.length - tope} más`);
+    campos.push({ name: "Materiales", value: corta(lineas.join("\n"), 1024) });
+  }
+  // Lo que conviene revisar: siempre lo que la bloquearía (solo pasa en envíos manuales); los avisos, en detallado.
+  const atencion = [...(o.bloquea ?? []), ...(detallado ? o.avisos ?? [] : [])].slice(0, detallado ? 4 : 2);
+  if (atencion.length) campos.push({ name: "⚠️ A tener en cuenta", value: corta(atencion.map((a) => `• ${a}`).join("\n"), 1024) });
+  if (ap.enlaces) {
+    const enlaces = [url ? `[Ver en MercadoWoW](${url})` : null, wowhead ? `[Wowhead](${wowhead})` : null].filter(Boolean).join("  ·  ");
+    if (enlaces) campos.push({ name: "​", value: enlaces });
+  }
+
+  const descripcion = [nombreProfesion(o.profesion) + (detallado && o.nivel != null ? ` · nivel ${o.nivel}` : ""),
+    detallado && mercado ? mercado : null, detallado && motivo ? `_${motivo}_` : null].filter(Boolean).join("\n");
   const embed = {
-    author: { name: corta(`${clase.emoji} ${clase.nombre.toUpperCase()} DETECTADA${manual ? " · ENVÍO MANUAL" : ""}`, 256) },
+    author: { name: corta(`${clase.nombre.toUpperCase()}${manual ? " · ENVÍO MANUAL" : ""}`, 256) },
     title: corta(nombre, 256),
     ...(url ? { url } : {}),
-    description: corta(`Profesión: **${nombreProfesion(o.profesion)}**${o.nivel != null ? ` (nivel ${o.nivel})` : ""} · ${mercado}`
-      + (motivo ? `\n${motivo}` : ""), 4096),
-    color: clase.color,
+    description: corta(descripcion, 4096),
+    color,
     fields: campos.slice(0, 25),
-    footer: { text: "MercadoWoW · Crafting Sniper · estimación con el último escaneo; no garantiza la venta" },
+    footer: { text: `MercadoWoW · ${manual ? "Envío manual" : "Actualización automática"}` },
     timestamp: new Date(ahora).toISOString(),
   };
-  if (o.icono) embed.thumbnail = { url: o.icono };
+  if (ap.imagen) embed.thumbnail = { url: o.icono ?? ICONO_RESPALDO };
   const conMencion = mencion && /^\d{5,25}$/.test(mencion);
   return {
-    username: "MercadoWoW Sniper",
+    username: corta(ap.nombre || APARIENCIA_DEFECTO.nombre, 80),
+    ...(ap.avatar ? { avatar_url: ap.avatar } : {}),
     ...(conMencion ? { content: `<@&${mencion}>` } : {}),
     allowed_mentions: conMencion ? { roles: [mencion] } : { parse: [] },
     embeds: [embed],
@@ -305,11 +376,14 @@ export function mensajeDiscord(o, { sitio, mercado, ahora = Date.now(), motivo =
 }
 
 /** Mensaje de prueba: dice que la conexión funciona, sin cifras inventadas. */
-export function mensajePrueba({ sitio, ahora = Date.now() } = {}) {
+export function mensajePrueba({ sitio, ahora = Date.now(), apariencia = null } = {}) {
+  const ap = normalizarApariencia(apariencia);
   return {
-    username: "MercadoWoW Sniper",
+    username: corta(ap.nombre || APARIENCIA_DEFECTO.nombre, 80),
+    ...(ap.avatar ? { avatar_url: ap.avatar } : {}),
     allowed_mentions: { parse: [] },
     embeds: [{
+      author: { name: "CRAFTING SNIPER" },
       title: "Notificación de prueba",
       description: "La conexión entre MercadoWoW y este canal funciona. Las alertas llegarán aquí cuando se detecte una oportunidad que cumpla tu configuración.",
       color: 0xD6AF58,
