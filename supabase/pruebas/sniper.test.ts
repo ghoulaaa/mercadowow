@@ -35,9 +35,9 @@ describe("sniper (SQL + tarea)", () => {
   }
   // Discord falso: guarda lo recibido y responde lo que se le diga.
   function discord(respuestas: Response[] = []) {
-    const recibidos: { url: string; cuerpo: any; archivo?: Blob }[] = [];
+    const recibidos: { url: string; cuerpo: any; archivo?: Blob; archivo2?: Blob }[] = [];
     const f = (async (url: string, init: any) => {
-      if (init.body instanceof FormData) recibidos.push({ url, cuerpo: JSON.parse(String(init.body.get("payload_json"))), archivo: init.body.get("files[0]") as Blob });
+      if (init.body instanceof FormData) recibidos.push({ url, cuerpo: JSON.parse(String(init.body.get("payload_json"))), archivo: init.body.get("files[0]") as Blob, archivo2: (init.body.get("files[1]") ?? undefined) as Blob | undefined });
       else recibidos.push({ url, cuerpo: JSON.parse(init.body) });
       return respuestas.shift() ?? new Response(JSON.stringify({ id: "1" }), { status: 200 });
     }) as unknown as typeof fetch;
@@ -173,16 +173,30 @@ describe("sniper (SQL + tarea)", () => {
     const pedidas: any[] = [];
     const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
     const d = discord();
-    await ejecutarSniper(db, { fetch: d.f, ahora, espera: sinEspera, renderizar: async (o, op) => { pedidas.push({ o, op }); return png; } });
-    assert.equal(pedidas.length, 1);
+    const png2 = new Uint8Array([137, 80, 78, 71, 9, 9]);
+    await ejecutarSniper(db, { fetch: d.f, ahora, espera: sinEspera,
+      renderizar: async (o, op: any) => { pedidas.push({ o, op }); return op.parte === "detalle" ? png2 : png; } });
+    // Dos tarjetas apaisadas (resumen y detalle), cada una en su petición.
+    assert.deepEqual(pedidas.map((p) => p.op.parte).sort(), ["detalle", "resumen"]);
     assert.equal(pedidas[0].op.serie.length, 4);                     // los 4 escaneos reales del elixir (30 días)
     assert.equal(pedidas[0].op.proveedor, "tsm");
     const c = d.recibidos[0].cuerpo;
     assert.equal(c.embeds[0].image.url, "attachment://mercadowow-alert.png");
-    assert.equal(c.attachments[0].filename, "mercadowow-alert.png");
+    assert.equal(c.embeds[1].image.url, "attachment://mercadowow-detalle.png");
+    assert.equal(c.embeds[1].url, undefined);                        // sin enlace: Discord no los junta en galería
+    assert.deepEqual(c.attachments.map((a: any) => a.filename), ["mercadowow-alert.png", "mercadowow-detalle.png"]);
     assert.match(c.embeds[0].description, /Wowhead Forever/);
     assert.equal(c.embeds[0].fields, undefined);                     // las cifras van en la imagen, no repetidas
+    assert.ok(c.embeds[1].footer && !c.embeds[0].footer);
     assert.deepEqual(new Uint8Array(await d.recibidos[0].archivo!.arrayBuffer()), png);
+    assert.deepEqual(new Uint8Array(await d.recibidos[0].archivo2!.arrayBuffer()), png2);
+    // Si solo falla el detalle, va el resumen solo.
+    const d1 = discord();
+    await ejecutarSniper(db, { fetch: d1.f, ahora, espera: sinEspera, modo: "manual", spell: 3177,
+      renderizar: async (o, op: any) => (op.parte === "detalle" ? null : png) });
+    assert.equal(d1.recibidos[0].cuerpo.embeds.length, 1);
+    assert.ok(d1.recibidos[0].cuerpo.embeds[0].footer);
+    assert.equal(d1.recibidos[0].archivo2, undefined);
     // Si la tarjeta no se puede dibujar, se envía igual (en texto).
     const d2 = discord();
     await ejecutarSniper(db, { fetch: d2.f, ahora, espera: sinEspera, modo: "manual", spell: 3177, renderizar: async () => null });

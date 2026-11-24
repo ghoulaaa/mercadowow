@@ -410,28 +410,42 @@ export function mensajePrueba({ sitio, ahora = Date.now(), apariencia = null } =
 }
 
 export const ARCHIVO_TARJETA = "mercadowow-alert.png";
+/** Archivo de cada tarjeta (ver partesTarjeta en tarjeta.js). */
+export const ARCHIVOS_TARJETA = { resumen: ARCHIVO_TARJETA, detalle: "mercadowow-detalle.png" };
 
 /**
- * Mensaje con la tarjeta gráfica adjunta: el embed solo lleva lo que en una imagen no funciona (título con
- * enlace, enlaces clicables, color, hora); las cifras van en la imagen. Va con el archivo ARCHIVO_TARJETA.
+ * Mensaje con las tarjetas gráficas adjuntas. Discord encaja cada imagen de un embed en ~400 × 300 px, así que
+ * van en tarjetas apaisadas: el primer embed (resumen) lleva lo que en una imagen no funciona (título con enlace,
+ * enlaces clicables, color); el segundo, sin enlace para que Discord no los junte en galería, el detalle, el pie
+ * y la hora. En modo detallado la fabricación recomendada va en texto. `partes`: las tarjetas que se adjuntan.
  */
-export function mensajeTarjeta(o, { sitio, ahora = Date.now(), manual = false, mencion = null, apariencia = null, nombreDe = (id, en) => en } = {}) {
+export function mensajeTarjeta(o, { sitio, ahora = Date.now(), manual = false, mencion = null, apariencia = null, nombreDe = (id, en) => en,
+                                   partes = ["resumen"] } = {}) {
   const base = mensajeDiscord(o, { sitio, ahora, manual, mencion, apariencia, nombreDe });
   const e = base.embeds[0];
   const ap = normalizarApariencia(apariencia);
   const url = e.url ?? null;
   const wowhead = o.wowhead ?? (o.id ? `https://www.wowhead.com/forever/item=${o.id}` : null);
   const enlaces = [url ? `[Ver en MercadoWoW](${url})` : null, wowhead ? `[Wowhead Forever](${wowhead})` : null].filter(Boolean).join("  ·  ");
+  const reco = ap.modo === "detallado" ? fabricacionRecomendada(o, { presupuesto: ap.presupuesto }) : null;
+  const lineaReco = reco
+    ? `**Fabricación recomendada:** ${reco.veces.toLocaleString("es")} × · inversión ${monedaDiscord(reco.inversion, ap)} · beneficio `
+      + `**${reco.neta > 0 ? "+" : ""}${monedaDiscord(reco.neta, ap)}** · precio mínimo ${monedaDiscord(reco.equilibrio, ap)} c/u`
+    : null;
+  const descripcion = [ap.enlaces && enlaces ? enlaces : null, lineaReco].filter(Boolean).join("\n");
+  const lista = partes.filter((p) => p in ARCHIVOS_TARJETA);
+  const pie = { footer: { text: `MercadoWoW · Crafting Sniper · ${manual ? "Envío manual" : "Actualización automática"}` }, timestamp: e.timestamp };
+  const embeds = lista.map((p, i) => ({
+    ...(i === 0 ? { author: e.author, title: e.title, ...(url ? { url } : {}), ...(descripcion ? { description: descripcion } : {}) } : {}),
+    color: e.color,
+    image: { url: `attachment://${ARCHIVOS_TARJETA[p]}` },
+    ...(i === lista.length - 1 ? pie : {}),
+  }));
   return {
     ...base,
-    attachments: [{ id: 0, filename: ARCHIVO_TARJETA, description: `Tarjeta de ${corta(e.title, 900)}` }],
-    embeds: [{
-      author: e.author, title: e.title, ...(url ? { url } : {}), color: e.color,
-      ...(ap.enlaces && enlaces ? { description: enlaces } : {}),
-      image: { url: `attachment://${ARCHIVO_TARJETA}` },
-      footer: { text: `MercadoWoW · Crafting Sniper · ${manual ? "Envío manual" : "Actualización automática"}` },
-      timestamp: e.timestamp,
-    }],
+    attachments: lista.map((p, i) => ({ id: i, filename: ARCHIVOS_TARJETA[p],
+      description: `${p === "resumen" ? "Resumen" : "Materiales e historial"} de ${corta(e.title, 800)}` })),
+    embeds,
   };
 }
 

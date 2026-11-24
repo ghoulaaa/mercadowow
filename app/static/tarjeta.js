@@ -5,7 +5,7 @@
 
 import { APARIENCIA_DEFECTO, ICONO_RESPALDO, claseDe, fabricacionRecomendada, normalizarApariencia, nombreProfesion } from "./sniper.js";
 
-export const ANCHO_BASE = 1200;            // unidades del dibujo; el PNG se escala al ancho elegido
+export const ANCHO_BASE = 800;             // unidades del dibujo; el PNG se escala al ancho elegido
 export const FUENTE = "Inter";
 
 const TEMAS = {
@@ -120,266 +120,214 @@ export function tendencia(serie) {
 
 const PERIODOS = { 24: "24 horas", 168: "7 días", 336: "14 días", 720: "30 días" };
 
-/**
- * Dibuja la tarjeta. `o`: oportunidad (evaluarFila / resumen del análisis). Opciones: apariencia, mercado
- * (nombre), proveedor («tsm»/«ahledger»), serie (historial real de la compra mínima), ahora (ms), manual,
- * sitio, iconos ({url: href}: en el servidor, el icono incrustado en base64).
- * @returns {{svg: string, ancho: number, alto: number}}  ancho/alto en unidades del dibujo (ANCHO_BASE).
- */
-export function tarjetaSVG(o, { apariencia = null, mercado = "", proveedor = "tsm", serie = null, ahora = Date.now(), manual = false,
-                                 sitio = "", iconos = {} } = {}) {
+// Discord encaja la imagen de un embed en un recuadro de ~400 × 300 px: una tarjeta alta se encoge y no se lee.
+// Por eso son DOS tarjetas apaisadas (como mucho 4:3) con letra grande: «resumen» (cifras) y «detalle»
+// (materiales e historial). Medidas en unidades del dibujo: ANCHO_BASE × ALTO_MAX.
+export const ALTO_MAX = 600;
+const X0 = 40, DER = ANCHO_BASE - 32, CW = DER - X0;
+
+/** Qué tarjetas lleva una oportunidad: siempre el resumen; el detalle si hay materiales que mostrar o gráfico. */
+export function partesTarjeta(o, apariencia = null) {
   const ap = normalizarApariencia(apariencia);
-  const T = TEMAS[ap.tema] ?? TEMAS.oscuro;
-  const clase = claseDe(o.clase);
-  const cc = /^#[0-9A-Fa-f]{6}$/.test(ap.colores?.[clase.clave] ?? "") ? ap.colores[clase.clave] : `#${clase.color.toString(16).padStart(6, "0")}`;
-  const detallado = ap.modo === "detallado";
-  const W = ANCHO_BASE, P = 40, X0 = 48, CW = W - X0 - P;        // contenido: de X0 a W-P
-  const href = (u) => esc(iconos[u ?? ICONO_RESPALDO] ?? u ?? ICONO_RESPALDO);
-  const col = (k) => (k in T ? T[k] : k);
-  const partes = [];
-  const defs = [];
-  let y = 0;
+  return ap.grafico || (ap.materiales && (o.materiales ?? []).length) ? ["resumen", "detalle"] : ["resumen"];
+}
 
-  // ---- cabecera
+/** Caja con un rótulo arriba (tamaño 20–22) y un importe grande que se ajusta al ancho. */
+function cajaImporte(x, y, w, h, rotulo, cobre, { T, ap, color, max = 36, tamRot = 20, fondo, borde, sw = 1, signo = "" }) {
+  const disp = w - 48;
+  const tam = Math.max(20, Math.min(max, Math.floor(max * disp / Math.max(1, anchoMoneda(cobre, max, 800, ap) + (signo ? max * 0.6 : 0)))));
+  return rect(x, y, w, h, { rx: 16, fill: fondo ?? T.tarjeta, stroke: borde ?? T.borde, sw })
+    + texto(x + 24, y + tamRot + 18, recortar(rotulo, tamRot, 600, disp), { tam: tamRot, peso: 600, color: T.sec })
+    + moneda(x + 24, y + h - 26, cobre, { tam, peso: 800, color, signo, ap, T });
+}
+
+function resumen(o, c) {
+  const { ap, T, cc, href, col, defs, partes, manual, clase } = c;
+  const W = ANCHO_BASE;
+  // ---- cabecera: clase y marca
   if (ap.fondo) {
-    defs.push(`<radialGradient id="brillo" cx="1" cy="0" r="0.9"><stop offset="0" stop-color="${cc}" stop-opacity=".30"/><stop offset="1" stop-color="${cc}" stop-opacity="0"/></radialGradient>`);
-    partes.push(rect(W * 0.35, 0, W * 0.65, 300, { fill: "url(#brillo)" }));
+    defs.push(`<radialGradient id="r-brillo" cx="1" cy="0" r="0.9"><stop offset="0" stop-color="${cc}" stop-opacity=".30"/><stop offset="1" stop-color="${cc}" stop-opacity="0"/></radialGradient>`);
+    partes.push(rect(W * 0.3, 0, W * 0.7, 220, { fill: "url(#r-brillo)" }));
   }
-  partes.push(G.grafica(X0, 26, T.oro), texto(X0 + 34, 48, "OPORTUNIDAD DETECTADA", { tam: 18, peso: 700, color: T.texto, esp: 1.5 }));
-  partes.push(G.diamante(X0 - 2, 64, cc), texto(X0 + 42, 98, clase.nombre.toUpperCase(), { tam: 40, peso: 800, color: cc, esp: 0.5 }));
-  partes.push(texto(W - P, 50, "MercadoWoW", { tam: 26, peso: 800, color: T.oro, ancla: "end" }),
-    texto(W - P, 76, "CRAFTING SNIPER", { tam: 14, peso: 600, color: T.sec, ancla: "end", esp: 2.5 }));
-  if (manual) {
-    const t = "ENVÍO MANUAL", w = anchoTexto(t, 13, 700) + 24;
-    partes.push(rect(W - P - w, 88, w, 26, { rx: 13, fill: T.fondo2, stroke: T.borde }), texto(W - P - w / 2, 106, t, { tam: 13, peso: 700, color: T.sec, ancla: "middle", esp: 1 }));
-  }
-  y = 128;
+  partes.push(G.diamante(X0, 16, cc),
+    texto(X0 + 44, 46, recortar(clase.nombre.toUpperCase(), 30, 800, CW - 250), { tam: 30, peso: 800, color: cc, esp: 0.5 }),
+    texto(DER, 42, "MercadoWoW", { tam: 24, peso: 800, color: T.oro, ancla: "end" }));
+  if (manual) partes.push(texto(DER, 64, "ENVÍO MANUAL", { tam: 14, peso: 700, color: T.sec, ancla: "end", esp: 1.5 }));
 
-  // ---- objeto
-  const tamIcono = 124;
-  defs.push(`<clipPath id="ico"><rect x="${X0}" y="${y}" width="${tamIcono}" height="${tamIcono}" rx="14"/></clipPath>`);
+  // ---- objeto: icono real, nombre y profesión
+  const yi = 76, ti = 92;
   const [nomCal, colCal] = CALIDADES[o.calidad] ?? [null, T.borde];
-  partes.push(rect(X0 - 3, y - 3, tamIcono + 6, tamIcono + 6, { rx: 16, fill: T.fondo2, stroke: colCal, sw: 3 }),
-    `<image href="${href(o.icono)}" x="${X0}" y="${y}" width="${tamIcono}" height="${tamIcono}" preserveAspectRatio="xMidYMid slice" clip-path="url(#ico)"/>`);
-  const xn = X0 + tamIcono + 26;
-  let anchoBadge = 0;
-  if (nomCal) {
-    anchoBadge = anchoTexto(nomCal, 20, 700) + 36;
-    partes.push(rect(W - P - anchoBadge, y + 6, anchoBadge, 40, { rx: 10, fill: T.fondo2, stroke: colCal, sw: 2 }),
-      texto(W - P - anchoBadge / 2, y + 33, nomCal, { tam: 20, peso: 700, color: colCal, ancla: "middle" }));
+  defs.push(`<clipPath id="r-ico"><rect x="${X0}" y="${yi}" width="${ti}" height="${ti}" rx="12"/></clipPath>`);
+  partes.push(rect(X0 - 3, yi - 3, ti + 6, ti + 6, { rx: 14, fill: T.fondo2, stroke: colCal, sw: 3 }),
+    `<image href="${href(o.icono)}" x="${X0}" y="${yi}" width="${ti}" height="${ti}" preserveAspectRatio="xMidYMid slice" clip-path="url(#r-ico)"/>`);
+  const xn = X0 + ti + 22, maxN = DER - xn;
+  const tamN = ajustar(o.nombre, 38, 800, maxN, 26);
+  partes.push(texto(xn, yi + 42, recortar(o.nombre, tamN, 800, maxN), { tam: tamN, peso: 800, color: T.texto }));
+  const sub = `${nombreProfesion(o.profesion)}${o.nivel != null ? ` · nivel ${o.nivel}` : ""}${nomCal ? ` · ${nomCal}` : ""}`;
+  partes.push(texto(xn, yi + 80, recortar(sub, 22, 500, maxN), { tam: 22, peso: 500, color: T.sec }));
+
+  // ---- fila 1: beneficio neto (destacado) y ROI
+  const y1 = 186, h1 = 124, wN = Math.round(CW * 0.58), xR = X0 + wN + 16, wR = DER - xR;
+  const colN = o.neta >= 0 ? T.verde : T.rojo;
+  partes.push(cajaImporte(X0, y1, wN, h1, "Beneficio neto", o.neta, { T, ap, color: colN, max: 54, tamRot: 22, fondo: T.fondo2, borde: colN, sw: 2.5,
+    signo: o.neta > 0 ? "+" : "" }));
+  const colR = o.roi > 0 ? T.verde : T.rojo;
+  partes.push(rect(xR, y1, wR, h1, { rx: 16, fill: T.tarjeta, stroke: T.borde }),
+    texto(xR + 24, y1 + 40, "ROI", { tam: 22, peso: 600, color: T.sec }));
+  const vR = pct(o.roi).replace(" %", "%");
+  partes.push(texto(xR + 24, y1 + (ap.barras ? 90 : 100), vR, { tam: ajustar(vR, 50, 800, wR - 48, 24), peso: 800, color: colR }));
+  if (ap.barras) {
+    const escala = Number(ap.escala_roi) || 200;
+    partes.push(barra(xR + 24, y1 + 104, wR - 48, 8, (o.roi ?? 0) / escala, colR, T));
+    if ((o.roi ?? 0) > escala) partes.push(texto(DER - 24, y1 + 40, `escala ${escala} %`, { tam: 16, color: T.sec, ancla: "end" }));
   }
-  const maxNombre = W - P - xn - (anchoBadge ? anchoBadge + 20 : 0);
-  const tamNombre = ajustar(o.nombre, 42, 800, maxNombre, 30);
-  partes.push(texto(xn, y + 46, recortar(o.nombre, tamNombre, 800, maxNombre), { tam: tamNombre, peso: 800, color: T.texto }));
-  partes.push(texto(xn, y + 86, `${nombreProfesion(o.profesion)}${o.nivel != null ? ` · nivel ${o.nivel}` : ""}`, { tam: 22, peso: 500, color: T.texto }));
-  if (mercado) partes.push(texto(xn, y + 116, recortar(mercado, 17, 400, W - P - xn), { tam: 17, color: T.sec }));
-  y += tamIcono + 30;
 
-  // ---- tres cifras
-  const gap = 20, wc = (CW - 2 * gap) / 3, hc = 116;
-  const cifras = [
-    { t: "Coste de fabricación", v: o.coste, g: "monedas", color: T.texto },
-    { t: o.unidades > 1 ? `Precio de venta (c/u · ${o.unidades} u.)` : "Precio de venta", v: o.precioVenta, g: "martillo", color: T.texto },
-    { t: "Beneficio neto", v: o.neta, g: "monedas", color: o.neta >= 0 ? T.verde : T.rojo, destacado: true },
-  ];
-  cifras.forEach((c, i) => {
-    const x = X0 + i * (wc + gap);
-    const bordeC = c.destacado ? c.color : T.borde;
-    partes.push(rect(x, y, wc, hc, { rx: 14, fill: c.destacado ? T.fondo2 : T.tarjeta, stroke: bordeC, sw: c.destacado ? 2.5 : 1 }));
-    partes.push(G[c.g](x + 46, y + hc / 2, T));
-    const xt = x + 84, disp = wc - 84 - 16;
-    partes.push(texto(xt, y + 42, recortar(c.t, 17, 500, disp), { tam: 17, peso: 500, color: T.sec }));
-    const signo = c.destacado && c.v > 0 ? "+" : "";
-    const tam = Math.min(c.destacado ? 40 : 36, Math.floor((c.destacado ? 40 : 36) * disp / Math.max(1, anchoMoneda(c.v, c.destacado ? 40 : 36, 800, ap) + (signo ? 22 : 0))));
-    partes.push(moneda(xt, y + 88, c.v, { tam: Math.max(18, tam), peso: 800, color: c.color, signo, ap, T }));
-  });
-  y += hc + 24;
+  // ---- fila 2: coste y venta
+  const y2 = 326, h2 = 98, w2 = (CW - 16) / 2;
+  partes.push(cajaImporte(X0, y2, w2, h2, "Coste de fabricación", o.coste, { T, ap, color: T.texto }),
+    cajaImporte(X0 + w2 + 16, y2, w2, h2, o.unidades > 1 ? `Venta (c/u · ${o.unidades} u.)` : "Precio de venta", o.precioVenta, { T, ap, color: T.texto }));
 
-  // ---- indicadores
-  const cols = [{ k: "roi" }, ...(ap.score ? [{ k: "score" }] : []), ...(ap.riesgo ? [{ k: "riesgo" }] : []), { k: "stock" }];
-  const hi = 122, wi = CW / cols.length;
-  partes.push(linea(X0, y, W - P, y, T.borde), linea(X0, y + hi, W - P, y + hi, T.borde));
-  cols.forEach((c, i) => {
-    const x = X0 + i * wi + (i ? 22 : 0), w = wi - (i ? 44 : 22);
-    if (i) partes.push(linea(X0 + i * wi, y + 16, X0 + i * wi, y + hi - 16, T.borde));
-    if (c.k === "roi") {
-      const color = o.roi > 0 ? T.verde : T.rojo;
-      partes.push(G.grafica(x, y + 18, color), texto(x + 34, y + 38, "ROI", { tam: 18, peso: 600, color: T.sec }));
-      partes.push(texto(x, y + 84, pct(o.roi).replace(" %", "%"), { tam: ajustar(pct(o.roi), 40, 800, w), peso: 800, color }));
-      if (ap.barras) {
-        const esc2 = Number(ap.escala_roi) || 200;
-        partes.push(barra(x, y + 98, w, 10, (o.roi ?? 0) / esc2, color, T));
-        if ((o.roi ?? 0) > esc2) partes.push(texto(x + w, y + 38, `escala ${esc2} %`, { tam: 13, color: T.sec, ancla: "end" }));
-      }
-    } else if (c.k === "score") {
+  // ---- fila 3: Score, riesgo y stock
+  const y3 = 440, h3 = 102;
+  const cols = [...(ap.score ? ["score"] : []), ...(ap.riesgo ? ["riesgo"] : []), "stock"];
+  const w3 = (CW - 16 * (cols.length - 1)) / cols.length;
+  cols.forEach((k, i) => {
+    const x = X0 + i * (w3 + 16), xi = x + 22, wi = w3 - 44;
+    partes.push(rect(x, y3, w3, h3, { rx: 16, fill: T.tarjeta, stroke: T.borde }));
+    if (k === "score") {
       const s = Math.max(0, Math.min(100, Math.round(o.score ?? 0)));
       const color = s < 40 ? "#EF4444" : s < 60 ? "#F97316" : s < 75 ? "#FACC15" : s < 90 ? "#22C55E" : "#4ADE80";
-      partes.push(G.diana(x + 11, y + 28, color), texto(x + 34, y + 38, "MercadoWoW Score", { tam: 18, peso: 600, color: T.sec }));
-      partes.push(texto(x, y + 84, `${s}/100`, { tam: 34, peso: 800, color: T.texto }));
-      if (ap.barras) partes.push(barra(x, y + 98, w, 10, s / 100, color, T));
-    } else if (c.k === "riesgo") {
-      const [nom, k] = RIESGOS[o.riesgo] ?? RIESGOS.desconocido;
-      const color = col(k);
-      partes.push(G.escudo(x, y + 16, color), texto(x + 34, y + 38, "Riesgo", { tam: 18, peso: 600, color: T.sec }));
-      partes.push(`<circle cx="${x + 12}" cy="${y + 74}" r="10" fill="${color}"/>`, texto(x + 32, y + 84, nom, { tam: 30, peso: 800, color }));
-      if (o.confianza) partes.push(texto(x, y + 110, `confianza ${o.confianza}`, { tam: 14, color: T.sec }));
+      partes.push(texto(xi, y3 + 34, "Score", { tam: 20, peso: 600, color: T.sec }),
+        texto(xi, y3 + (ap.barras ? 74 : 82), `${s}/100`, { tam: 34, peso: 800, color: T.texto }));
+      if (ap.barras) partes.push(barra(xi, y3 + 84, wi, 8, s / 100, color, T));
+    } else if (k === "riesgo") {
+      const [nom, kc] = RIESGOS[o.riesgo] ?? RIESGOS.desconocido;
+      const color = col(kc);
+      partes.push(texto(xi, y3 + 34, "Riesgo", { tam: 20, peso: 600, color: T.sec }),
+        `<circle cx="${xi + 11}" cy="${y3 + 70}" r="11" fill="${color}"/>`,
+        texto(xi + 32, y3 + 81, nom, { tam: ajustar(nom, 32, 800, wi - 32, 20), peso: 800, color }));
     } else {
-      partes.push(G.cajas(x, y + 16, T.oro), texto(x + 34, y + 38, "Stock", { tam: 18, peso: 600, color: T.sec }));
       const sub = o.stockSubasta == null ? "Sin datos" : o.stockSubasta.toLocaleString("es");
       const fab = o.maxFabricable != null ? o.maxFabricable.toLocaleString("es") : o.stockIlimitado ? "Sin límite" : "Sin datos";
-      partes.push(texto(x, y + 72, "En subasta", { tam: 15, color: T.sec }), texto(x + w, y + 72, sub, { tam: 20, peso: 700, color: T.texto, ancla: "end" }));
-      partes.push(texto(x, y + 102, "Fabricable", { tam: 15, color: T.sec }), texto(x + w, y + 102, fab, { tam: 20, peso: 700, color: T.texto, ancla: "end" }));
+      partes.push(texto(xi, y3 + 34, "Stock", { tam: 20, peso: 600, color: T.sec }),
+        texto(xi, y3 + 64, "En subasta", { tam: 19, color: T.sec }), texto(xi + wi, y3 + 64, sub, { tam: 22, peso: 700, color: T.texto, ancla: "end" }),
+        texto(xi, y3 + 90, "Fabricable", { tam: 19, color: T.sec }), texto(xi + wi, y3 + 90, fab, { tam: 22, peso: 700, color: T.texto, ancla: "end" }));
     }
   });
-  y += hi + 24;
 
-  // ---- reparto del precio de venta
-  if (ap.barras && o.ingresoBruto > 0 && o.coste != null) {
-    const com = (o.comision ?? 0) + (o.deposito ?? 0);
-    const neta = Math.max(0, o.neta ?? 0);
-    const total = Math.max(o.ingresoBruto, o.coste + com + neta);
-    const seg = [["Coste", o.coste, "#64748B"], ["Comisión y depósito", com, "#F59E0B"], ["Beneficio", neta, T.verde]].filter((s) => s[1] > 0);
-    partes.push(texto(X0, y + 18, `Reparto del precio de venta (${textoMoneda(o.ingresoBruto, ap)} por fabricación)`, { tam: 17, peso: 600, color: T.sec }));
-    defs.push(`<clipPath id="reparto"><rect x="${X0}" y="${y + 30}" width="${CW}" height="22" rx="11"/></clipPath>`);
-    let x = X0;
-    const barras = seg.map(([, v, c], i) => {
-      const w = (CW * v) / total;
-      const r = rect(x, y + 30, Math.max(0, w - (i < seg.length - 1 ? 3 : 0)), 22, { fill: c });
-      x += w; return r;
-    }).join("");
-    partes.push(`<g clip-path="url(#reparto)">${barras}</g>`);
-    let lx = X0;
-    for (const [n, v, c] of seg) {
-      const t = `${n} ${Math.round((v / total) * 100)} %`;
-      partes.push(rect(lx, y + 64, 12, 12, { rx: 3, fill: c }), texto(lx + 18, y + 75, t, { tam: 15, color: T.texto }));
-      lx += anchoTexto(t, 15) + 48;
-    }
-    y += 96;
-  }
+  // ---- pie: fuente de los precios (obligatoria con AHledger), hora y web
+  partes.push(linea(X0, 558, DER, 558, T.borde),
+    texto(X0, 588, `${c.fuente} · ${c.fecha}`, { tam: 18, peso: 500, color: T.sec }));
+  if (c.dominio) partes.push(texto(DER, 588, c.dominio, { tam: 18, peso: 600, color: T.enlace, ancla: "end" }));
+  return ALTO_MAX;
+}
 
-  // ---- materiales y fabricación recomendada
-  const reco = detallado ? fabricacionRecomendada(o, { presupuesto: ap.presupuesto }) : null;
+function detalle(o, c, serie) {
+  const { ap, T, href, defs, partes } = c;
   const mats = ap.materiales ? (o.materiales ?? []) : [];
-  if (mats.length || reco) {
-    const wr = reco ? 430 : 0, wm = mats.length ? CW - (reco ? wr + 20 : 0) : 0;
-    const hFila = 48;
-    const hm = mats.length ? 66 + 26 + mats.length * hFila + 58 : 0;
-    const hr = reco ? 370 : 0;
-    const h = Math.max(hm, hr);
-    if (mats.length) {
-      const x = X0;
-      partes.push(rect(x, y, wm, h, { rx: 14, fill: T.tarjeta, stroke: T.borde }));
-      partes.push(G.pergamino(x + 20, y + 20, "#D9B76A"), texto(x + 54, y + 41, "Materiales necesarios", { tam: 21, peso: 700, color: T.texto }));
-      // Columnas (de derecha a izquierda): disponible, total, unitario, cantidad.
-      const xd = x + wm - 20, xt = xd - (wm > 700 ? 130 : 96), xu = xt - (wm > 700 ? 160 : 120), xq = xu - (wm > 700 ? 120 : 84);
-      const yh = y + 76;
-      for (const [cx, t] of [[xq, "Cant."], [xu, "Unitario"], [xt, "Total"], [xd, "Disp."]]) partes.push(texto(cx, yh, t, { tam: 14, peso: 600, color: T.sec, ancla: "end" }));
-      partes.push(texto(x + 20, yh, "Material", { tam: 14, peso: 600, color: T.sec }));
-      mats.forEach((m, i) => {
-        const yf = y + 92 + i * hFila;
-        const id = `m${i}`;
-        defs.push(`<clipPath id="${id}"><rect x="${x + 20}" y="${yf + 7}" width="34" height="34" rx="6"/></clipPath>`);
-        partes.push(linea(x + 20, yf, x + wm - 20, yf, T.borde));
-        partes.push(`<image href="${href(m.icono)}" x="${x + 20}" y="${yf + 7}" width="34" height="34" clip-path="url(#${id})"/>`);
-        const maxN = xq - 60 - (x + 66);
-        partes.push(texto(x + 66, yf + 30, recortar(m.nombre ?? `#${m.id}`, 18, 500, maxN), { tam: 18, peso: 500, color: T.texto }));
-        if (m.origen === "npc" || m.origen === "fabricar" || m.sinOfertas) {
-          const nota = m.origen === "npc" ? "NPC" : m.origen === "fabricar" ? "fabricado" : "valor de mercado";
-          partes.push(texto(x + 66, yf + 45, nota, { tam: 12, color: T.sec }));
-        }
-        const q = Number.isInteger(m.cantidad) ? m.cantidad : Number(m.cantidad).toFixed(2);
-        partes.push(texto(xq, yf + 30, `× ${q}`, { tam: 18, color: T.texto, ancla: "end" }));
-        const unit = m.precioUnitario ?? (m.cantidad ? m.costeTotal / m.cantidad : null);
-        partes.push(moneda(xu, yf + 30, unit, { tam: 17, peso: 500, color: T.sec, ancla: "end", ap, T }));
-        partes.push(moneda(xt, yf + 30, m.costeTotal, { tam: 18, peso: 700, color: T.oro, ancla: "end", ap, T }));
-        partes.push(texto(xd, yf + 30, m.origen === "npc" ? "NPC" : m.disponible == null ? "—" : m.disponible.toLocaleString("es"), { tam: 16, color: T.sec, ancla: "end" }));
-      });
-      const yt = y + 92 + mats.length * hFila;
-      partes.push(linea(x + 20, yt, x + wm - 20, yt, T.sec, 1.5));
-      partes.push(texto(x + 20, yt + 38, "Coste total", { tam: 21, peso: 800, color: T.texto }),
-        moneda(xt, yt + 38, o.coste, { tam: 22, peso: 800, color: T.oro, ancla: "end", ap, T }));
+  const hGraf = ap.grafico ? 210 : 0, hPie = 44, hFila = 44;
+  let y = 0;
+
+  // ---- materiales (cantidad y coste total, con su icono real)
+  if (mats.length) {
+    partes.push(G.pergamino(X0, 22, "#D9B76A"), texto(X0 + 36, 46, "Materiales necesarios", { tam: 26, peso: 700, color: T.texto }));
+    const caben = Math.max(1, Math.floor((ALTO_MAX - hGraf - hPie - 68 - 56) / hFila));
+    const vista = mats.length <= caben ? mats : mats.slice(0, caben - 1);
+    const xq = DER - 200;
+    vista.forEach((m, i) => {
+      const yf = 68 + i * hFila, id = `d-m${i}`;
+      defs.push(`<clipPath id="${id}"><rect x="${X0}" y="${yf + 5}" width="34" height="34" rx="6"/></clipPath>`);
+      partes.push(linea(X0, yf, DER, yf, T.borde),
+        `<image href="${href(m.icono)}" x="${X0}" y="${yf + 5}" width="34" height="34" clip-path="url(#${id})"/>`,
+        texto(X0 + 48, yf + 31, recortar(m.nombre ?? `#${m.id}`, 22, 500, xq - 80 - (X0 + 48)), { tam: 22, peso: 500, color: T.texto }));
+      const q = Number.isInteger(m.cantidad) ? m.cantidad : Number(m.cantidad).toFixed(2);
+      partes.push(texto(xq, yf + 31, `× ${q}`, { tam: 22, peso: 600, color: T.sec, ancla: "end" }),
+        moneda(DER, yf + 31, m.costeTotal, { tam: 22, peso: 700, color: T.oro, ancla: "end", ap, T }));
+    });
+    let yt = 68 + vista.length * hFila;
+    if (vista.length < mats.length) {
+      partes.push(linea(X0, yt, DER, yt, T.borde), texto(X0 + 48, yt + 30, `y ${mats.length - vista.length} más…`, { tam: 20, color: T.sec }));
+      yt += hFila;
     }
-    if (reco) {
-      const x = X0 + (mats.length ? wm + 20 : 0), w = mats.length ? wr : CW;
-      partes.push(rect(x, y, w, h, { rx: 16, fill: T.fondo2, stroke: cc, sw: 2 }));
-      partes.push(G.torre(x + 20, y + 18, cc), texto(x + 58, y + 41, "Fabricación recomendada", { tam: 21, peso: 700, color: T.texto }));
-      const unidades = reco.veces === 1 ? "1 fabricación" : `${reco.veces.toLocaleString("es")} fabricaciones`;
-      partes.push(texto(x + w / 2, y + 96, unidades, { tam: ajustar(unidades, 38, 800, w - 40), peso: 800, color: T.texto, ancla: "middle" }));
-      partes.push(texto(x + w / 2, y + 122, `${reco.unidades.toLocaleString("es")} u. · límite: ${reco.limite}`, { tam: 15, color: T.sec, ancla: "middle" }));
-      const filas = [["Inversión total", reco.inversion, T.oro], ["Ingreso bruto", reco.ingreso, T.texto], ["Comisión y depósito", reco.comision, T.texto],
-        ["Precio mínimo (c/u)", reco.equilibrio, T.texto]];
-      filas.forEach(([t, v, c], i) => {
-        const yf = y + 140 + i * 42;
-        partes.push(rect(x + 18, yf, w - 36, 36, { rx: 8, fill: T.tarjeta, stroke: T.borde }),
-          texto(x + 32, yf + 24, t, { tam: 16, color: T.sec }), moneda(x + w - 32, yf + 24, v, { tam: 18, peso: 700, color: c, ancla: "end", ap, T }));
-      });
-      const yb = y + 140 + filas.length * 42 + 8;
-      const colN = reco.neta >= 0 ? T.verde : T.rojo;
-      partes.push(rect(x + 18, yb, w - 36, 52, { rx: 10, fill: T.fondo, stroke: colN, sw: 2 }),
-        texto(x + 32, yb + 33, "Beneficio potencial", { tam: 18, peso: 700, color: colN }),
-        moneda(x + w - 32, yb + 34, reco.neta, { tam: 24, peso: 800, color: colN, ancla: "end", signo: reco.neta > 0 ? "+" : "", ap, T }));
-    }
-    y += h + 24;
+    partes.push(linea(X0, yt, DER, yt, T.sec, 1.5), texto(X0, yt + 38, "Coste total", { tam: 24, peso: 800, color: T.texto }),
+      moneda(DER, yt + 38, o.coste, { tam: 26, peso: 800, color: T.oro, ancla: "end", ap, T }));
+    y = yt + 56;
   }
 
-  // ---- gráfico del precio
+  // ---- historial real del precio de venta
   if (ap.grafico) {
     const tr = tendencia(serie);
-    const h = 190;
     const periodo = PERIODOS[ap.periodo] ?? `${ap.periodo} h`;
-    partes.push(linea(X0, y, W - P, y, T.borde));
+    if (y) partes.push(linea(X0, y, DER, y, T.borde));
     const colT = !tr ? T.sec : tr.sentido === "sube" ? T.verde : tr.sentido === "baja" ? T.rojo : T.sec;
-    partes.push(G.tendencia(X0, y + 22, T.sec), texto(X0 + 36, y + 44, `Precio de venta · ${periodo}`, { tam: 20, peso: 700, color: T.texto }));
+    partes.push(G.tendencia(X0, y + 20, T.sec), texto(X0 + 36, y + 42, `Precio de venta · ${periodo}`, { tam: 24, peso: 700, color: T.texto }));
     if (!tr) {
-      partes.push(texto(X0 + 36, y + 90, "Historial insuficiente", { tam: 22, peso: 700, color: T.sec }),
-        texto(X0 + 36, y + 118, "Hacen falta al menos 3 escaneos del producto en el período.", { tam: 15, color: T.sec }));
+      partes.push(texto(X0, y + 104, "Historial insuficiente", { tam: 28, peso: 700, color: T.sec }),
+        texto(X0, y + 138, "Hacen falta al menos 3 escaneos en el período.", { tam: 20, color: T.sec }));
     } else {
+      const v = `${tr.variacion > 0 ? "+" : ""}${tr.variacion.toLocaleString("es", { maximumFractionDigits: 1 })} %`;
+      partes.push(texto(DER, y + 44, v, { tam: 30, peso: 800, color: colT, ancla: "end" }));
       // Flecha dibujada (no depende de que la fuente tenga el símbolo).
-      const fx = X0 + 36, fy = y + 70;
+      const fx = DER - anchoTexto(v, 30, 800) - 34, fy = y + 22;
       partes.push(tr.sentido === "sube" ? `<polygon points="${fx},${fy + 22} ${fx + 12},${fy} ${fx + 24},${fy + 22}" fill="${colT}"/>`
         : tr.sentido === "baja" ? `<polygon points="${fx},${fy} ${fx + 24},${fy} ${fx + 12},${fy + 22}" fill="${colT}"/>`
         : rect(fx, fy + 8, 24, 6, { rx: 3, fill: colT }));
-      const v = `${tr.variacion > 0 ? "+" : ""}${tr.variacion.toLocaleString("es", { maximumFractionDigits: 1 })} %`;
-      partes.push(texto(X0 + 70, y + 92, v, { tam: 32, peso: 800, color: colT }));
-      partes.push(texto(X0 + 36, y + 126, "Máx.", { tam: 15, color: T.sec }), moneda(X0 + 260, y + 126, tr.max, { tam: 16, peso: 600, color: T.texto, ancla: "end", ap, T }));
-      partes.push(texto(X0 + 36, y + 152, "Mín.", { tam: 15, color: T.sec }), moneda(X0 + 260, y + 152, tr.min, { tam: 16, peso: 600, color: T.texto, ancla: "end", ap, T }));
-      partes.push(texto(X0 + 36, y + 176, `${tr.puntos.length} escaneos`, { tam: 13, color: T.sec }));
-      // Área: eje X por tiempo real; eje Y entre el mínimo y el máximo del período (con margen).
-      const gx = X0 + 300, gw = W - P - gx, gy = y + 30, gh = h - 50;
+      // Eje X por tiempo real; eje Y entre el mínimo y el máximo del período (con margen).
+      const gx = X0, gw = CW, gy = y + 62, gh = 100;
       const t0 = tr.puntos[0][0], t1 = tr.puntos[tr.puntos.length - 1][0];
       const margen = (tr.max - tr.min) * 0.12 || tr.max * 0.05 || 1;
       const lo = tr.min - margen, hiV = tr.max + margen;
       const px = (t) => gx + (t1 > t0 ? ((t - t0) / (t1 - t0)) * gw : gw / 2);
-      const py = (v) => gy + gh - ((v - lo) / (hiV - lo)) * gh;
-      const pts = tr.puntos.map(([t, v]) => `${r1(px(t))},${r1(py(v))}`).join(" ");
-      defs.push(`<linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${colT}" stop-opacity=".35"/><stop offset="1" stop-color="${colT}" stop-opacity="0"/></linearGradient>`);
-      partes.push(linea(gx, gy + gh, gx + gw, gy + gh, T.borde));
-      partes.push(`<polygon points="${r1(px(t0))},${r1(gy + gh)} ${pts} ${r1(px(t1))},${r1(gy + gh)}" fill="url(#area)"/>`);
-      partes.push(`<polyline points="${pts}" fill="none" stroke="${colT}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`);
+      const py = (val) => gy + gh - ((val - lo) / (hiV - lo)) * gh;
+      const pts = tr.puntos.map(([t, val]) => `${r1(px(t))},${r1(py(val))}`).join(" ");
+      defs.push(`<linearGradient id="d-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${colT}" stop-opacity=".35"/><stop offset="1" stop-color="${colT}" stop-opacity="0"/></linearGradient>`);
+      partes.push(linea(gx, gy + gh, gx + gw, gy + gh, T.borde),
+        `<polygon points="${r1(px(t0))},${r1(gy + gh)} ${pts} ${r1(px(t1))},${r1(gy + gh)}" fill="url(#d-area)"/>`,
+        `<polyline points="${pts}" fill="none" stroke="${colT}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>`);
       const [ut, uv] = tr.puntos[tr.puntos.length - 1];
-      partes.push(`<circle cx="${r1(px(ut))}" cy="${r1(py(uv))}" r="6" fill="${colT}" stroke="${T.fondo}" stroke-width="2"/>`);
+      partes.push(`<circle cx="${r1(px(ut))}" cy="${r1(py(uv))}" r="7" fill="${colT}" stroke="${T.fondo}" stroke-width="2"/>`);
+      const yb = y + 194;
+      partes.push(texto(X0, yb, "Mín.", { tam: 20, color: T.sec }), moneda(X0 + 52, yb, tr.min, { tam: 20, peso: 700, color: T.texto, ap, T }),
+        texto(X0 + 300, yb, "Máx.", { tam: 20, color: T.sec }), moneda(X0 + 354, yb, tr.max, { tam: 20, peso: 700, color: T.texto, ap, T }),
+        texto(DER, yb, `${tr.puntos.length} escaneos`, { tam: 18, color: T.sec, ancla: "end" }));
     }
-    y += h + 10;
+    y += hGraf;
   }
 
   // ---- pie
-  partes.push(linea(X0, y, W - P, y, T.borde));
-  const zona = ap.zona || undefined;
-  let fecha;
-  try { fecha = new Intl.DateTimeFormat("es", { dateStyle: "short", timeStyle: "short", timeZone: zona }).format(new Date(ahora)); }
-  catch { fecha = new Intl.DateTimeFormat("es", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" }).format(new Date(ahora)) + " UTC"; }
-  partes.push(texto(X0, y + 40, `Actualizado: ${fecha}`, { tam: 17, color: T.sec }));
-  partes.push(texto(X0 + CW / 2, y + 40, proveedor === "ahledger" ? "Prices from AHledger" : "Precios: TradeSkillMaster", { tam: 17, peso: 600, color: T.sec, ancla: "middle" }));
-  const dominio = String(sitio || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  if (dominio) partes.push(texto(W - P, y + 40, dominio, { tam: 17, peso: 600, color: T.enlace, ancla: "end" }));
-  partes.push(texto(X0, y + 66, "Estimación con el último escaneo; no garantiza la venta.", { tam: 13, color: T.sec, op: 0.85 }));
-  y += 86;
+  partes.push(linea(X0, y + 6, DER, y + 6, T.borde),
+    texto(X0, y + 34, "Estimación con el último escaneo; no garantiza la venta.", { tam: 17, color: T.sec }));
+  return Math.min(ALTO_MAX, Math.ceil(y + hPie));
+}
 
-  const alto = Math.ceil(y);
+/**
+ * Dibuja una de las tarjetas (`parte`: «resumen» o «detalle»). `o`: oportunidad (evaluarFila / resumen del
+ * análisis). Opciones: apariencia, mercado (nombre), proveedor («tsm»/«ahledger»), serie (historial real de la
+ * compra mínima), ahora (ms), manual, sitio, iconos ({url: href}: en el servidor, el icono incrustado en base64).
+ * @returns {{svg: string, ancho: number, alto: number}}  en unidades del dibujo (ANCHO_BASE × hasta ALTO_MAX).
+ */
+export function tarjetaSVG(o, { apariencia = null, mercado = "", proveedor = "tsm", serie = null, ahora = Date.now(), manual = false,
+                                 sitio = "", iconos = {}, parte = "resumen" } = {}) {
+  const ap = normalizarApariencia(apariencia);
+  const T = TEMAS[ap.tema] ?? TEMAS.oscuro;
+  const clase = claseDe(o.clase);
+  const cc = /^#[0-9A-Fa-f]{6}$/.test(ap.colores?.[clase.clave] ?? "") ? ap.colores[clase.clave] : `#${clase.color.toString(16).padStart(6, "0")}`;
+  let fecha;
+  try { fecha = new Intl.DateTimeFormat("es", { dateStyle: "short", timeStyle: "short", timeZone: ap.zona || undefined }).format(new Date(ahora)); }
+  catch { fecha = new Intl.DateTimeFormat("es", { dateStyle: "short", timeStyle: "short", timeZone: "UTC" }).format(new Date(ahora)) + " UTC"; }
+  const c = {
+    ap, T, cc, clase, manual, mercado, fecha, defs: [], partes: [],
+    href: (u) => esc(iconos[u ?? ICONO_RESPALDO] ?? u ?? ICONO_RESPALDO),
+    col: (k) => (k in T ? T[k] : k),
+    fuente: proveedor === "ahledger" ? "Prices from AHledger" : "Precios: TradeSkillMaster",
+    dominio: String(sitio || "").replace(/^https?:\/\//, "").replace(/\/+$/, ""),
+  };
+  const W = ANCHO_BASE;
+  const alto = parte === "detalle" ? detalle(o, c, serie) : resumen(o, c);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${alto}" width="${W}" height="${alto}">`
-    + `<defs><clipPath id="marco"><rect x="0" y="0" width="${W}" height="${alto}" rx="22"/></clipPath>${defs.join("")}</defs>`
-    + `<g clip-path="url(#marco)">${rect(0, 0, W, alto, { fill: T.fondo })}${rect(0, 0, 8, alto, { fill: cc })}${partes.join("")}</g>`
-    + rect(0.5, 0.5, W - 1, alto - 1, { rx: 22, stroke: T.borde })
+    + `<defs><clipPath id="marco-${parte}"><rect x="0" y="0" width="${W}" height="${alto}" rx="20"/></clipPath>${c.defs.join("")}</defs>`
+    + `<g clip-path="url(#marco-${parte})">${rect(0, 0, W, alto, { fill: T.fondo })}${rect(0, 0, 8, alto, { fill: cc })}${c.partes.join("")}</g>`
+    + rect(0.5, 0.5, W - 1, alto - 1, { rx: 20, stroke: T.borde })
     + `</svg>`;
   return { svg, ancho: W, alto };
 }

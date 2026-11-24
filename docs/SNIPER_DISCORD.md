@@ -99,9 +99,18 @@ en cuenta»: solo puede llegar en un envío manual.
 
 ## Tarjeta gráfica (migración 0048)
 
-Con *Diseño de Webhook → Estilo: Tarjeta gráfica* (el estilo por defecto), cada aviso lleva una **imagen PNG**
-adjunta (`mercadowow-alert.png`), y el embed solo contiene autor, título, los enlaces clicables, el color de la
-clase, el pie y la hora: las cifras van en la imagen, sin repetirlas en texto.
+Con *Diseño de Webhook → Estilo: Tarjeta gráfica* (el estilo por defecto), cada aviso lleva **dos imágenes PNG
+apaisadas** (como mucho 4:3, porque Discord encaja la imagen de un embed en ~400 × 300 px y una tarjeta alta se
+encogería hasta no leerse):
+
+1. `mercadowow-alert.png` — **resumen**: clase, icono y nombre, beneficio neto, ROI, coste, venta, Score, riesgo,
+   stock, fuente de los precios y hora. Va en el primer embed, con el título enlazado y los enlaces clicables.
+2. `mercadowow-detalle.png` — **detalle**: materiales (cantidad y coste total) e historial del precio. Va en un
+   segundo embed sin enlace (si no, Discord juntaría las dos imágenes en una galería pequeña). Solo se adjunta si
+   hay materiales visibles o gráfico; si falla al dibujarse, se envía el resumen solo.
+
+Las cifras van en las imágenes, sin repetirlas en texto. En modo detallado, la fabricación recomendada va en la
+descripción del embed (texto). La vista previa de la página las muestra al tamaño real de Discord (400 px).
 
 - **Un solo generador** (`app/static/tarjeta.js`) dibuja la tarjeta en SVG: la página lo usa para la vista previa
   y la Edge Function lo convierte en PNG con resvg (`tarjeta_png.ts`). La vista previa es la misma imagen que llega

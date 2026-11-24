@@ -4,7 +4,7 @@
 // las pruebas y los envíos. La URL del webhook solo viaja una vez (al darla de alta) y no se vuelve a mostrar.
 
 import { APARIENCIA_DEFECTO, CLASES, COLORES_DEFECTO, claseDe, mensajeDiscord, mensajeTarjeta, normalizarApariencia, planConPresupuesto } from "./sniper.js";
-import { tarjetaSVG } from "./tarjeta.js";
+import { partesTarjeta, tarjetaSVG } from "./tarjeta.js";
 import { parsearMoneda } from "./moneda.js";
 
 const RIESGO = { bajo: "Bajo", medio: "Medio", alto: "Alto", desconocido: "Desconocido" };
@@ -435,7 +435,7 @@ export function crearVistaSniper(d) {
     const tarj = el("div", "sn-ap-tarjeta"); tarj.dataset.snSoloTarjeta = "1"; tarj.hidden = a.estilo !== "tarjeta";
     tarj.append(
       campo("Tema", opciones("ap_tema", [["oscuro", "Oscuro"], ["negro", "Negro"]], a.tema)),
-      campo("Tamaño de la imagen", opciones("ap_ancho", [["1200", "Grande (1200 px)"], ["1000", "Mediano (1000 px)"], ["800", "Pequeño (800 px)"]], String(a.ancho))),
+      campo("Resolución de la imagen", opciones("ap_ancho", [["1200", "Alta (1200 px, más nítida)"], ["1000", "Media (1000 px)"], ["800", "Básica (800 px)"]], String(a.ancho))),
       campo("Período del gráfico", opciones("ap_periodo", [["24", "24 horas"], ["168", "7 días"], ["336", "14 días"], ["720", "30 días"]], String(a.periodo))),
       campo("La barra del ROI se llena en (%)", numero("ap_escala_roi", a.escala_roi, { min: 50, max: 10000, paso: 10 })),
       campo("Presupuesto para la fabricación recomendada (opcional)", texto("ap_presupuesto", a.presupuesto ? d.formatear(Number(a.presupuesto)) : "", { placeholder: "p. ej. 500o" })));
@@ -502,9 +502,11 @@ export function crearVistaSniper(d) {
       const clave = `${o.id}|${ap.periodo}`;
       const serie = series.get(clave);
       if (ap.grafico && serie === undefined) cargarSerie(o.id, ap.periodo, clave);
-      const { svg } = tarjetaSVG(o, { apariencia, mercado, proveedor: mk?.proveedor ?? "tsm", serie: serie ?? null, sitio: c.sitio_url });
-      const cuerpo = mensajeTarjeta(o, { sitio: c.sitio_url, apariencia });
-      caja.replaceChildren(dibujarMensaje(cuerpo, svg));
+      const partes = partesTarjeta(o, apariencia);
+      const svgs = partes.map((parte) => tarjetaSVG(o, { apariencia, mercado, proveedor: mk?.proveedor ?? "tsm", serie: serie ?? null,
+                                                          sitio: c.sitio_url, parte }).svg);
+      const cuerpo = mensajeTarjeta(o, { sitio: c.sitio_url, apariencia, partes });
+      caja.replaceChildren(dibujarMensaje(cuerpo, svgs));
       if (ap.grafico && serie === undefined) caja.append(el("p", "sn-ayuda", "Cargando el historial de precios…"));
     } else {
       caja.replaceChildren(dibujarMensaje(mensajeDiscord(o, { sitio: c.sitio_url, mercado, motivo: "Oportunidad nueva", apariencia })));
@@ -545,9 +547,10 @@ export function crearVistaSniper(d) {
     return frag;
   }
 
-  function dibujarMensaje(cuerpo, svg = null) {
-    const e = cuerpo.embeds[0];
-    const hora = new Date(e.timestamp).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  // Discord: un mensaje con uno o varios embeds; `svgs[i]` es la imagen adjunta del embed i (tarjeta gráfica).
+  function dibujarMensaje(cuerpo, svgs = []) {
+    const ts = cuerpo.embeds.find((x) => x.timestamp)?.timestamp ?? Date.now();
+    const hora = new Date(ts).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
     const msg = el("div", "dc-msg");
     const av = el("div", "dc-avatar", (cuerpo.username || "M").slice(0, 1).toUpperCase());
     if (cuerpo.avatar_url) {
@@ -558,6 +561,11 @@ export function crearVistaSniper(d) {
     cab.append(el("span", "dc-usuario", cuerpo.username), el("span", "dc-app", "APP"), el("span", "dc-hora", `Hoy a las ${hora}`));
     col.append(cab);
     if (cuerpo.content) col.append(el("div", "dc-contenido", "@rol"));
+    cuerpo.embeds.forEach((e, i) => col.append(dibujarEmbed(e, svgs[i] ?? null, hora, cuerpo.embeds[0].title)));
+    msg.append(av, col);
+    return msg;
+  }
+  function dibujarEmbed(e, svg, hora, titulo) {
     const emb = el("div", "dc-embed");
     emb.style.borderLeftColor = `#${e.color.toString(16).padStart(6, "0")}`;
     const izq = el("div", "dc-emb-izq");
@@ -569,30 +577,29 @@ export function crearVistaSniper(d) {
     }
     if (e.description) { const dsc = el("div", "dc-desc"); dsc.append(markdown(e.description)); izq.append(dsc); }
     // Campos: los «inline» seguidos comparten fila (hasta 3), como en Discord.
-    const campos = el("div", "dc-campos");
     const fs = e.fields ?? [];
-    for (let k = 0; k < fs.length;) {
-      if (!fs[k].inline) { campos.append(campoDc(fs[k], 12)); k++; continue; }
-      let n = 0; while (n < 3 && fs[k + n]?.inline) n++;
-      for (let j = 0; j < n; j++) campos.append(campoDc(fs[k + j], 12 / n));
-      k += n;
+    if (fs.length) {
+      const campos = el("div", "dc-campos");
+      for (let k = 0; k < fs.length;) {
+        if (!fs[k].inline) { campos.append(campoDc(fs[k], 12)); k++; continue; }
+        let n = 0; while (n < 3 && fs[k + n]?.inline) n++;
+        for (let j = 0; j < n; j++) campos.append(campoDc(fs[k + j], 12 / n));
+        k += n;
+      }
+      izq.append(campos);
     }
-    izq.append(campos);
     emb.append(izq);
     if (svg && e.image) {
       // La imagen adjunta: el SVG en línea (para que carguen los iconos de Blizzard, igual que en el PNG).
       const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
       const nodo = document.importNode(doc.documentElement, true);
       nodo.removeAttribute("width"); nodo.removeAttribute("height");
-      nodo.setAttribute("role", "img"); nodo.setAttribute("aria-label", `Tarjeta de ${e.title}`);
-      const marco = el("div", "dc-imagen"); marco.append(nodo); izq.append(marco);
+      nodo.setAttribute("role", "img"); nodo.setAttribute("aria-label", `Tarjeta de ${titulo}`);
+      const marco = el("div", e.title ? "dc-imagen" : "dc-imagen dc-imagen-sola"); marco.append(nodo); izq.append(marco);
     }
     if (e.thumbnail) { const th = el("img", "dc-mini"); th.src = e.thumbnail.url; th.alt = ""; th.onerror = () => th.remove(); emb.append(th); }
-    const pie = el("div", "dc-pie", `${e.footer?.text ?? ""} • Hoy a las ${hora}`);
-    emb.append(pie);
-    col.append(emb);
-    msg.append(av, col);
-    return msg;
+    if (e.footer) emb.append(el("div", "dc-pie", `${e.footer.text} • Hoy a las ${hora}`));
+    return emb;
   }
   function campoDc(f, ancho) {
     const c = el("div", "dc-campo");

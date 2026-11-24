@@ -5,8 +5,9 @@
 
 import { calcularFilas } from "./motor/fabricacion_tabla.js";
 import { REGLA_POR_DEFECTO } from "./motor/fabricacion.js";
+import { partesTarjeta } from "./motor/tarjeta.js";
 import {
-  ARCHIVO_TARJETA, claveOportunidad, decidirEnvio, evaluar, evaluarFila, mencionPara, mensajeDiscord, mensajePrueba, mensajeTarjeta,
+  ARCHIVOS_TARJETA, claveOportunidad, decidirEnvio, evaluar, evaluarFila, mencionPara, mensajeDiscord, mensajePrueba, mensajeTarjeta,
   normalizarConfig,
 } from "./motor/sniper.js";
 import type { Db } from "./nucleo.ts";
@@ -28,23 +29,24 @@ async function uno(db: Db, sql: string, params: unknown[] = []): Promise<any> {
 }
 
 export interface ResultadoEnvio { ok: boolean; error?: string; limite?: boolean }
+export interface Archivo { nombre: string; datos: Uint8Array }
 
 /**
  * Envía un mensaje a un webhook de Discord. Respeta el límite: con 429 espera lo que pide Discord (hasta 10 s)
  * y reintenta una vez; con un fallo de red o 5xx, reintenta una vez. Los errores nunca incluyen la URL.
  */
 export async function enviarDiscord(f: typeof fetch, url: string | null, cuerpo: unknown,
-                                    espera: (ms: number) => Promise<void>, archivo: Uint8Array | null = null): Promise<ResultadoEnvio> {
+                                    espera: (ms: number) => Promise<void>, archivos: Archivo[] | null = null): Promise<ResultadoEnvio> {
   if (!url) return { ok: false, error: "No se pudo leer el webhook" };
   const destino = url + (url.includes("?") ? "&" : "?") + "wait=true";
   for (let intento = 0; intento < 2; intento++) {
     let r: Response;
     try {
-      if (archivo) {
-        // Con imagen: multipart (payload_json + files[0]); el embed la muestra con attachment://.
+      if (archivos?.length) {
+        // Con imágenes: multipart (payload_json + files[i]); cada embed muestra la suya con attachment://.
         const fd = new FormData();
         fd.append("payload_json", JSON.stringify(cuerpo));
-        fd.append("files[0]", new Blob([archivo], { type: "image/png" }), ARCHIVO_TARJETA);
+        archivos.forEach((a, i) => fd.append(`files[${i}]`, new Blob([a.datos], { type: "image/png" }), a.nombre));
         r = await f(destino, { method: "POST", body: fd });
       } else {
         r = await f(destino, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
@@ -152,15 +154,20 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
     const preparar = async (o: any, { manual = false, motivo = null as string | null, mencion = null as string | null } = {}) => {
       const ap = cfg.apariencia;
       const base = { sitio: cfg.sitio_url, ahora: ahora().getTime(), manual, mencion, apariencia: ap };
-      const texto = () => ({ cuerpo: mensajeDiscord(o, { ...base, mercado, motivo }), archivo: null as Uint8Array | null, tarjeta: false });
+      const texto = () => ({ cuerpo: mensajeDiscord(o, { ...base, mercado, motivo }), archivos: null as Archivo[] | null, tarjeta: false });
       if (ap.estilo !== "tarjeta") return texto();
       try {
         const serie = ap.grafico
           ? await uno(db, "select sniper_serie($1, $2::integer, $3::integer, $4::timestamptz) as r", [cfg.market_key, o.id, ap.periodo, ahora().toISOString()])
           : null;
-        const png = await renderizar(o, { apariencia: ap, mercado, proveedor, serie, ahora: ahora().getTime(), manual, sitio: cfg.sitio_url });
-        if (!png) return texto();
-        return { cuerpo: mensajeTarjeta(o, base), archivo: png, tarjeta: true };
+        // Cada tarjeta en su propia petición (en paralelo). Sin resumen → texto; sin detalle → solo el resumen.
+        const pedidas = partesTarjeta(o, ap);
+        const pngs = await Promise.all(pedidas.map((parte) =>
+          renderizar(o, { apariencia: ap, mercado, proveedor, serie, ahora: ahora().getTime(), manual, sitio: cfg.sitio_url, parte }).catch(() => null)));
+        if (!pngs[0]) return texto();
+        const partes = pedidas.filter((_, i) => pngs[i]);
+        const archivos = partes.map((p) => ({ nombre: ARCHIVOS_TARJETA[p as keyof typeof ARCHIVOS_TARJETA], datos: pngs[pedidas.indexOf(p)]! }));
+        return { cuerpo: mensajeTarjeta(o, { ...base, partes }), archivos, tarjeta: true };
       } catch {
         return texto();
       }
@@ -189,7 +196,7 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
       const avisos = [];
       const msg = await preparar(o, { manual: true, motivo: "Envío manual desde MercadoWoW" });
       for (const w of destinos) {
-        const res = await enviarDiscord(op.fetch, await urlDe(w.id), msg.cuerpo, espera, msg.archivo);
+        const res = await enviarDiscord(op.fetch, await urlDe(w.id), msg.cuerpo, espera, msg.archivos);
         avisos.push({ clave: claveOportunidad(cfg.market_key, o.spell), market_key: cfg.market_key, spell: o.spell, item_id: o.id,
                       webhook_id: w.id, tipo: "manual", estado: res.ok ? "enviado" : "error", motivo: "Envío manual", clase: o.clase,
                       score: o.score, neta: o.neta, coste: o.coste, roi: o.roi, datos: { nombre: o.nombre, icono: o.icono, tarjeta: msg.tarjeta },
@@ -218,7 +225,7 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
         if (!destinos.length) continue;
         const msg = await preparar(o, { motivo: d.motivo, mencion: mencionPara(o, cfg) });
         for (const w of destinos) {
-          const res = await enviarDiscord(op.fetch, await urlDe(w.id), msg.cuerpo, espera, msg.archivo);
+          const res = await enviarDiscord(op.fetch, await urlDe(w.id), msg.cuerpo, espera, msg.archivos);
           avisos.push({ clave, market_key: cfg.market_key, spell: o.spell, item_id: o.id, webhook_id: w.id, tipo: "auto",
                         estado: res.ok ? "enviado" : "error", motivo: d.motivo, clase: o.clase, score: o.score, neta: o.neta,
                         coste: o.coste, roi: o.roi, datos: { nombre: o.nombre, icono: o.icono, tarjeta: msg.tarjeta }, error: res.error ?? null });
