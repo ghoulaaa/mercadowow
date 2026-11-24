@@ -12,6 +12,7 @@
 import postgres from "npm:postgres@3.4.9";
 import { actualizarFichas, actualizarNombresEs, actualizarNombresEsExtra, actualizarRecetas, actualizarRegion, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
 import { ejecutarSniper } from "./sniper.ts";
+import { dibujarTarjeta } from "./tarjeta_png.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -22,7 +23,17 @@ Deno.serve(async (req) => {
     return new Response("Método no permitido", { status: 405 });
   }
   try {
-    const cuerpo = await req.json().catch(() => ({})) as { tarea?: string; modo?: string; webhook?: number; spell?: number };
+    const cuerpo = await req.json().catch(() => ({})) as { tarea?: string; modo?: string; webhook?: number; spell?: number;
+                                                          token?: string; o?: unknown; opciones?: unknown };
+    // Tarjeta gráfica del sniper: solo con el token interno (la pide el propio sniper, una por petición).
+    if (cuerpo?.tarea === "tarjeta") {
+      const token = (await db.consulta("select sniper_token() as r", []))[0]?.r;
+      if (typeof token !== "string" || typeof cuerpo.token !== "string" || cuerpo.token !== token) {
+        return new Response("No autorizado", { status: 401 });
+      }
+      const png = await dibujarTarjeta(cuerpo.o, cuerpo.opciones ?? {});
+      return new Response(png, { headers: { "Content-Type": "image/png" } });
+    }
     const modos = ["auto", "analizar", "prueba", "manual"] as const;
     const resultado = cuerpo?.tarea === "sniper"
       ? { sniper: await ejecutarSniper(db, { fetch,

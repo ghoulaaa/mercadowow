@@ -35,9 +35,10 @@ describe("sniper (SQL + tarea)", () => {
   }
   // Discord falso: guarda lo recibido y responde lo que se le diga.
   function discord(respuestas: Response[] = []) {
-    const recibidos: { url: string; cuerpo: any }[] = [];
+    const recibidos: { url: string; cuerpo: any; archivo?: Blob }[] = [];
     const f = (async (url: string, init: any) => {
-      recibidos.push({ url, cuerpo: JSON.parse(init.body) });
+      if (init.body instanceof FormData) recibidos.push({ url, cuerpo: JSON.parse(String(init.body.get("payload_json"))), archivo: init.body.get("files[0]") as Blob });
+      else recibidos.push({ url, cuerpo: JSON.parse(init.body) });
       return respuestas.shift() ?? new Response(JSON.stringify({ id: "1" }), { status: 200 });
     }) as unknown as typeof fetch;
     return { f, recibidos };
@@ -54,7 +55,7 @@ describe("sniper (SQL + tarea)", () => {
                      "0015_recetas.sql", "0017_mercado_pagina.sql", "0018_evidencia.sql", "0019_catalogo_ampliado.sql",
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
-                     "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql", "0047_sniper_apariencia.sql"]) await pg.exec(leer(n));
+                     "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql", "0047_sniper_apariencia.sql", "0048_sniper_tarjeta.sql"]) await pg.exec(leer(n));
     const cat = [[2453, "Bruiseweed"], [3389, "Elixir of Defense"], [2589, "Linen Cloth"], [2580, "Wool Bandage"]]
       .map(([id, name]) => ({ id, name, itemClass: "Trade Goods", itemSubclass: "Herb", quality: "COMMON" }));
     await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify(cat)]);
@@ -151,7 +152,7 @@ describe("sniper (SQL + tarea)", () => {
     await assert.rejects(configurar({ apariencia: { avatar: "http://x.com/a.png" } }), /https/);
     await assert.rejects(configurar({ apariencia: { emojis: { oro: ":oro:" } } }), /<:nombre:id>/);
     await assert.rejects(configurar({ apariencia: { colores: { ganga: "azul" } } }), /#RRGGBB/);
-    await assert.rejects(configurar({ apariencia: { fondo: "rojo" } }), /desconocida/);
+    await assert.rejects(configurar({ apariencia: { brillo: "rojo" } }), /desconocida/);
     await assert.rejects(configurar({ apariencia: { modo: "grande" } }), /Modo no válido/);
     const est = (await configurar({ score_min: 0, apariencia: { nombre: "Gangas WoW", avatar: "https://example.com/a.png", monedas: "opc",
       colores: { legendaria: "#123456" }, materiales: false, enlaces: false, imagen: false } })).r;
@@ -165,6 +166,33 @@ describe("sniper (SQL + tarea)", () => {
     assert.equal(e.fields.some((x: any) => x.name === "Materiales" || x.name === "​"), false);
     // null devuelve una opción a su valor por defecto.
     assert.equal((await configurar({ apariencia: { nombre: null } })).r.config.apariencia.nombre, undefined);
+  });
+
+  test("tarjeta gráfica: se dibuja una vez, va adjunta (attachment://) con su historial real; si falla, texto", async () => {
+    await configurar({ apariencia: { estilo: "tarjeta", periodo: 720 } });
+    const pedidas: any[] = [];
+    const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+    const d = discord();
+    await ejecutarSniper(db, { fetch: d.f, ahora, espera: sinEspera, renderizar: async (o, op) => { pedidas.push({ o, op }); return png; } });
+    assert.equal(pedidas.length, 1);
+    assert.equal(pedidas[0].op.serie.length, 4);                     // los 4 escaneos reales del elixir (30 días)
+    assert.equal(pedidas[0].op.proveedor, "tsm");
+    const c = d.recibidos[0].cuerpo;
+    assert.equal(c.embeds[0].image.url, "attachment://mercadowow-alert.png");
+    assert.equal(c.attachments[0].filename, "mercadowow-alert.png");
+    assert.match(c.embeds[0].description, /Wowhead Forever/);
+    assert.equal(c.embeds[0].fields, undefined);                     // las cifras van en la imagen, no repetidas
+    assert.deepEqual(new Uint8Array(await d.recibidos[0].archivo!.arrayBuffer()), png);
+    // Si la tarjeta no se puede dibujar, se envía igual (en texto).
+    const d2 = discord();
+    await ejecutarSniper(db, { fetch: d2.f, ahora, espera: sinEspera, modo: "manual", spell: 3177, renderizar: async () => null });
+    assert.equal(d2.recibidos[0].archivo, undefined);
+    assert.ok(d2.recibidos[0].cuerpo.embeds[0].fields.length > 0);
+    // Validación de las opciones nuevas.
+    await assert.rejects(configurar({ apariencia: { periodo: 5 } }), /Período/);
+    await assert.rejects(configurar({ apariencia: { zona: "Marte/Base" } }), /Zona horaria/);
+    await assert.rejects(configurar({ apariencia: { ancho: 4000 } }), /Ancho/);
+    assert.equal((await configurar({ apariencia: { zona: "America/Santiago", ancho: 1000 } })).r.config.apariencia.ancho, 1000);
   });
 
   test("inactivo no envía; «Analizar ahora» actualiza el panel sin enviar", async () => {

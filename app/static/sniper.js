@@ -75,6 +75,19 @@ export const APARIENCIA_DEFECTO = Object.freeze({
   monedas: "gsc",              // «gsc» (125g 40s 20c), «opc» (125o 40p 20c) o «emojis» (emojis del servidor)
   emojis: {},                  // {oro, plata, cobre}: «<:nombre:id>»
   colores: { ...COLORES_DEFECTO },
+  // Tarjeta gráfica (PNG adjunto). «texto» = el embed de solo texto.
+  estilo: "tarjeta",
+  tema: "oscuro",              // «oscuro» o «negro»
+  ancho: 1200,                 // px del PNG: 800, 1000 o 1200
+  fondo: true,                 // resplandor suave del color de la clase en la cabecera
+  grafico: true,
+  barras: true,
+  score: true,
+  riesgo: true,
+  periodo: 168,                // horas del gráfico: 24, 168 (7 d), 336 (14 d) o 720 (30 d)
+  escala_roi: 200,             // la barra del ROI se llena en este %
+  presupuesto: null,           // cobre; limita la fabricación recomendada
+  zona: null,                  // zona horaria de la hora de la tarjeta (la del navegador al guardar)
 });
 export const normalizarApariencia = (a) => ({
   ...APARIENCIA_DEFECTO, ...(a ?? {}),
@@ -224,7 +237,9 @@ export function evaluarFila(x, datos, h, cfg, ahora = Date.now()) {
     materiales: x.a.materiales.map((m) => ({
       id: m.id, nombre: datos.objetos?.[m.id]?.n ?? `#${m.id}`, cantidad: m.cantidad, precioUnitario: m.precioUnitario,
       costeTotal: m.costeTotal, origen: m.origen, sinOfertas: x.materialesSinOfertas.includes(m.id),
+      icono: datos.objetos?.[m.id]?.i ?? null, disponible: Number.isFinite(datos.objetos?.[m.id]?.c) ? datos.objetos[m.id].c : null,
     })),
+    stockSubasta: Number.isFinite(o.c) ? o.c : null,
     unidades: x.a.unidadesProducidas, coste: x.coste, precioVenta: x.precioVenta, ingresoBruto: x.a.ingresoBruto,
     comision: x.a.comision, deposito: x.a.deposito, neta: x.neta, roi: x.roi, margen: x.margen, equilibrio: x.a.precioEquilibrio,
     historico: { tsm: Number.isFinite(o.h) ? o.h : null, m24: h?.m24 ?? null, m7: h?.m7 ?? null, m30: h?.m30 ?? null },
@@ -392,6 +407,54 @@ export function mensajePrueba({ sitio, ahora = Date.now(), apariencia = null } =
       timestamp: new Date(ahora).toISOString(),
     }],
   };
+}
+
+export const ARCHIVO_TARJETA = "mercadowow-alert.png";
+
+/**
+ * Mensaje con la tarjeta gráfica adjunta: el embed solo lleva lo que en una imagen no funciona (título con
+ * enlace, enlaces clicables, color, hora); las cifras van en la imagen. Va con el archivo ARCHIVO_TARJETA.
+ */
+export function mensajeTarjeta(o, { sitio, ahora = Date.now(), manual = false, mencion = null, apariencia = null, nombreDe = (id, en) => en } = {}) {
+  const base = mensajeDiscord(o, { sitio, ahora, manual, mencion, apariencia, nombreDe });
+  const e = base.embeds[0];
+  const ap = normalizarApariencia(apariencia);
+  const url = e.url ?? null;
+  const wowhead = o.wowhead ?? (o.id ? `https://www.wowhead.com/forever/item=${o.id}` : null);
+  const enlaces = [url ? `[Ver en MercadoWoW](${url})` : null, wowhead ? `[Wowhead Forever](${wowhead})` : null].filter(Boolean).join("  ·  ");
+  return {
+    ...base,
+    attachments: [{ id: 0, filename: ARCHIVO_TARJETA, description: `Tarjeta de ${corta(e.title, 900)}` }],
+    embeds: [{
+      author: e.author, title: e.title, ...(url ? { url } : {}), color: e.color,
+      ...(ap.enlaces && enlaces ? { description: enlaces } : {}),
+      image: { url: `attachment://${ARCHIVO_TARJETA}` },
+      footer: { text: `MercadoWoW · Crafting Sniper · ${manual ? "Envío manual" : "Actualización automática"}` },
+      timestamp: e.timestamp,
+    }],
+  };
+}
+
+/**
+ * Cuántas fabricar (no es lo mismo que el máximo fabricable). El menor de:
+ *   · demanda: 2 días de ventas estimadas (sin ventas conocidas: 1), a la mitad con competencia alta;
+ *   · materiales publicados ahora (los del NPC o fabricados no limitan);
+ *   · presupuesto (si se configuró).
+ * Devuelve también inversión, ingreso bruto, comisión y beneficio de ese lote, y qué lo limita.
+ */
+export function fabricacionRecomendada(o, { presupuesto = null } = {}) {
+  if (!(o.coste > 0) || o.neta == null) return null;
+  const limites = [];
+  let veces = o.ventas == null ? 1 : Math.max(1, Math.floor((o.ventas * 2) / Math.max(1, o.unidades)));
+  limites.push({ motivo: o.ventas == null ? "sin datos de ventas" : "2 días de ventas", veces });
+  if (o.competencia === "alta") { veces = Math.max(1, Math.floor(veces / 2)); limites.push({ motivo: "competencia alta", veces }); }
+  if (o.maxFabricable != null) limites.push({ motivo: "materiales publicados", veces: o.maxFabricable });
+  if (presupuesto != null && presupuesto > 0) limites.push({ motivo: "presupuesto", veces: Math.floor(presupuesto / o.coste) });
+  const tope = limites.reduce((p, l) => (l.veces < p.veces ? l : p));
+  veces = Math.max(0, tope.veces);
+  const ingreso = veces * (o.ingresoBruto ?? 0), comision = veces * ((o.comision ?? 0) + (o.deposito ?? 0));
+  return { veces, unidades: veces * o.unidades, inversion: veces * o.coste, ingreso, comision, neta: veces * o.neta,
+           equilibrio: o.equilibrio ?? null, limite: tope.motivo };
 }
 
 /** ¿Debe llevar mención? Solo desde la clase configurada (por defecto, «excepcional») y con un rol válido. */

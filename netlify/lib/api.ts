@@ -725,7 +725,18 @@ export function crearApi(db: Db, o: OpcionesApi) {
       if (!configurada) return sinConfigurar();
       if (!autenticado(req)) return json(401, { error: "no_autenticado" });
       try {
-        if (req.method === "GET") return json(200, await llamar(db, "select sniper_estado() as r", []));
+        if (req.method === "GET") {
+          // ?serie=ID[&horas=N]: historial real del producto para el gráfico de la vista previa.
+          const q = new URL(req.url).searchParams;
+          if (q.has("serie")) {
+            const id = Number(q.get("serie")), horas = q.has("horas") ? Number(q.get("horas")) : null;
+            if (!Number.isInteger(id) || id <= 0 || id > 2147483647 || (horas != null && ![24, 168, 336, 720].includes(horas))) {
+              return json(400, { error: "Parámetros no válidos" });
+            }
+            return json(200, await llamar(db, "select sniper_serie_pagina($1::integer, $2::integer) as r", [id, horas]));
+          }
+          return json(200, await llamar(db, "select sniper_estado() as r", []));
+        }
         if (req.method !== "POST") return json(405, { error: "Método no permitido" });
         let c: any;
         try { c = await leerJson(req, 20_000); } catch { return json(400, { error: "Petición mal formada" }); }

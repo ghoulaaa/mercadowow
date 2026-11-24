@@ -1436,6 +1436,10 @@ a.dc-titulo { color: #00a8fc; }
 .dc-emoji { color: #949ba4; }
 .dc-mini { grid-column: 2; grid-row: 1; width: 80px; height: 80px; object-fit: contain; border-radius: 4px; margin-top: 8px; }
 .dc-pie { grid-column: 1 / -1; margin-top: 8px; color: #b5bac1; font-size: 12px; }
+/* Tarjeta gráfica: Discord la muestra a todo el ancho del embed, con esquinas redondeadas. */
+.dc-imagen { margin-top: 16px; border-radius: 4px; overflow: hidden; line-height: 0; background: #13151d; }
+.dc-imagen svg { display: block; width: 100%; height: auto; }
+.sn-ap-tarjeta { display: grid; gap: 6px; margin: 6px 0; padding: 8px 10px; border-left: 2px solid var(--borde, #353947); }
 /* Estrecho (panel lateral, móvil): como Discord en el teléfono, avatar y miniatura más pequeños. */
 @container (max-width: 480px) {
   .dc-msg { grid-template-columns: 32px minmax(0, 1fr); gap: 8px; }

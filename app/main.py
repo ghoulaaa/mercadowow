@@ -496,10 +496,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Crafting Sniper: misma lógica que /api/sniper en Vercel (la validación está en SQL).
     @app.get("/api/sniper")
-    def sniper_leer():
+    def sniper_leer(serie: int | None = Query(default=None, gt=0, le=2147483647),
+                    horas: int | None = Query(default=None)):
+        if horas is not None and horas not in (24, 168, 336, 720):
+            return JSONResponse(status_code=400, content={"error": "Parámetros no válidos"})
         try:
             with db.connect(settings.database_url) as conn:
-                r = conn.execute("select sniper_estado() as r").fetchone()["r"]
+                if serie is not None:
+                    r = conn.execute("select sniper_serie_pagina(%s, %s) as r", (serie, horas)).fetchone()["r"]
+                else:
+                    r = conn.execute("select sniper_estado() as r").fetchone()["r"]
         except Exception as exc:
             log.warning("Fallo al leer el sniper: %s", exc)
             return JSONResponse(status_code=503, content=SIN_CONEXION)

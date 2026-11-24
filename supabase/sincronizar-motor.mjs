@@ -4,7 +4,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 
-export const ARCHIVOS = ["sniper.js", "fabricacion_tabla.js", "fabricacion.js", "oportunidades.js", "moneda.js"];
+export const ARCHIVOS = ["sniper.js", "tarjeta.js","fabricacion_tabla.js", "fabricacion.js", "oportunidades.js", "moneda.js"];
 const raiz = new URL("../", import.meta.url);
 const origen = (f) => new URL(`app/static/${f}`, raiz);
 const destino = (f) => new URL(`supabase/functions/actualizar-mercado/motor/${f}`, raiz);

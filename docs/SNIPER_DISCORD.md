@@ -97,6 +97,35 @@ La vista previa no carga avatares ni emojis externos (la página solo muestra im
 Lo que bloquearía un aviso automático (escaneo viejo, sin ventas, precio disparado) siempre sale en «⚠️ A tener
 en cuenta»: solo puede llegar en un envío manual.
 
+## Tarjeta gráfica (migración 0048)
+
+Con *Diseño de Webhook → Estilo: Tarjeta gráfica* (el estilo por defecto), cada aviso lleva una **imagen PNG**
+adjunta (`mercadowow-alert.png`), y el embed solo contiene autor, título, los enlaces clicables, el color de la
+clase, el pie y la hora: las cifras van en la imagen, sin repetirlas en texto.
+
+- **Un solo generador** (`app/static/tarjeta.js`) dibuja la tarjeta en SVG: la página lo usa para la vista previa
+  y la Edge Function lo convierte en PNG con resvg (`tarjeta_png.ts`). La vista previa es la misma imagen que llega
+  a Discord.
+- Contenido: cabecera de la clase, icono real y calidad, coste, venta y beneficio neto, barras de ROI (escala
+  configurable) y Score, riesgo, stock en subasta y fabricable, reparto del precio de venta, materiales con icono,
+  **fabricación recomendada** (veces, inversión, ingreso, comisión y depósito, beneficio y precio mínimo; limitada
+  por la demanda, los materiales publicados y el presupuesto opcional) y el **gráfico del precio** de 24 h, 7, 14 o
+  30 días.
+- El gráfico usa **solo el historial real** (`price_hourly`, mínimo por hora). Con menos de 3 puntos dice
+  «Historial insuficiente»; nunca se rellenan huecos.
+- El pie indica la fuente: «Prices from AHledger» o «Precios: TradeSkillMaster».
+- Opciones: tema oscuro o negro, ancho 800/1000/1200 px, periodo del gráfico, escala del ROI, presupuesto,
+  y mostrar u ocultar gráfico, barras, Score, riesgo y fondo de la clase. La hora sale en tu zona horaria.
+- Cada tarjeta se dibuja en una **petición aparte** de la Edge Function (`{"tarea":"tarjeta"}`), protegida por un
+  token interno que solo conoce la base de datos (`sniper_token()`); así cada imagen tiene su propio límite de CPU.
+- La fuente Inter y el motor resvg se descargan de jsDelivr con versión fija y se **comprueba su SHA-256**. Los
+  iconos solo se aceptan de `render.worldofwarcraft.com` (JPG/PNG, < 200 KB) y se guardan en caché.
+- Si la tarjeta no se puede dibujar (fallo o tiempo agotado), se envía el **mensaje de texto** de siempre. En el
+  historial de avisos queda registrado si se usó la tarjeta.
+
+No incluido (por ahora): historial del coste de los materiales en el gráfico, tipografía o logotipo propios e
+imagen de fondo.
+
 ## Seguridad
 
 - La URL del webhook solo se lee en la Edge Function (servidor) y nunca aparece en la página, en las

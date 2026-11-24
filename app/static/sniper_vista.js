@@ -3,7 +3,8 @@
 // La página nunca ve ni envía a Discord: guarda la configuración por /api/sniper y pide a la Edge Function
 // las pruebas y los envíos. La URL del webhook solo viaja una vez (al darla de alta) y no se vuelve a mostrar.
 
-import { APARIENCIA_DEFECTO, CLASES, COLORES_DEFECTO, claseDe, mensajeDiscord, normalizarApariencia, planConPresupuesto } from "./sniper.js";
+import { APARIENCIA_DEFECTO, CLASES, COLORES_DEFECTO, claseDe, mensajeDiscord, mensajeTarjeta, normalizarApariencia, planConPresupuesto } from "./sniper.js";
+import { tarjetaSVG } from "./tarjeta.js";
 import { parsearMoneda } from "./moneda.js";
 
 const RIESGO = { bajo: "Bajo", medio: "Medio", alto: "Alto", desconocido: "Desconocido" };
@@ -399,7 +400,7 @@ export function crearVistaSniper(d) {
   function seccionApariencia(c) {
     const a = normalizarApariencia(c.apariencia);
     const f = el("fieldset", "fab-grupo sn-apariencia");
-    f.append(el("legend", "", "Apariencia del mensaje"));
+    f.append(el("legend", "", "Diseño de Webhook"));
 
     // Vista previa (con una oportunidad real del último análisis).
     const lista = ejemplos();
@@ -429,10 +430,22 @@ export function crearVistaSniper(d) {
         "Discord no permite «discord» ni «clyde» en el nombre."),
       campo("Avatar (dirección https de una imagen, opcional)", texto("ap_avatar", a.avatar ?? "", { placeholder: "Vacío = el avatar del webhook en Discord", spellcheck: false }),
         "La vista previa no lo carga (la página solo muestra imágenes de Blizzard); en Discord sí se verá."),
-      campo("Modo", opciones("ap_modo", [["compacto", "Compacto"], ["detallado", "Detallado (Score, ventas, escenario conservador y avisos)"]], a.modo)));
+      campo("Estilo", opciones("ap_estilo", [["tarjeta", "Tarjeta gráfica (imagen PNG)"], ["texto", "Mensaje de texto"]], a.estilo)),
+      campo("Modo", opciones("ap_modo", [["compacto", "Compacto"], ["detallado", "Detallado (fabricación recomendada, Score, ventas y avisos)"]], a.modo)));
+    const tarj = el("div", "sn-ap-tarjeta"); tarj.dataset.snSoloTarjeta = "1"; tarj.hidden = a.estilo !== "tarjeta";
+    tarj.append(
+      campo("Tema", opciones("ap_tema", [["oscuro", "Oscuro"], ["negro", "Negro"]], a.tema)),
+      campo("Tamaño de la imagen", opciones("ap_ancho", [["1200", "Grande (1200 px)"], ["1000", "Mediano (1000 px)"], ["800", "Pequeño (800 px)"]], String(a.ancho))),
+      campo("Período del gráfico", opciones("ap_periodo", [["24", "24 horas"], ["168", "7 días"], ["336", "14 días"], ["720", "30 días"]], String(a.periodo))),
+      campo("La barra del ROI se llena en (%)", numero("ap_escala_roi", a.escala_roi, { min: 50, max: 10000, paso: 10 })),
+      campo("Presupuesto para la fabricación recomendada (opcional)", texto("ap_presupuesto", a.presupuesto ? d.formatear(Number(a.presupuesto)) : "", { placeholder: "p. ej. 500o" })));
+    f.append(tarj);
     const casillas = el("div", "sn-ap-casillas");
     casillas.append(casilla("ap_imagen", a.imagen, "Icono del objeto"), casilla("ap_materiales", a.materiales, "Materiales"),
-      casilla("ap_historial", a.historial, "Medianas de 7 y 30 días"), casilla("ap_enlaces", a.enlaces, "Enlaces (MercadoWoW y Wowhead)"));
+      casilla("ap_historial", a.historial, "Medianas de 7 y 30 días (texto)"), casilla("ap_enlaces", a.enlaces, "Enlaces (MercadoWoW y Wowhead)"),
+      casilla("ap_grafico", a.grafico, "Gráfico del precio"), casilla("ap_barras", a.barras, "Barras de progreso"),
+      casilla("ap_score", a.score, "MercadoWoW Score"), casilla("ap_riesgo", a.riesgo, "Riesgo"),
+      casilla("ap_fondo", a.fondo, "Resplandor de la clase"));
     f.append(casillas);
     f.append(campo("Monedas", opciones("ap_monedas", [["gsc", "125g 40s 20c"], ["opc", "125o 40p 20c"], ["emojis", "Emojis del servidor"]], a.monedas)));
     const emo = el("div", "sn-ap-emojis"); emo.dataset.snEmojis = "1"; emo.hidden = a.monedas !== "emojis";
@@ -459,10 +472,18 @@ export function crearVistaSniper(d) {
     const t = (n) => v(n).value.trim() || null;
     const emojis = {};
     for (const k of ["oro", "plata", "cobre"]) emojis[k] = t(`ap_emoji_${k}`);
+    let presupuesto = null;
+    try { presupuesto = t("ap_presupuesto") ? parsearMoneda(t("ap_presupuesto")) : null; } catch { presupuesto = undefined; }
+    let zona = null;
+    try { zona = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { zona = null; }
     return {
       nombre: t("ap_nombre"), avatar: t("ap_avatar"), modo: v("ap_modo").value, monedas: v("ap_monedas").value,
       imagen: v("ap_imagen").checked, materiales: v("ap_materiales").checked, historial: v("ap_historial").checked, enlaces: v("ap_enlaces").checked,
       emojis, colores: Object.fromEntries(ORDEN_CLASES.map((k) => [k, v(`ap_color_${k}`).value.toUpperCase()])),
+      estilo: v("ap_estilo").value, tema: v("ap_tema").value, ancho: Number(v("ap_ancho").value), periodo: Number(v("ap_periodo").value),
+      escala_roi: Number(v("ap_escala_roi").value) || null, presupuesto, zona,
+      grafico: v("ap_grafico").checked, barras: v("ap_barras").checked, score: v("ap_score").checked, riesgo: v("ap_riesgo").checked,
+      fondo: v("ap_fondo").checked,
     };
   }
 
@@ -472,14 +493,40 @@ export function crearVistaSniper(d) {
     const o = ejemplos().find((x) => x.spell === ejemplo);
     if (!o) { caja.replaceChildren(el("p", "muted small", "Sin oportunidades en el último análisis: pulsa «Analizar ahora» para tener un ejemplo real.")); return; }
     const c = estado.config;
-    const mercado = estado.mercados.find((m) => m.key === c.market_key)?.nombre ?? c.market_key;
-    const cuerpo = mensajeDiscord(o, { sitio: c.sitio_url, mercado, motivo: "Oportunidad nueva", apariencia: limpiar(leerApariencia()) });
-    caja.replaceChildren(dibujarMensaje(cuerpo));
-    if (!o.materiales && normalizarApariencia(limpiar(leerApariencia())).materiales) {
+    const mk = estado.mercados.find((m) => m.key === c.market_key);
+    const mercado = mk?.nombre ?? c.market_key;
+    const apariencia = limpiar(leerApariencia());
+    const ap = normalizarApariencia(apariencia);
+    if (ap.estilo === "tarjeta") {
+      // El mismo dibujo que la Edge Function convierte en PNG (aquí, SVG en la página).
+      const clave = `${o.id}|${ap.periodo}`;
+      const serie = series.get(clave);
+      if (ap.grafico && serie === undefined) cargarSerie(o.id, ap.periodo, clave);
+      const { svg } = tarjetaSVG(o, { apariencia, mercado, proveedor: mk?.proveedor ?? "tsm", serie: serie ?? null, sitio: c.sitio_url });
+      const cuerpo = mensajeTarjeta(o, { sitio: c.sitio_url, apariencia });
+      caja.replaceChildren(dibujarMensaje(cuerpo, svg));
+      if (ap.grafico && serie === undefined) caja.append(el("p", "sn-ayuda", "Cargando el historial de precios…"));
+    } else {
+      caja.replaceChildren(dibujarMensaje(mensajeDiscord(o, { sitio: c.sitio_url, mercado, motivo: "Oportunidad nueva", apariencia })));
+    }
+    if (!o.materiales && ap.materiales) {
       caja.append(el("p", "sn-ayuda", "Los materiales aparecerán en la vista previa tras el próximo análisis."));
     }
   }
   const limpiar = (a) => a && Object.fromEntries(Object.entries(a).filter(([, x]) => x != null));
+
+  // Historial real del producto para el gráfico de la vista previa (en memoria por objeto y período).
+  const series = new Map(), pidiendo = new Set();
+  async function cargarSerie(id, horas, clave) {
+    if (pidiendo.has(clave)) return;
+    pidiendo.add(clave);
+    try {
+      const r = await fetch(`/api/sniper?serie=${encodeURIComponent(id)}&horas=${encodeURIComponent(horas)}`, { cache: "no-store" });
+      series.set(clave, r.ok ? await r.json() : []);
+    } catch { series.set(clave, []); }
+    pidiendo.delete(clave);
+    pintarPrevia();
+  }
 
   // Discord por dentro: negrita, cursiva, enlaces y emojis personalizados (estos, como :nombre:).
   function markdown(texto) {
@@ -498,7 +545,7 @@ export function crearVistaSniper(d) {
     return frag;
   }
 
-  function dibujarMensaje(cuerpo) {
+  function dibujarMensaje(cuerpo, svg = null) {
     const e = cuerpo.embeds[0];
     const hora = new Date(e.timestamp).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
     const msg = el("div", "dc-msg");
@@ -532,6 +579,14 @@ export function crearVistaSniper(d) {
     }
     izq.append(campos);
     emb.append(izq);
+    if (svg && e.image) {
+      // La imagen adjunta: el SVG en línea (para que carguen los iconos de Blizzard, igual que en el PNG).
+      const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+      const nodo = document.importNode(doc.documentElement, true);
+      nodo.removeAttribute("width"); nodo.removeAttribute("height");
+      nodo.setAttribute("role", "img"); nodo.setAttribute("aria-label", `Tarjeta de ${e.title}`);
+      const marco = el("div", "dc-imagen"); marco.append(nodo); izq.append(marco);
+    }
     if (e.thumbnail) { const th = el("img", "dc-mini"); th.src = e.thumbnail.url; th.alt = ""; th.onerror = () => th.remove(); emb.append(th); }
     const pie = el("div", "dc-pie", `${e.footer?.text ?? ""} • Hoy a las ${hora}`);
     emb.append(pie);
@@ -555,6 +610,8 @@ export function crearVistaSniper(d) {
     const malos = [...ids(v("incluir").value), ...ids(v("excluir").value)].filter((n) => !Number.isInteger(n) || n <= 0);
     if (malos.length) { d.avisar("Los objetos van por su ID numérico, separados por comas.", "bad"); return; }
     const num = (n) => Number(v(n).value);
+    const apariencia = leerApariencia();
+    if (apariencia?.presupuesto === undefined && apariencia) { d.avisar("El presupuesto no es un precio válido (p. ej. 500o).", "bad"); v("ap_presupuesto").focus(); return; }
     const cambios = {
       activo: v("activo").checked, market_key: v("market_key").value, roi_min: num("roi_min"), neta_min: neta ?? 0,
       score_min: num("score_min"), riesgo_max: v("riesgo_max").value,
@@ -565,7 +622,7 @@ export function crearVistaSniper(d) {
       comision_pct: num("comision_pct"), recorte_pct: num("recorte_pct"),
       umbrales: Object.fromEntries(ORDEN_CLASES.map((k) => [k, num(`u_${k}`)])),
       mencion_rol: v("mencion_rol").value.trim(), mencion_desde: v("mencion_desde").value, sitio_url: v("sitio_url").value.trim(),
-      apariencia: leerApariencia(),
+      apariencia,
     };
     try { estado = await pedir("POST", { accion: "config", cambios }); pintar(); pintarConfig(); d.avisar("Configuración guardada."); }
     catch (e) { d.avisar(e.message, "bad"); }
@@ -610,6 +667,7 @@ export function crearVistaSniper(d) {
     if (!n.startsWith("ap_")) return;
     if (n === "ap_ejemplo") ejemplo = Number(ev.target.value);
     if (n === "ap_monedas") panel.querySelector("[data-sn-emojis]").hidden = ev.target.value !== "emojis";
+    if (n === "ap_estilo") panel.querySelector("[data-sn-solo-tarjeta]").hidden = ev.target.value !== "tarjeta";
     pintarPrevia();
   });
   panel.addEventListener("change", async (ev) => {
