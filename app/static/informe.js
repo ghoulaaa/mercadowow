@@ -21,7 +21,7 @@ export const COLOR_EMBED = 0xE9BC65;
 
 export const SECCIONES = Object.freeze([
   ["kpi", "Indicadores principales"], ["grafico", "Actividad de 24 h"], ["volumen", "Mayor volumen de oro"],
-  ["consumibles", "Consumibles más vendidos"], ["subidas", "Mayores subidas"], ["caidas", "Mayores caídas"],
+  ["consumibles", "Pociones y elixires más vendidos"], ["subidas", "Mayores subidas"], ["caidas", "Mayores caídas"],
   ["arbitraje", "Arbitraje entre facciones"], ["gangas", "Gangas del día"], ["crafteos", "Mejores crafteos"],
   ["categorias", "Comportamiento por categorías"], ["destacados", "Datos interesantes"],
 ]);
@@ -39,7 +39,9 @@ const FACCIONES = { horde: "Horda", alliance: "Alianza", neutral: "Neutral" };
 const REGLAS = { pvp: "PvP", pve: "PvE", normal: "Normal (PvE)", hardcore: "Hardcore" };
 
 // Columnas de cada objeto en informe_base.objetos.
-const [ID, MED, MEDA, N, NA, Q, QA, ULT, QULT, SPD, SPDA, H30, NPC, CAT] = [...Array(14).keys()];
+const [ID, MED, MEDA, N, NA, Q, QA, ULT, QULT, SPD, SPDA, H30, NPC, CAT, SUB] = [...Array(15).keys()];
+/** Subclases de consumible que entran en «Pociones y elixires más vendidos» (catálogo de Blizzard; sin comida). */
+export const SUBCLASES_POCIONES = Object.freeze(["Potions", "Elixirs"]);
 void QULT;
 
 // ---------- utilidades ----------
@@ -146,12 +148,12 @@ export function analizarInforme(base, { config = {}, ref7 = {}, crafteos = [], o
     escaneos: act.length, escaneosAnt: ant.length, descartados: base.serie.filter((s) => !s[3]).length, objetos: objs.length,
   };
 
-  // ---- volumen de oro y consumibles más vendidos (estimaciones)
+  // ---- volumen de oro y pociones y elixires más vendidos (estimaciones)
   // Solo objetos que se venden de verdad (liquidez mínima) y con algo publicado.
   const conV = objs.filter((o) => o[SPD] >= Math.max(c.liquidez_min, 0.5) && o[MED] > 0 && o[Q] >= 1);
   const volumen = [...conV].sort((a, b) => b[SPD] * precioVolumen(b) - a[SPD] * precioVolumen(a)).slice(0, n)
     .map((o) => ({ id: o[ID], oro: Math.round(o[SPD] * precioVolumen(o)), unidades: o[SPD], precio: precioVolumen(o) }));
-  const consumibles = conV.filter((o) => o[CAT] === "consumibles").sort((a, b) => b[SPD] - a[SPD] || b[MED] - a[MED]).slice(0, n)
+  const consumibles = conV.filter((o) => o[CAT] === "consumibles" && SUBCLASES_POCIONES.includes(o[SUB])).sort((a, b) => b[SPD] - a[SPD] || b[MED] - a[MED]).slice(0, n)
     .map((o) => ({ id: o[ID], unidades: o[SPD], precio: precioVolumen(o), oro: Math.round(o[SPD] * precioVolumen(o)),
                    variacion: fiable(o, minEscaneos) ? pctCambio(o[MED], o[MEDA]) : null }));
 
@@ -376,7 +378,7 @@ export function paginasInforme(inf) {
   return p.length ? p : ["resumen"];
 }
 export const TITULOS_PAGINA = {
-  resumen: "Informe diario del mercado", oro: "Oro y consumibles", cambios: "Subidas y caídas · 24 h", gangas: "Gangas del día",
+  resumen: "Informe diario del mercado", oro: "Oro, pociones y elixires", cambios: "Subidas y caídas · 24 h", gangas: "Gangas del día",
   crafteos: "Mejores crafteos del día", arbitraje: "Arbitraje entre facciones", categorias: "Comportamiento por categorías",
   destacados: "Datos interesantes del día",
 };
@@ -512,7 +514,7 @@ export function informeSVG(inf, { pagina = "resumen", iconos = {}, sitio = "" } 
     if (ver("consumibles")) {
       const fs = inf.consumibles ?? [];
       const maxV = Math.max(1, ...fs.map((f) => f.unidades));
-      lista(y, "Consumibles más vendidos", fs, { max, vacioTxt: "Sin estimaciones de ventas de consumibles en este mercado.",
+      lista(y, "Pociones y elixires más vendidos", fs, { max, vacioTxt: "Sin estimaciones de ventas de pociones ni elixires en este mercado.",
         fila: filaOro(T.azul, (f, yy) => moneda(DER, yy + 28, f.precio, { tam: 21, peso: 700, color: T.texto, ancla: "end", ap: {}, T }), (f) => f.unidades, maxV) });
     }
     notaPie("Estimaciones de ventas. Arriba: oro movido al día; abajo: precio por unidad.");

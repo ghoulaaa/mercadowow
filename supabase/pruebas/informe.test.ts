@@ -25,7 +25,8 @@ describe("informe diario (SQL + tarea)", () => {
   // Un escaneo: [id, compra mínima, cantidad, ventas/día, mediana 30 días].
   async function escaneo(ms: number, filas: [number, number, number, number | null, number | null][]) {
     const hora = new Date(ms).toISOString();
-    await pg.query(`insert into snapshots (market_id, source_updated_at, row_count) select id, $2::timestamptz, 1 from markets where key = $1`, [AHL, hora]);
+    await pg.query(`insert into snapshots (market_id, source_updated_at, row_count) select id, $2::timestamptz, 1 from markets where key = $1
+                    on conflict do nothing`, [AHL, hora]);
     for (const [id, min, q, v, h30] of filas) {
       await pg.query(`insert into price_hourly (market_id, item_id, hour, min_buyout, quantity, sales_per_day, historical, snapshot_id)
                       select m.id, $2::integer, date_trunc('hour', $3::timestamptz, 'UTC'), $4::bigint, $5::integer, $6::numeric, $7::bigint, s.id
@@ -57,7 +58,7 @@ describe("informe diario (SQL + tarea)", () => {
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
                      "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql", "0047_sniper_apariencia.sql",
-                     "0048_sniper_tarjeta.sql", "0049_informe_diario.sql", "0051_informe_paginas.sql"]) await pg.exec(leer(n));
+                     "0048_sniper_tarjeta.sql", "0049_informe_diario.sql", "0051_informe_paginas.sql", "0052_informe_pociones.sql"]) await pg.exec(leer(n));
     const cat = [[1, "Peacebloom", "Trade Goods", "Herb"], [2, "Mechanical Squirrel Box", "Miscellaneous", "Pet"],
                  [3, "Arcane Crystal", "Trade Goods", "Metal & Stone"], [4, "Thorium Bar", "Trade Goods", "Metal & Stone"],
                  [5, "Runecloth", "Trade Goods", "Cloth"]]
@@ -116,12 +117,28 @@ describe("informe diario (SQL + tarea)", () => {
     assert.match(pag("resumen").svg, /Informe diario del mercado/);
     assert.match(pag("destacados").svg, /solo se registran precios de la casa de Horda/);
     assert.match(pag("crafteos").svg, /Ningún crafteo cumple/);
-    assert.match(pag("oro").svg, /CONSUMIBLES MÁS VENDIDOS/);
-    assert.match(pag("oro").svg, /Sin estimaciones de ventas de consumibles/);   // el catálogo de prueba no tiene consumibles
+    assert.match(pag("oro").svg, /POCIONES Y ELIXIRES MÁS VENDIDOS/);
+    assert.match(pag("oro").svg, /Sin estimaciones de ventas de pociones ni elixires/);   // el catálogo de prueba no tiene
     assert.match(pag("gangas").svg, /Prices from AHledger/);
     // Sin secciones de gangas ni crafteos, sus páginas desaparecen.
     assert.deepEqual(paginasInforme({ ...inf, config: { ...inf.config, secciones: { gangas: false, crafteos: false } } }),
       ["resumen", "oro", "cambios", "categorias", "destacados"]);
+  });
+
+  test("pociones y elixires más vendidos: sin comida ni otros consumibles", async () => {
+    await uno("select guardar_catalogo('forever', $1::jsonb)", [JSON.stringify([
+      { id: 6, name: "Major Healing Potion", itemClass: "Consumable", itemSubclass: "Potions", quality: "COMMON" },
+      { id: 7, name: "Elixir of the Mongoose", itemClass: "Consumable", itemSubclass: "Elixirs", quality: "COMMON" },
+      { id: 8, name: "Roast Raptor", itemClass: "Consumable", itemSubclass: "Food & Drink", quality: "COMMON" },
+      { id: 9, name: "Flask of the Titans", itemClass: "Consumable", itemSubclass: "Flasks", quality: "COMMON" }])]);
+    const fin = Date.parse("2026-11-24T12:00:00Z");
+    for (let t = fin - 6 * H; t <= fin; t += H) await escaneo(t, [[6, 500, 40, 30, 500], [7, 800, 30, 12, 800], [8, 50, 900, 900, 50], [9, 9000, 5, 8, 9000]]);
+    const b = (await uno("select informe_base($1, $2::timestamptz) as r", [AHL, AHORA.toISOString()])).r;
+    assert.equal(b.objetos.find((o: any) => o[0] === 8)[14], "Food & Drink");
+    assert.equal(b.objetos.find((o: any) => o[0] === 1)[14], null);   // no es un consumible
+    const inf: any = analizarInforme(b, { zona: "UTC", ahora: AHORA.getTime() });
+    // La comida (900/día) y el frasco quedan fuera; ordenadas por ventas al día.
+    assert.deepEqual(inf.consumibles.map((x: any) => x.id), [6, 7]);
   });
 
   test("enviar: guarda el informe, adjunta la imagen y la muestra en el embed; la URL no sale", async () => {

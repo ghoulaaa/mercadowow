@@ -38,7 +38,7 @@ versión, de 1600 × 3600) se veía diminuto. Cada página mide 800 × 600 (4:3)
 16–20 unidades, y se exporta a 1200 × 900 px. Cada una se dibuja en su propia petición (70–190 ms) y en paralelo; si
 falla una que no sea la primera, se envían las demás y el historial lo anota.
 
-Páginas (las secciones ocultas no salen): Resumen (indicadores y gráfico de 24 h) · Oro y consumibles · Subidas y
+Páginas (las secciones ocultas no salen): Resumen (indicadores y gráfico de 24 h) · Oro, pociones y elixires · Subidas y
 caídas · Gangas del día · Mejores crafteos · Arbitraje (solo con datos de la otra facción) · Categorías · Datos
 interesantes (con la nota del arbitraje si no hay datos y el aviso de estimaciones).
 
@@ -52,7 +52,7 @@ menos del 90 % de los objetos habituales o menos del 60 % de las unidades habitu
 | Indicadores | Unidades publicadas (máximo del día), su variación media frente a ayer, oro movido al día y unidades vendidas al día | El proveedor no da el número de subastas: se usan **unidades publicadas**. Ventas y oro son **estimaciones** (ventas/día del proveedor × precio). |
 | Actividad 24 h | Unidades publicadas en cada escaneo válido, con máximo, mínimo y último | Sin escaneo no hay punto: nada se rellena. Menos de 3 escaneos: «Datos insuficientes». |
 | Mayor volumen de oro | Los objetos que más oro mueven al día | Ventas/día ≥ liquidez mínima (y ≥ 0,5). Precio: mediana de 24 h sin pasar de la mediana de 30 días (un anuncio inflado no mueve oro). |
-| Consumibles más vendidos | Consumibles (clase «Consumable» del catálogo) con más unidades vendidas al día y su precio por unidad | Ventas/día ≥ liquidez mínima (y ≥ 0,5); precio como en el volumen de oro. Sustituye a «Más comercializados» (migración 0051). |
+| Pociones y elixires más vendidos | Solo consumibles de las subclases **Potions** y **Elixirs** del catálogo de Blizzard (sin comida, frascos ni otros), con más unidades vendidas al día y su precio por unidad | Ventas/día ≥ liquidez mínima (y ≥ 0,5); precio como en el volumen de oro. Sustituye a «Más comercializados» (migraciones 0051 y 0052). |
 | Mayores subidas / caídas | Mediana de 24 h frente a la de las 24 h anteriores | Comparación **fiable**: escaneos suficientes en ambas ventanas, al menos 3 unidades publicadas, precio anterior ≥ 1 plata, ventas/día ≥ liquidez mínima, al menos un 5 % de cambio y **como mucho 20 veces** (más se trata como anomalía o manipulación). En caídas, «posible compra» si se vende a diario y está por debajo del 80 % de su mediana de 30 días. |
 | Arbitraje entre facciones | Mismo objeto en Horda y Alianza | Solo si se registra la otra facción con el mismo proveedor y escaneos recientes. Hoy solo se registra la Horda: la sección lo dice. Usa el precio típico de cada lado, exige ≥ 1,5 veces y descuenta un 15 % de comisión (casa neutral; valor sin verificar). Nunca se presenta como beneficio garantizado. |
 | Gangas del día | Compra mínima actual frente a su referencia | Referencia = la menor de la mediana de 7 días (MercadoWoW) y la de 30 días (proveedor). Descuento ≥ mínimo, liquidez ≥ mínima, beneficio neto ≥ mínimo tras 5 % de comisión y depósito, y la mediana del día ≥ 60 % de la referencia (si todo el mercado del objeto cayó, no es una ganga puntual). Reventa recomendada: referencia − 5 %. Confianza **alta**: ≥ 2 ventas/día, ≥ 12 escaneos, medianas de 7 y 30 días coherentes (±30 %) y precio del día ≥ 85 % de la referencia; si no, **media**. |
