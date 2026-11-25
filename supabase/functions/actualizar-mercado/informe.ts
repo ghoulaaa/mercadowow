@@ -7,8 +7,8 @@
 // página y la imagen de Discord salen del mismo código. La imagen se dibuja en otra petición ({tarea:
 // "informe_png"}) para que tenga su propio tiempo de CPU. La URL del webhook solo se lee aquí, nunca sale.
 
-import { ARCHIVO_INFORME, analizarInforme, candidatosGanga, completarInforme, diaLocal, idsInforme, mensajeInforme, mensajePruebaInforme,
-  mercadoOpuesto } from "./motor/informe.js";
+import { analizarInforme, archivoPagina, candidatosGanga, completarInforme, diaLocal, idsInforme, mensajeInforme, mensajePruebaInforme,
+  mercadoOpuesto, paginasInforme } from "./motor/informe.js";
 import { evaluar } from "./motor/sniper.js";
 import { calcularFilas } from "./motor/fabricacion_tabla.js";
 import { REGLA_POR_DEFECTO } from "./motor/fabricacion.js";
@@ -21,8 +21,8 @@ export interface OpcionesInforme {
   webhook?: number;
   ahora?: () => Date;
   espera?: (ms: number) => Promise<void>;
-  /** Dibuja el PNG de un informe guardado (por defecto: otra petición a esta Edge Function). null = sin imagen. */
-  renderizar?: (id: number) => Promise<Uint8Array | null>;
+  /** Dibuja el PNG de una página de un informe guardado (por defecto: otra petición a esta Edge Function). null = sin imagen. */
+  renderizar?: (id: number, pagina: string) => Promise<Uint8Array | null>;
 }
 
 async function uno(db: Db, sql: string, params: unknown[] = []): Promise<any> {
@@ -65,15 +65,15 @@ export async function generarInforme(db: Db, cfg: any, ahora: Date, sitio = "") 
   return inf;
 }
 
-/** Pide el PNG de un informe guardado a esta misma Edge Function, con el token interno. null si falla. */
+/** Pide el PNG de una página de un informe guardado a esta misma Edge Function, con el token interno. null si falla. */
 function renderizarRemoto(db: Db, f: typeof fetch) {
-  return async (id: number): Promise<Uint8Array | null> => {
+  return async (id: number, pagina: string): Promise<Uint8Array | null> => {
     try {
       const url = (await db.consulta("select sniper_url_funcion() as r", []))[0]?.r;
       const token = (await db.consulta("select sniper_token() as r", []))[0]?.r;
       if (typeof url !== "string" || typeof token !== "string") return null;
       const r = await f(url, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tarea: "informe_png", token, id }), signal: AbortSignal.timeout(90_000) });
+        body: JSON.stringify({ tarea: "informe_png", token, id, pagina }), signal: AbortSignal.timeout(90_000) });
       if (!r.ok || !(r.headers.get("content-type") ?? "").startsWith("image/png")) return null;
       return new Uint8Array(await r.arrayBuffer());
     } catch { return null; }
@@ -127,21 +127,28 @@ export async function ejecutarInforme(db: Db, op: OpcionesInforme) {
     }
     // Se guarda antes de dibujar: la imagen se dibuja a partir de los datos guardados.
     id = Number(await guardar({ ...fila, estado: "generado" }));
-    const png = await (op.renderizar ?? renderizarRemoto(db, op.fetch))(id);
-    if (!png) {
+    // Una imagen por página (cada una en su propia petición, en paralelo). Sin la primera no se envía; si falla
+    // otra, se envían las demás.
+    const renderizar = op.renderizar ?? renderizarRemoto(db, op.fetch);
+    const pedidas = paginasInforme(inf);
+    const pngs = await Promise.all(pedidas.map((p: string) => renderizar(id!, p).catch(() => null)));
+    if (!pngs[0]) {
       await actualizar(id, "error", 0, "No se pudo dibujar la imagen del informe");
       return { estado: "error", id, error: "No se pudo dibujar la imagen del informe" };
     }
-    const cuerpo = mensajeInforme(inf, { sitio, nombre: cfg.nombre, avatar: cfg.avatar, manual: modo !== "auto" });
+    const paginas = pedidas.filter((_: string, i: number) => pngs[i]);
+    const archivos = paginas.map((p: string, i: number) => ({ nombre: archivoPagina(i), datos: pngs[pedidas.indexOf(p)]! }));
+    const cuerpo = mensajeInforme(inf, { sitio, nombre: cfg.nombre, avatar: cfg.avatar, manual: modo !== "auto", paginas });
     let ok = 0;
     const errores: string[] = [];
     for (const [i, w] of destinos.entries()) {
       if (i) await espera(700);
-      const res = await enviarDiscord(op.fetch, await urlDe(w.id), cuerpo, espera, [{ nombre: ARCHIVO_INFORME, datos: png }]);
+      const res = await enviarDiscord(op.fetch, await urlDe(w.id), cuerpo, espera, archivos);
       if (res.ok) ok++; else errores.push(`${w.nombre}: ${res.error}`);
     }
     const estado = ok === destinos.length ? "enviado" : ok ? "parcial" : "error";
-    await actualizar(id, estado, ok, errores.join(" · ") || null);
+    const faltan = pedidas.length - paginas.length;
+    await actualizar(id, estado, ok, [errores.join(" · "), faltan ? `${faltan} página(s) sin imagen` : ""].filter(Boolean).join(" · ") || null);
     return { estado: estado === "enviado" ? "ok" : estado, id, enviados: ok, errores: errores.length };
   } catch (e) {
     const mensaje = String((e as Error)?.message ?? e).replace(/https?:\/\/\S+/g, "[url]").slice(0, 300);

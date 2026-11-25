@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   }
   try {
     const cuerpo = await req.json().catch(() => ({})) as { tarea?: string; modo?: string; webhook?: number; spell?: number;
-                                                          token?: string; o?: unknown; opciones?: unknown; id?: unknown };
+                                                          token?: string; o?: unknown; opciones?: unknown; id?: unknown; pagina?: unknown };
     // Tarjeta gráfica del sniper: solo con el token interno (la pide el propio sniper, una por petición).
     if (cuerpo?.tarea === "tarjeta") {
       const token = (await db.consulta("select sniper_token() as r", []))[0]?.r;
@@ -45,7 +45,8 @@ Deno.serve(async (req) => {
       const r = (await db.consulta("select informe_datos($1::bigint) as r", [cuerpo.id]))[0]?.r;
       const datos = typeof r === "string" ? JSON.parse(r) : r;
       if (!datos) return new Response("Informe sin datos", { status: 404 });
-      const png = await dibujarInforme(datos, datos.sitio ?? "");
+      const pagina = typeof cuerpo.pagina === "string" && /^[a-z]{3,20}$/.test(cuerpo.pagina) ? cuerpo.pagina : "resumen";
+      const png = await dibujarInforme(datos, datos.sitio ?? "", pagina);
       return new Response(png, { headers: { "Content-Type": "image/png" } });
     }
     if (cuerpo?.tarea === "informe") {

@@ -11,15 +11,17 @@ import { comisionVenta, depositoSubasta, REGLA_POR_DEFECTO } from "./fabricacion
 import { ICONO_RESPALDO, nombreProfesion } from "./sniper.js";
 import { anchoTexto, barra, esc, linea, moneda, partesMoneda, recortar, rect, texto, textoMoneda } from "./tarjeta.js";
 
-export const VERSION_INFORME = 1;
-export const ANCHO_INFORME = 1600;
+export const VERSION_INFORME = 2;
+/** Cada página mide 800 × 600 (4:3) en unidades del dibujo: Discord muestra cada imagen en ~400 × 300 px. */
+export const ANCHO_INFORME = 800;
+export const ALTO_PAGINA = 600;
 export const ARCHIVO_INFORME = "mercadowow-report.png";
 export const FUENTE_TITULO = "Cinzel";
 export const COLOR_EMBED = 0xE9BC65;
 
 export const SECCIONES = Object.freeze([
   ["kpi", "Indicadores principales"], ["grafico", "Actividad de 24 h"], ["volumen", "Mayor volumen de oro"],
-  ["comerciados", "Más comercializados"], ["subidas", "Mayores subidas"], ["caidas", "Mayores caídas"],
+  ["consumibles", "Consumibles más vendidos"], ["subidas", "Mayores subidas"], ["caidas", "Mayores caídas"],
   ["arbitraje", "Arbitraje entre facciones"], ["gangas", "Gangas del día"], ["crafteos", "Mejores crafteos"],
   ["categorias", "Comportamiento por categorías"], ["destacados", "Datos interesantes"],
 ]);
@@ -49,8 +51,11 @@ function mediana(xs) {
   const s = [...xs].sort((a, b) => a - b), m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
-export const formatoPct = (v, dec = 1) => (v == null ? "Sin datos"
-  : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("es", { maximumFractionDigits: Math.abs(v) >= 100 ? 0 : dec })} %`);
+export function formatoPct(v, dec = 1) {
+  if (v == null || !Number.isFinite(v)) return "Sin datos";
+  const d = Math.abs(v) >= 100 ? 0 : dec, r = Math.round(v * 10 ** d) / 10 ** d;   // sin «−0 %»
+  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toLocaleString("es", { maximumFractionDigits: d })} %`;
+}
 export function formatoNumero(v) {
   if (v == null || !Number.isFinite(v)) return "Sin datos";
   if (Math.abs(v) >= 1e6) return `${(v / 1e6).toLocaleString("es", { maximumFractionDigits: 2 })} M`;
@@ -141,13 +146,14 @@ export function analizarInforme(base, { config = {}, ref7 = {}, crafteos = [], o
     escaneos: act.length, escaneosAnt: ant.length, descartados: base.serie.filter((s) => !s[3]).length, objetos: objs.length,
   };
 
-  // ---- volumen de oro y más comercializados (estimaciones)
+  // ---- volumen de oro y consumibles más vendidos (estimaciones)
   // Solo objetos que se venden de verdad (liquidez mínima) y con algo publicado.
   const conV = objs.filter((o) => o[SPD] >= Math.max(c.liquidez_min, 0.5) && o[MED] > 0 && o[Q] >= 1);
   const volumen = [...conV].sort((a, b) => b[SPD] * precioVolumen(b) - a[SPD] * precioVolumen(a)).slice(0, n)
     .map((o) => ({ id: o[ID], oro: Math.round(o[SPD] * precioVolumen(o)), unidades: o[SPD], precio: precioVolumen(o) }));
-  const comerciados = [...conV].sort((a, b) => b[SPD] - a[SPD] || b[MED] - a[MED]).slice(0, n)
-    .map((o) => ({ id: o[ID], unidades: o[SPD], precio: o[MED], variacion: fiable(o, minEscaneos) ? pctCambio(o[MED], o[MEDA]) : null }));
+  const consumibles = conV.filter((o) => o[CAT] === "consumibles").sort((a, b) => b[SPD] - a[SPD] || b[MED] - a[MED]).slice(0, n)
+    .map((o) => ({ id: o[ID], unidades: o[SPD], precio: precioVolumen(o), oro: Math.round(o[SPD] * precioVolumen(o)),
+                   variacion: fiable(o, minEscaneos) ? pctCambio(o[MED], o[MEDA]) : null }));
 
   // ---- subidas y caídas (solo comparaciones fiables y de al menos un 5 %)
   const cambios = objs.filter((o) => fiable(o, minEscaneos, c.liquidez_min)).map((o) => ({ o, pct: pctCambio(o[MED], o[MEDA]) }))
@@ -231,7 +237,7 @@ export function analizarInforme(base, { config = {}, ref7 = {}, crafteos = [], o
     version: VERSION_INFORME, mercado: base.mercado, zona, generado: ahora, desde: corte, hasta,
     fecha: diaLocal(hasta, zona), config: c,
     serie: act.map((s) => [s[0], s[1]]),
-    kpi, volumen, comerciados, subidas, caidas,
+    kpi, volumen, consumibles, subidas, caidas,
     gangas: gangas.slice(0, n), gangasTotal: gangas.length,
     crafteos: crafts.slice(0, n), crafteosTotal: crafts.length,
     categorias, arbitraje, objetos: {}, destacados: [], resumen: "",
@@ -241,7 +247,7 @@ export function analizarInforme(base, { config = {}, ref7 = {}, crafteos = [], o
 /** IDs de objetos que aparecen en el informe (para pedir nombre, icono y calidad). */
 export function idsInforme(inf) {
   const ids = new Set();
-  for (const k of ["volumen", "comerciados", "subidas", "caidas", "gangas"]) for (const x of inf[k]) ids.add(x.id);
+  for (const k of ["volumen", "consumibles", "subidas", "caidas", "gangas"]) for (const x of inf[k] ?? []) ids.add(x.id);
   for (const x of inf.arbitraje?.filas ?? []) ids.add(x.id);
   return [...ids];
 }
@@ -298,21 +304,27 @@ export function completarInforme(inf, objetos = {}) {
 }
 
 // ---------- mensaje de Discord ----------
-export function mensajeInforme(inf, { sitio = "", nombre = "MercadoWoW | Market Intelligence", avatar = null, manual = false } = {}) {
+/**
+ * Mensaje de Discord: el primer embed lleva el título enlazado, el resumen y la primera página; cada página más va
+ * en su propio embed (sin enlace, para que Discord no las junte en una galería pequeña); el último, el pie y la hora.
+ * `paginas`: las páginas que se adjuntan, en orden (archivoPagina(i) es el nombre de cada una).
+ */
+export function mensajeInforme(inf, { sitio = "", nombre = "MercadoWoW | Market Intelligence", avatar = null, manual = false, paginas = null } = {}) {
   const m = inf.mercado;
   const lugar = [`WoW Forever`, (m.region ?? "").toUpperCase(), REGLAS[m.reglas] ?? m.reglas, FACCIONES[m.faccion] ?? m.faccion].filter(Boolean).join(" · ");
   const periodo = `${fechaCorta(inf.desde, inf.zona)} – ${fechaCorta(inf.hasta, inf.zona)} (${inf.zona})`;
   const desc = [`**${lugar}** · ${fechaLocal(inf.hasta, inf.zona)}`, `Período: ${periodo}`, "", inf.resumen,
     sitio ? `\n[Abrir el panel de MercadoWoW](${sitio})` : ""].join("\n").slice(0, 4000);
+  const lista = (paginas ?? paginasInforme(inf)).slice(0, 10);
+  const pie = `MercadoWoW · Market Intelligence${manual ? " · Envío manual" : ""} · ${m.atribucion || (m.proveedor === "tsm" ? "Precios: TradeSkillMaster" : m.proveedor)}`;
   return {
     username: nombre, ...(avatar ? { avatar_url: avatar } : {}), allowed_mentions: { parse: [] },
-    attachments: [{ id: 0, filename: ARCHIVO_INFORME, description: `Informe diario del mercado · ${inf.fecha}` }],
-    embeds: [{
-      title: "Informe diario del mercado", ...(sitio ? { url: sitio } : {}), description: desc, color: COLOR_EMBED,
-      image: { url: `attachment://${ARCHIVO_INFORME}` },
-      footer: { text: `MercadoWoW · Market Intelligence${manual ? " · Envío manual" : ""} · ${m.atribucion || (m.proveedor === "tsm" ? "Precios: TradeSkillMaster" : m.proveedor)}` },
-      timestamp: new Date(inf.generado).toISOString(),
-    }],
+    attachments: lista.map((p, i) => ({ id: i, filename: archivoPagina(i), description: `${TITULOS_PAGINA[p] ?? p} · ${inf.fecha}` })),
+    embeds: lista.map((p, i) => ({
+      ...(i === 0 ? { title: "Informe diario del mercado", ...(sitio ? { url: sitio } : {}), description: desc } : {}),
+      color: COLOR_EMBED, image: { url: `attachment://${archivoPagina(i)}` },
+      ...(i === lista.length - 1 ? { footer: { text: pie }, timestamp: new Date(inf.generado).toISOString() } : {}),
+    })),
   };
 }
 
@@ -326,12 +338,13 @@ export function mensajePruebaInforme({ sitio = "", nombre = "MercadoWoW | Market
 }
 
 // ---------- dibujo (SVG) ----------
+// Discord encaja la imagen de cada embed en ~400 × 300 px: un informe alto se encoge hasta no leerse. Por eso el
+// informe son PÁGINAS apaisadas (800 × 600 en unidades del dibujo, 4:3) con letra grande, una por embed.
 const T = {
   fondo: "#0E0E10", tarjeta: "#19191D", borde: "#2B2B30", oro: "#E9BC65", texto: "#F5EBD5", sec: "#A8A196",
   verde: "#8BCB70", rojo: "#E36B65", azul: "#65C4D9", plata: "#CBD5E1", cobre: "#E0965A", pista: "#26262B",
 };
-const W = ANCHO_INFORME, M = 64, CW = W - 2 * M, GAP = 48, COL = (CW - GAP) / 2;
-const titulo = (t) => ({ tam: 26, peso: 700, color: T.oro, esp: 2.5, fuente: FUENTE_TITULO, t: t.toUpperCase() });
+const W = ANCHO_INFORME, H = ALTO_PAGINA, M = 32, DER = W - M, CW = W - 2 * M;
 
 /** Parte un texto en líneas que quepan en `ancho`. */
 export function envolver(t, tam, peso, ancho) {
@@ -348,293 +361,262 @@ const triangulo = (x, y, sube, color, s = 14) => sube
   ? `<polygon points="${x},${y} ${x + s / 2},${y - s} ${x + s},${y}" fill="${color}"/>`
   : `<polygon points="${x},${y - s} ${x + s},${y - s} ${x + s / 2},${y}" fill="${color}"/>`;
 
+/** Páginas del informe, en orden, según las secciones visibles y los datos. */
+export function paginasInforme(inf) {
+  const v = (k) => seccionVisible(inf.config, k);
+  const p = [];
+  if (v("kpi") || v("grafico")) p.push("resumen");
+  if (v("volumen") || v("consumibles")) p.push("oro");
+  if (v("subidas") || v("caidas")) p.push("cambios");
+  if (v("gangas")) p.push("gangas");
+  if (v("crafteos")) p.push("crafteos");
+  if (v("arbitraje") && inf.arbitraje?.disponible) p.push("arbitraje");
+  if (v("categorias")) p.push("categorias");
+  if (v("destacados") || (v("arbitraje") && !inf.arbitraje?.disponible)) p.push("destacados");
+  return p.length ? p : ["resumen"];
+}
+export const TITULOS_PAGINA = {
+  resumen: "Informe diario del mercado", oro: "Oro y consumibles", cambios: "Subidas y caídas · 24 h", gangas: "Gangas del día",
+  crafteos: "Mejores crafteos del día", arbitraje: "Arbitraje entre facciones", categorias: "Comportamiento por categorías",
+  destacados: "Datos interesantes del día",
+};
+/** Nombre del archivo de cada página (la primera, el del informe). */
+export const archivoPagina = (i) => (i === 0 ? ARCHIVO_INFORME : `mercadowow-report-${i + 1}.png`);
+
 /**
- * Dibuja el informe. `iconos`: {url: href} (en el servidor, los iconos incrustados en base64).
+ * Dibuja una página del informe. `iconos`: {url: href} (en el servidor, los iconos incrustados en base64).
  * @returns {{svg: string, ancho: number, alto: number}}
  */
-export function informeSVG(inf, { iconos = {}, sitio = "" } = {}) {
+export function informeSVG(inf, { pagina = "resumen", iconos = {}, sitio = "" } = {}) {
   const c = inf.config ?? CONFIG_INFORME;
   const ver = (k) => seccionVisible(c, k);
   const P = [], defs = [];
   let nIco = 0;
+  const m = inf.mercado, zona = inf.zona;
   const href = (u) => esc(iconos[u ?? ICONO_RESPALDO] ?? u ?? ICONO_RESPALDO);
-  const iconoObj = (id, x, y, s) => {
-    const o = inf.objetos?.[id] ?? {};
+  const icono = (url, x, y, s) => {
     const k = `ic${nIco++}`;
     defs.push(`<clipPath id="${k}"><rect x="${x}" y="${y}" width="${s}" height="${s}" rx="${Math.round(s / 6)}"/></clipPath>`);
     return rect(x - 1, y - 1, s + 2, s + 2, { rx: Math.round(s / 6) + 1, fill: T.tarjeta, stroke: T.borde })
-      + `<image href="${href(o.i ?? (typeof id === "string" ? id : null))}" x="${x}" y="${y}" width="${s}" height="${s}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${k})"/>`;
+      + `<image href="${href(url)}" x="${x}" y="${y}" width="${s}" height="${s}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${k})"/>`;
   };
-  const iconoUrl = (url, x, y, s) => {
-    const k = `ic${nIco++}`;
-    defs.push(`<clipPath id="${k}"><rect x="${x}" y="${y}" width="${s}" height="${s}" rx="${Math.round(s / 6)}"/></clipPath>`);
-    return `<image href="${href(url)}" x="${x}" y="${y}" width="${s}" height="${s}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${k})"/>`;
-  };
-  const tituloSec = (x, y, t, sub = null) => {
-    const o = titulo(t);
-    P.push(texto(x, y, o.t, o));
-    if (sub) P.push(texto(x, y + 30, sub, { tam: 18, color: T.sec }));
-    return sub ? 50 : 22;
-  };
-  const sinDatos = (x, y, w, t) => { P.push(rect(x, y, w, 70, { rx: 12, fill: T.tarjeta, stroke: T.borde }), texto(x + 24, y + 44, t, { tam: 21, color: T.sec })); return 70; };
+  const iconoObj = (id, x, y, s) => icono(inf.objetos?.[id]?.i ?? null, x, y, s);
   const nom = (id) => nombreDe(inf, id);
-  const m = inf.mercado, zona = inf.zona;
-  let y = 0;
-
-  // ---- cabecera
-  P.push(`<g fill="${T.oro}">${[[0, 14, 16], [12, 6, 24], [24, 0, 30]].map(([dx, dy, h]) => `<rect x="${M + dx}" y="${46 + dy}" width="8" height="${h}" rx="2"/>`).join("")}</g>`,
-    texto(M + 48, 76, "MERCADOWOW", { tam: 32, peso: 700, color: T.oro, esp: 4, fuente: FUENTE_TITULO }));
-  const lugar = [`WoW Forever`, (m.region ?? "").toUpperCase(), REGLAS[m.reglas] ?? m.reglas, FACCIONES[m.faccion] ?? m.faccion].filter(Boolean).join(" · ");
-  P.push(texto(W - M, 62, lugar, { tam: 22, color: T.sec, ancla: "end" }), texto(W - M, 92, fechaLocal(inf.hasta, zona), { tam: 22, color: T.sec, ancla: "end" }));
-  P.push(texto(M, 186, "Informe diario del mercado", { tam: 76, peso: 700, color: T.oro, fuente: FUENTE_TITULO }));
-  P.push(texto(M, 232, `Últimas 24 h: ${fechaCorta(inf.desde, zona)} – ${fechaCorta(inf.hasta, zona)} (${zona}) · actualizado a las ${horaLocal(inf.generado, zona)}`,
-    { tam: 22, color: T.sec }));
-  y = 290;
-  for (const l of envolver(inf.resumen, 30, 400, CW)) { P.push(texto(M, y, l, { tam: 30, color: T.texto })); y += 44; }
-  y += 18;
-
-  // ---- KPI
-  if (ver("kpi")) {
-    const k = inf.kpi, wk = (CW - 3 * 24) / 4, hk = 190;
-    const vari = (v, sufijo) => (v == null ? null : { t: `${formatoPct(v)} ${sufijo}`, color: v > 0 ? T.verde : v < 0 ? T.rojo : T.sec, sube: v > 0 });
-    const tarjetas = [
-      { cifra: k.unidades ? formatoNumero(k.unidades.pico) : null, texto: k.unidades ? `unidades publicadas en el máximo del día, a las ${horaLocal(k.unidades.picoMs, zona)}` : "unidades publicadas", v: null },
-      { cifra: k.unidades?.variacion != null ? formatoPct(k.unidades.variacion) : null, color: k.unidades?.variacion > 0 ? T.verde : k.unidades?.variacion < 0 ? T.rojo : T.texto,
-        texto: "unidades publicadas (media) frente a las 24 h anteriores", v: null },
-      { cifra: k.oro ? oroRedondo(k.oro.total) : null, texto: k.oro ? `movido al día en ${k.oro.objetos.toLocaleString("es", { useGrouping: "always" })} objetos (estimación)` : "oro movido al día", v: vari(k.oro?.variacion, "vs. ayer") },
-      { cifra: k.vendidas ? formatoNumero(k.vendidas.total) : null, texto: "unidades vendidas al día (estimación del proveedor)", v: vari(k.vendidas?.variacion, "vs. ayer") },
-    ];
-    tarjetas.forEach((t, i) => {
-      const x = M + i * (wk + 24);
-      P.push(rect(x, y, wk, hk, { rx: 14, fill: T.tarjeta, stroke: T.borde }));
-      P.push(t.cifra == null ? texto(x + 24, y + 72, "Sin datos", { tam: 40, peso: 700, color: T.sec })
-        : texto(x + 24, y + 74, t.cifra, { tam: Math.min(56, Math.floor(56 * (wk - 48) / Math.max(1, anchoTexto(t.cifra, 56, 800)))), peso: 800, color: t.color ?? T.texto }));
-      envolver(t.texto, 20, 400, wk - 48).slice(0, 2).forEach((l, j) => P.push(texto(x + 24, y + 112 + j * 26, l, { tam: 20, color: T.sec })));
-      if (t.v) P.push(triangulo(x + 24, y + 170, t.v.sube, t.v.color, 12), texto(x + 44, y + 170, t.v.t, { tam: 19, peso: 600, color: t.v.color }));
-    });
-    y += hk + 44;
-  }
-
-  // ---- gráfico de actividad
-  if (ver("grafico")) {
-    y += tituloSec(M, y + 8, "Actividad del mercado · 24 h", "Unidades publicadas en cada escaneo válido (no se rellenan las horas sin escaneo)") + 20;
-    const s = inf.serie.filter((p) => Number.isFinite(p[1]));
-    const hG = 320;
-    if (s.length < 3) {
-      y += sinDatos(M, y, CW, "Datos insuficientes: hacen falta al menos 3 escaneos válidos en las últimas 24 h.") + 36;
-    } else {
-      const gx = M + 84, gw = W - M - gx, gy = y + 30, gh = hG - 70;
-      const vals = s.map((p) => p[1]);
-      let lo = Math.min(...vals), hi = Math.max(...vals);
-      const margen = (hi - lo) * 0.15 || hi * 0.05 || 1;
-      lo = Math.max(0, lo - margen); hi += margen;
-      const t0 = inf.desde, t1 = inf.hasta;
-      const px = (t) => gx + ((t - t0) / (t1 - t0)) * gw, py = (v) => gy + gh - ((v - lo) / (hi - lo)) * gh;
-      for (let i = 0; i <= 3; i++) {
-        const v = lo + ((hi - lo) * i) / 3, yy = py(v);
-        P.push(linea(gx, yy, gx + gw, yy, T.borde), texto(gx - 12, yy + 6, formatoNumero(v), { tam: 17, color: T.sec, ancla: "end" }));
-      }
-      // Marcas del eje X cada 3 horas locales.
-      const paso = 3600e3;
-      for (let t = Math.ceil(t0 / paso) * paso; t <= t1; t += paso) {
-        const h = Number(horaLocal(t, zona).slice(0, 2));
-        if (h % 3) continue;
-        P.push(linea(px(t), gy + gh, px(t), gy + gh + 8, T.borde), texto(px(t), gy + gh + 32, horaLocal(t, zona), { tam: 17, color: T.sec, ancla: "middle" }));
-      }
-      const pts = s.map((p) => `${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`).join(" ");
-      defs.push(`<linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.oro}" stop-opacity=".22"/><stop offset="1" stop-color="${T.oro}" stop-opacity="0"/></linearGradient>`);
-      P.push(`<polygon points="${px(s[0][0]).toFixed(1)},${gy + gh} ${pts} ${px(s.at(-1)[0]).toFixed(1)},${gy + gh}" fill="url(#area)"/>`,
-        `<polyline points="${pts}" fill="none" stroke="${T.oro}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>`,
-        ...s.map((p) => `<circle cx="${px(p[0]).toFixed(1)}" cy="${py(p[1]).toFixed(1)}" r="3.5" fill="${T.oro}"/>`));
-      const u = inf.kpi.unidades;
-      const marca = (ms, v, color, etiqueta, arriba) => {
-        const x = px(ms), yy = py(v);
-        const w = anchoTexto(etiqueta, 19, 600);
-        const ancla = x - w / 2 < gx ? "start" : x + w / 2 > gx + gw ? "end" : "middle";
-        P.push(`<circle cx="${x.toFixed(1)}" cy="${yy.toFixed(1)}" r="8" fill="${color}" stroke="${T.fondo}" stroke-width="3"/>`,
-          texto(ancla === "start" ? x - 6 : ancla === "end" ? x + 6 : x, arriba ? yy - 18 : yy + 34, etiqueta, { tam: 19, peso: 600, color: T.texto, ancla }));
-      };
-      if (u) {
-        marca(u.picoMs, u.pico, T.texto, `${formatoNumero(u.pico)} a las ${horaLocal(u.picoMs, zona)}, el máximo`, true);
-        marca(u.valleMs, u.valle, T.rojo, `${formatoNumero(u.valle)} a las ${horaLocal(u.valleMs, zona)}, el mínimo`, false);
-        if (u.ultimoMs !== u.picoMs && u.ultimoMs !== u.valleMs) marca(u.ultimoMs, u.ultimo, T.oro, `${formatoNumero(u.ultimo)} a las ${horaLocal(u.ultimoMs, zona)}`, py(u.ultimo) > gy + gh / 2);
-      }
-      y += hG + 30;
-    }
-  }
-
-  // ---- dos columnas
-  const filaDoble = (izq, der) => {
-    const yi = y;
-    const hs = [izq, der].filter(Boolean).map((f, i, arr) => f(arr.length === 1 ? M : M + i * (COL + GAP), yi, arr.length === 1 ? CW : COL));
-    if (hs.length) y = yi + Math.max(...hs) + 40;
-  };
-  const listaBarras = (claves, { tit, sub, color, valor, extra, vacio }) => (x, y0, w) => {
-    let yy = y0 + tituloSec(x, y0 + 8, tit, sub) + 22;
-    const filas = claves;
-    if (!filas.length) return yy - y0 + sinDatos(x, yy, w, vacio);
-    const max = Math.max(...filas.map((f) => f.__v));
-    filas.forEach((f) => {
-      P.push(iconoObj(f.id, x, yy + 6, 40), texto(x + 56, yy + 34, recortar(nom(f.id), 23, 500, w * 0.42 - 56), { tam: 23, peso: 500, color: T.texto }));
-      P.push(barra(x + w * 0.45, yy + 20, w * 0.25, 14, f.__v / max, color, T));
-      P.push(valor(f, x + w, yy + 28), texto(x + w, yy + 52, recortar(extra(f), 16, 400, w * 0.3), { tam: 16, color: T.sec, ancla: "end" }));
-      yy += 64;
-    });
-    return yy - y0;
-  };
-  const nVent = (v) => v.toLocaleString("es", { maximumFractionDigits: v < 10 ? 1 : 0, useGrouping: "always" });
-  filaDoble(
-    ver("volumen") && listaBarras(inf.volumen.map((f) => ({ ...f, __v: f.oro })), {
-      tit: "Mayor volumen de oro · 24 h", sub: "Oro movido al día por objeto (estimación)", color: T.oro, vacio: "Sin estimaciones de ventas para este mercado.",
-      valor: (f, x, yy) => moneda(x, yy, f.oro, { tam: 23, peso: 700, color: T.texto, ancla: "end", ap: {}, T }),
-      extra: (f) => `≈ ${nVent(f.unidades)}/día · ${textoMoneda(f.precio)} c/u` }),
-    ver("comerciados") && listaBarras(inf.comerciados.map((f) => ({ ...f, __v: f.unidades })), {
-      tit: "Objetos más comercializados", sub: "Unidades vendidas al día (estimación)", color: T.azul, vacio: "Sin estimaciones de ventas para este mercado.",
-      valor: (f, x, yy) => texto(x, yy, `≈ ${nVent(f.unidades)}`, { tam: 23, peso: 700, color: T.texto, ancla: "end" }),
-      extra: (f) => `${textoMoneda(f.precio)} c/u${f.variacion != null ? ` · ${formatoPct(f.variacion, 0)}` : ""}` }),
-  );
-
-  const listaCambios = (filas, { tit, sub, sube, vacio }) => (x, y0, w) => {
-    let yy = y0 + tituloSec(x, y0 + 8, tit, sub) + 22;
-    if (!filas.length) return yy - y0 + sinDatos(x, yy, w, vacio);
-    const color = sube ? T.verde : T.rojo;
-    filas.forEach((f, i) => {
-      if (i) P.push(linea(x, yy, x + w, yy, T.borde));
-      P.push(iconoObj(f.id, x, yy + 14, 44), texto(x + 60, yy + 38, recortar(nom(f.id), 23, 500, w - 60 - 170), { tam: 23, peso: 500, color: T.texto }));
-      const det = `${textoMoneda(f.antes)} → ${textoMoneda(f.ahora)}`;
-      P.push(texto(x + 60, yy + 64, det, { tam: 18, color: T.sec }));
-      if (f.compra) P.push(texto(x + 60 + anchoTexto(det, 18) + 16, yy + 64, "posible compra", { tam: 16, peso: 600, color: T.verde }));
-      const t = formatoPct(f.pct, 0).replace("+", "");
-      P.push(texto(x + w, yy + 52, t, { tam: 30, peso: 800, color, ancla: "end" }), triangulo(x + w - anchoTexto(t, 30, 800) - 30, yy + 48, sube, color, 16));
-      yy += 82;
-    });
-    return yy - y0;
-  };
-  filaDoble(
-    ver("subidas") && listaCambios(inf.subidas, { tit: "Mayores subidas · 24 h", sub: "Mediana de 24 h frente a las 24 h anteriores", sube: true, vacio: "Ninguna subida fiable de al menos un 5 %." }),
-    ver("caidas") && listaCambios(inf.caidas, { tit: "Mayores caídas · 24 h", sub: "Mediana de 24 h frente a las 24 h anteriores", sube: false, vacio: "Ninguna caída fiable de al menos un 5 %." }),
-  );
-
-  // ---- gangas (ancho completo)
-  if (ver("gangas")) {
-    y += tituloSec(M, y + 8, "Gangas del día", `Compra mínima actual frente a la menor de sus medianas de 7 y 30 días · descuento ≥ ${c.gangas_desc_min} % · ≥ ${c.liquidez_min} ventas/día`) + 22;
-    if (!inf.gangas.length) y += sinDatos(M, y, CW, "Ninguna ganga con los criterios actuales.") + 40;
-    else {
-      const cols = [["Compra", "compra"], ["Referencia", "referencia"], ["Reventa", "reventa"], ["Beneficio neto", "neta"]];
-      const xc = (i) => M + 560 + i * 160;
-      cols.forEach(([t], i) => P.push(texto(xc(i) + 150, y + 4, t, { tam: 16, peso: 600, color: T.sec, ancla: "end" })));
-      P.push(texto(xc(4) + 110, y + 4, "ROI", { tam: 16, peso: 600, color: T.sec, ancla: "end" }));
-      y += 16;
-      inf.gangas.forEach((g) => {
-        P.push(rect(M, y, CW, 92, { rx: 12, fill: T.tarjeta, stroke: T.borde }), iconoObj(g.id, M + 20, y + 20, 52));
-        P.push(texto(M + 88, y + 44, recortar(nom(g.id), 25, 600, 440), { tam: 25, peso: 600, color: T.texto }),
-          texto(M + 88, y + 72, recortar(`Confianza ${g.confianza} · ≈ ${nVent(g.liquidez)} ventas/día · comisión ${textoMoneda(g.comision)}`, 17, 400, 450), { tam: 17, color: T.sec }));
-        cols.forEach(([, k], i) => P.push(moneda(xc(i) + 150, y + 56, g[k], { tam: 21, peso: 700, color: k === "neta" ? T.verde : T.texto, ancla: "end", ap: {}, T })));
-        P.push(texto(xc(4) + 110, y + 56, formatoPct(g.roi, 0).replace("+", ""), { tam: 21, peso: 700, color: T.verde, ancla: "end" }));
-        P.push(texto(W - M - 24, y + 60, `−${Math.round(g.descuento)} %`, { tam: 38, peso: 800, color: T.verde, ancla: "end" }));
-        y += 104;
-      });
-      y += 30;
-    }
-  }
-
-  // ---- crafteos
-  if (ver("crafteos")) {
-    y += tituloSec(M, y + 8, "Mejores crafteos del día", `Materiales a precio de subasta · ROI ≥ ${c.craft_roi_min} % · beneficio ≥ ${textoMoneda(c.neta_min)} · cálculo de fabricación de MercadoWoW`) + 22;
-    if (!inf.crafteos.length) y += sinDatos(M, y, CW, "Ningún crafteo cumple los mínimos con los precios actuales.") + 40;
-    else {
-      const maxRoi = Math.max(...inf.crafteos.map((f) => f.roi));
-      inf.crafteos.forEach((f) => {
-        const h = 132;
-        P.push(rect(M, y, CW, h, { rx: 12, fill: T.tarjeta, stroke: T.borde }), iconoUrl(f.icono, M + 20, y + 20, 52));
-        P.push(texto(M + 88, y + 44, recortar(f.nombre, 25, 600, 480), { tam: 25, peso: 600, color: T.texto }),
-          texto(M + 88, y + 72, `${nombreProfesion(f.profesion)}${f.unidades > 1 ? ` · ${f.unidades} por fabricación` : ""}`, { tam: 18, color: T.sec }));
-        const cols = [["Coste", f.coste, T.texto], ["Venta", f.venta, T.texto], ["Precio rec.", f.recomendado, T.texto], ["Comisión", f.comision, T.texto], ["Beneficio neto", f.neta, T.verde]];
-        cols.forEach(([t, v, col], i) => {
-          const xr = M + 700 + i * 152;
-          P.push(texto(xr, y + 34, t, { tam: 16, peso: 600, color: T.sec, ancla: "end" }), moneda(xr, y + 64, v, { tam: 21, peso: 700, color: col, ancla: "end", ap: {}, T }));
-        });
-        P.push(barra(M + 88, y + 96, CW - 88 - 220, 12, f.roi / Math.max(100, maxRoi), T.verde, T),
-          texto(W - M - 24, y + 108, `${formatoPct(f.roi, 0).replace("+", "")} ROI`, { tam: 22, peso: 800, color: T.verde, ancla: "end" }),
-          texto(M + 88, y + 124, f.demanda != null ? `Demanda ≈ ${nVent(f.demanda)} ventas/día` : "Demanda sin datos", { tam: 15, color: T.sec }));
-        y += h + 12;
-      });
-      y += 30;
-    }
-  }
-
-  // ---- arbitraje
-  if (ver("arbitraje")) {
-    const a = inf.arbitraje;
-    y += tituloSec(M, y + 8, "Arbitraje entre facciones", "Precio típico (mediana de 24 h) del mismo objeto en cada facción") + 22;
-    if (!a?.disponible) y += sinDatos(M, y, CW, a?.motivo ?? "Sin datos de la otra facción.") + 40;
-    else if (!a.filas.length) y += sinDatos(M, y, CW, "Ninguna diferencia aprovechable con los criterios actuales.") + 40;
-    else {
-      a.filas.forEach((f, i) => {
-        if (i) P.push(linea(M, y, W - M, y, T.borde));
-        P.push(iconoObj(f.id, M, y + 14, 44), texto(M + 60, y + 38, recortar(nom(f.id), 23, 500, 700), { tam: 23, peso: 500, color: T.texto }),
-          texto(M + 60, y + 64, `${a.facA} ${textoMoneda(f.precioA)} · ${a.facB} ${textoMoneda(f.precioB)} · más barato en ${f.barata} · potencial ≈ ${textoMoneda(f.potencial)} (con ${c.comision_neutral_pct} % de comisión)`, { tam: 18, color: T.sec }),
-          texto(W - M, y + 52, formatoVeces(f.veces), { tam: 30, peso: 800, color: T.azul, ancla: "end" }));
-        y += 82;
-      });
-      P.push(texto(M, y + 20, "Estimación: requiere poder mover el objeto entre facciones; no es un beneficio garantizado.", { tam: 16, color: T.sec }));
-      y += 60;
-    }
-  }
-
-  // ---- categorías
-  if (ver("categorias")) {
-    y += tituloSec(M, y + 8, "Comportamiento por categorías", "Mediana de la variación de precio de cada objeto frente a las 24 h anteriores") + 22;
-    const porFila = 6, wc = (CW - (porFila - 1) * 16) / porFila, hc = 132;
-    inf.categorias.forEach((k, i) => {
-      const x = M + (i % porFila) * (wc + 16), yy = y + Math.floor(i / porFila) * (hc + 16);
-      const color = k.tendencia === "sube" ? T.verde : k.tendencia === "baja" ? T.rojo : T.sec;
-      P.push(rect(x, yy, wc, hc, { rx: 12, fill: T.tarjeta, stroke: T.borde }),
-        texto(x + 18, yy + 34, recortar(k.nombre, 19, 600, wc - 36), { tam: 19, peso: 600, color: T.texto }));
-      if (k.variacion == null) P.push(texto(x + 18, yy + 84, "Sin datos", { tam: 26, peso: 700, color: T.sec }));
-      else {
-        const t = formatoPct(k.variacion);
-        P.push(texto(x + 18, yy + 86, t, { tam: 36, peso: 800, color }));
-        P.push(texto(x + 18, yy + 116, `▼ ${k.bajan} · ▲ ${k.suben} de ${k.total}`, { tam: 16, color: T.sec }));
-      }
-    });
-    y += Math.ceil(inf.categorias.length / porFila) * (hc + 16) + 30;
-  }
-
-  // ---- datos interesantes
-  if (ver("destacados") && inf.destacados.length) {
-    y += tituloSec(M, y + 8, "Datos interesantes del día") + 22;
-    const nD = inf.destacados.length, wd = (CW - (nD - 1) * 24) / nD, hd = 176;
-    const colores = { verde: T.verde, rojo: T.rojo, oro: T.oro, texto: T.texto };
-    inf.destacados.forEach((d, i) => {
-      const x = M + i * (wd + 24);
-      P.push(rect(x, y, wd, hd, { rx: 14, fill: T.tarjeta, stroke: T.borde }));
-      let xc = x + 22;
-      if (d.id != null) { P.push(iconoObj(d.id, x + 22, y + 22, 44)); xc += 58; }
-      P.push(texto(xc, y + 58, recortar(d.cifra, 36, 800, x + wd - 22 - xc), { tam: 36, peso: 800, color: colores[d.color] ?? T.texto }));
-      envolver(d.texto, 19, 400, wd - 44).slice(0, 4).forEach((l, j) => P.push(texto(x + 22, y + 98 + j * 24, l, { tam: 19, color: T.sec })));
-    });
-    y += hd + 40;
-  }
-
-  // ---- pie
-  P.push(linea(M, y, W - M, y, T.borde));
+  const sec = (x, y, t) => P.push(texto(x, y, t.toUpperCase(), { tam: 22, peso: 700, color: T.oro, esp: 1.5, fuente: FUENTE_TITULO }));
+  const nota = (x, y, t, ancla = "start") => P.push(texto(x, y, t, { tam: 16, color: T.sec, ancla }));
+  // Nota de la página, encima del pie (el pie lleva la fuente de los precios).
+  const notaPie = (t) => envolver(t, 16, 400, CW).slice(0, 2).forEach((l, j, a) => P.push(texto(M, H - 34 - (a.length - 1 - j) * 19, l, { tam: 16, color: T.sec })));
+  const vacio = (y, t) => { P.push(rect(M, y, CW, 64, { rx: 12, fill: T.tarjeta, stroke: T.borde })); envolver(t, 20, 400, CW - 40).slice(0, 2).forEach((l, j) => P.push(texto(M + 20, y + 38 + j * 24, l, { tam: 20, color: T.sec }))); return 64; };
+  const paginas = paginasInforme(inf), n = paginas.indexOf(pagina) + 1;
   const fuente = m.atribucion || (m.proveedor === "tsm" ? "Precios: TradeSkillMaster" : m.proveedor);
-  const pie = `${inf.kpi.escaneos} escaneos válidos (${inf.kpi.descartados} incompletos descartados) entre ${fechaCorta(inf.desde, zona)} y ${fechaCorta(inf.hasta, zona)} (${zona}). `
-    + "Ventas y oro movido: estimaciones (un escaneo no distingue una venta de una cancelación). "
-    + `${fuente}. Iconos de objetos: Blizzard Entertainment. No afiliado con Blizzard.`;
   const dominio = String(sitio || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
-  const lineasPie = envolver(pie, 17, 400, CW - (dominio ? 340 : 0));
-  lineasPie.forEach((l, j) => P.push(texto(M, y + 36 + j * 24, l, { tam: 17, color: T.sec })));
-  if (dominio) P.push(texto(W - M, y + 38, dominio, { tam: 22, peso: 700, color: T.oro, ancla: "end" }));
-  y += 36 + lineasPie.length * 24 + 24;
+  const nVent = (v) => v.toLocaleString("es", { maximumFractionDigits: v < 10 ? 1 : 0, useGrouping: "always" });
 
-  const alto = Math.ceil(y);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${alto}" width="${W}" height="${alto}">`
-    + `<defs>${defs.join("")}</defs>${rect(0, 0, W, alto, { fill: T.fondo })}`
-    + `${rect(0.5, 0.5, W - 1, alto - 1, { rx: 0, stroke: T.oro, sw: 1, op: 0.5 })}${P.join("")}</svg>`;
-  return { svg, ancho: W, alto };
+  // ---- cabecera (en la portada, más grande)
+  if (pagina === "resumen") {
+    P.push(`<g fill="${T.oro}">${[[0, 10, 12], [9, 4, 18], [18, 0, 22]].map(([dx, dy, h]) => `<rect x="${M + dx}" y="${20 + dy}" width="6" height="${h}" rx="2"/>`).join("")}</g>`,
+      texto(M + 34, 40, "MERCADOWOW", { tam: 22, peso: 700, color: T.oro, esp: 3, fuente: FUENTE_TITULO }));
+    const lugar = [(m.region ?? "").toUpperCase(), REGLAS[m.reglas] ?? m.reglas, FACCIONES[m.faccion] ?? m.faccion].filter(Boolean).join(" · ");
+    P.push(texto(DER, 30, `WoW Forever · ${lugar}`, { tam: 17, color: T.sec, ancla: "end" }), texto(DER, 52, fechaLocal(inf.hasta, zona), { tam: 17, color: T.sec, ancla: "end" }));
+    P.push(texto(M, 96, "Informe diario del mercado", { tam: 38, peso: 700, color: T.oro, fuente: FUENTE_TITULO }));
+    nota(M, 122, `Últimas 24 h hasta las ${horaLocal(inf.hasta, zona)} (${zona}) · página ${n} de ${paginas.length}`);
+  } else {
+    P.push(texto(M, 44, TITULOS_PAGINA[pagina], { tam: 28, peso: 700, color: T.oro, fuente: FUENTE_TITULO }),
+      texto(DER, 42, `${fechaCorta(inf.hasta, zona)} · ${n}/${paginas.length}`, { tam: 17, color: T.sec, ancla: "end" }),
+      linea(M, 62, DER, 62, T.borde));
+  }
+
+  if (pagina === "resumen") {
+    let y = 140;
+    if (ver("kpi")) {
+      const k = inf.kpi, wk = (CW - 16) / 2, hk = 112;
+      const vari = (v) => (v == null ? null : { t: `${formatoPct(v)} vs. ayer`, color: v > 0 ? T.verde : v < 0 ? T.rojo : T.sec, sube: v > 0 });
+      const tarjetas = [
+        { cifra: k.unidades ? formatoNumero(k.unidades.pico) : null, texto: k.unidades ? `unidades publicadas (máximo, ${horaLocal(k.unidades.picoMs, zona)})` : "unidades publicadas" },
+        { cifra: k.unidades?.variacion != null ? formatoPct(k.unidades.variacion) : null, color: k.unidades?.variacion > 0 ? T.verde : k.unidades?.variacion < 0 ? T.rojo : T.texto,
+          texto: "unidades publicadas vs. ayer (media)" },
+        { cifra: k.oro ? oroRedondo(k.oro.total) : null, texto: "oro movido al día (estimación)", v: vari(k.oro?.variacion) },
+        { cifra: k.vendidas ? formatoNumero(k.vendidas.total) : null, texto: "vendidas al día (estimación)", v: vari(k.vendidas?.variacion) },
+      ];
+      tarjetas.forEach((t, i) => {
+        const x = M + (i % 2) * (wk + 16), yy = y + Math.floor(i / 2) * (hk + 12);
+        P.push(rect(x, yy, wk, hk, { rx: 12, fill: T.tarjeta, stroke: T.borde }));
+        P.push(t.cifra == null ? texto(x + 18, yy + 48, "Sin datos", { tam: 30, peso: 700, color: T.sec })
+          : texto(x + 18, yy + 50, t.cifra, { tam: Math.min(40, Math.floor(40 * (wk - 36) / Math.max(1, anchoTexto(t.cifra, 40, 800)))), peso: 800, color: t.color ?? T.texto }));
+        P.push(texto(x + 18, yy + 78, recortar(t.texto, 18, 400, wk - 36), { tam: 18, color: T.sec }));
+        if (t.v) P.push(triangulo(x + 18, yy + 101, t.v.sube, t.v.color, 11), texto(x + 36, yy + 101, t.v.t, { tam: 17, peso: 600, color: t.v.color }));
+      });
+      y += 2 * hk + 12 + 20;
+    }
+    if (ver("grafico")) {
+      const s = inf.serie.filter((p) => Number.isFinite(p[1]));
+      const gTop = y, gBase = H - 44;
+      nota(M, gTop + 4, "Unidades publicadas en cada escaneo válido · 24 h");
+      if (s.length < 3) P.push(texto(M, gTop + 50, "Datos insuficientes: hacen falta al menos 3 escaneos válidos.", { tam: 20, color: T.sec }));
+      else {
+        const gx = M, gw = CW, gy = gTop + 18, gh = gBase - gy - 22;
+        const vals = s.map((p) => p[1]);
+        let lo = Math.min(...vals), hi = Math.max(...vals);
+        const margen = (hi - lo) * 0.2 || hi * 0.05 || 1;
+        lo = Math.max(0, lo - margen); hi += margen;
+        const t0 = inf.desde, t1 = inf.hasta;
+        const px = (t) => gx + ((t - t0) / (t1 - t0)) * gw, py = (v) => gy + gh - ((v - lo) / (hi - lo)) * gh;
+        P.push(linea(gx, gy + gh, gx + gw, gy + gh, T.borde));
+        for (let t = Math.ceil(t0 / 3600e3) * 3600e3; t <= t1; t += 3600e3) {
+          const h = Number(horaLocal(t, zona).slice(0, 2));
+          if (h % 6) continue;
+          P.push(texto(px(t), gy + gh + 20, horaLocal(t, zona), { tam: 16, color: T.sec, ancla: "middle" }));
+        }
+        const pts = s.map((p) => `${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`).join(" ");
+        defs.push(`<linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.oro}" stop-opacity=".25"/><stop offset="1" stop-color="${T.oro}" stop-opacity="0"/></linearGradient>`);
+        P.push(`<polygon points="${px(s[0][0]).toFixed(1)},${gy + gh} ${pts} ${px(s.at(-1)[0]).toFixed(1)},${gy + gh}" fill="url(#area)"/>`,
+          `<polyline points="${pts}" fill="none" stroke="${T.oro}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`);
+        const u = inf.kpi.unidades;
+        const marca = (ms, v, color, etiqueta, arriba) => {
+          const x = px(ms), yy = py(v), w = anchoTexto(etiqueta, 17, 600);
+          const ancla = x - w / 2 < gx ? "start" : x + w / 2 > gx + gw ? "end" : "middle";
+          P.push(`<circle cx="${x.toFixed(1)}" cy="${yy.toFixed(1)}" r="6" fill="${color}" stroke="${T.fondo}" stroke-width="2"/>`,
+            texto(ancla === "start" ? x - 4 : ancla === "end" ? x + 4 : x, arriba ? yy - 12 : yy + 26, etiqueta, { tam: 17, peso: 600, color: T.texto, ancla }));
+        };
+        if (u) {
+          marca(u.picoMs, u.pico, T.texto, `máx. ${formatoNumero(u.pico)} (${horaLocal(u.picoMs, zona)})`, true);
+          marca(u.valleMs, u.valle, T.rojo, `mín. ${formatoNumero(u.valle)} (${horaLocal(u.valleMs, zona)})`, py(u.valle) > gy + gh - 34);
+        }
+      }
+    }
+  }
+
+  // Lista de una sección: filas de 40 de alto con icono, nombre y cifras a la derecha.
+  const lista = (y, titulo, filas, { vacioTxt, max = 5, fila }) => {
+    sec(M, y, titulo);
+    let yy = y + 14;
+    if (!filas.length) return yy - y + vacio(yy, vacioTxt) + 8;
+    for (const f of filas.slice(0, max)) { fila(f, yy); yy += 40; }
+    return yy - y;
+  };
+  if (pagina === "oro") {
+    let y = 88;
+    const max = Math.min(5, c.por_seccion);
+    const filaOro = (barColor, valorDe, barraDe, maxV) => (f, yy) => {
+      P.push(iconoObj(f.id, M, yy + 6, 30), texto(M + 42, yy + 28, recortar(nom(f.id), 21, 500, 300), { tam: 21, peso: 500, color: T.texto }));
+      P.push(barra(M + 360, yy + 17, 110, 10, barraDe(f) / maxV, barColor, T));
+      P.push(texto(M + 600, yy + 28, `≈ ${nVent(f.unidades)}/día`, { tam: 18, color: T.sec, ancla: "end" }));
+      P.push(valorDe(f, yy));
+    };
+    if (ver("volumen")) {
+      const fs = inf.volumen ?? [];
+      const maxV = Math.max(1, ...fs.map((f) => f.oro));
+      y += lista(y, "Mayor volumen de oro", fs, { max, vacioTxt: "Sin estimaciones de ventas para este mercado.",
+        fila: filaOro(T.oro, (f, yy) => texto(DER, yy + 28, oroRedondo(f.oro), { tam: 21, peso: 700, color: T.texto, ancla: "end" }), (f) => f.oro, maxV) }) + 22;
+    }
+    if (ver("consumibles")) {
+      const fs = inf.consumibles ?? [];
+      const maxV = Math.max(1, ...fs.map((f) => f.unidades));
+      lista(y, "Consumibles más vendidos", fs, { max, vacioTxt: "Sin estimaciones de ventas de consumibles en este mercado.",
+        fila: filaOro(T.azul, (f, yy) => moneda(DER, yy + 28, f.precio, { tam: 21, peso: 700, color: T.texto, ancla: "end", ap: {}, T }), (f) => f.unidades, maxV) });
+    }
+    notaPie("Estimaciones de ventas. Arriba: oro movido al día; abajo: precio por unidad.");
+  }
+
+  if (pagina === "cambios") {
+    let y = 88;
+    const max = Math.min(5, c.por_seccion);
+    const filaCambio = (sube) => (f, yy) => {
+      const color = sube ? T.verde : T.rojo;
+      P.push(iconoObj(f.id, M, yy + 6, 30), texto(M + 42, yy + 28, recortar(nom(f.id), 21, 500, 330), { tam: 21, peso: 500, color: T.texto }));
+      P.push(texto(M + 610, yy + 28, `${textoMoneda(f.antes)} → ${textoMoneda(f.ahora)}`, { tam: 18, color: f.compra ? T.verde : T.sec, ancla: "end" }));
+      const t = formatoPct(f.pct, 0).replace("+", "");
+      P.push(texto(DER, yy + 29, t, { tam: 23, peso: 800, color, ancla: "end" }), triangulo(DER - anchoTexto(t, 23, 800) - 20, yy + 26, sube, color, 12));
+    };
+    if (ver("subidas")) y += lista(y, "Mayores subidas", inf.subidas, { max, vacioTxt: "Ninguna subida fiable de al menos un 5 %.", fila: filaCambio(true) }) + 22;
+    if (ver("caidas")) lista(y, "Mayores caídas", inf.caidas, { max, vacioTxt: "Ninguna caída fiable de al menos un 5 %.", fila: filaCambio(false) });
+    notaPie("Mediana de 24 h frente a las 24 h anteriores · en verde: posible compra.");
+  }
+
+  // Tarjetas grandes (gangas, crafteos): 5 como mucho, 98 de alto.
+  const tarjetas = (filas, dibujar, vacioTxt) => {
+    let y = 76;
+    if (!filas.length) { vacio(y, vacioTxt); return; }
+    for (const f of filas.slice(0, Math.min(5, c.por_seccion))) { P.push(rect(M, y, CW, 86, { rx: 12, fill: T.tarjeta, stroke: T.borde })); dibujar(f, y); y += 92; }
+  };
+  if (pagina === "gangas") {
+    tarjetas(inf.gangas, (g, y) => {
+      P.push(iconoObj(g.id, M + 14, y + 12, 40), texto(M + 66, y + 28, recortar(nom(g.id), 22, 700, 480), { tam: 22, peso: 700, color: T.texto }));
+      P.push(texto(DER - 16, y + 50, `−${Math.round(g.descuento)} %`, { tam: 34, peso: 800, color: T.verde, ancla: "end" }));
+      P.push(texto(M + 66, y + 53, `Compra ${textoMoneda(g.compra)} → reventa ${textoMoneda(g.reventa)} · referencia ${textoMoneda(g.referencia)}`, { tam: 18, color: T.texto }));
+      P.push(texto(M + 66, y + 75, `Beneficio +${textoMoneda(g.neta)} · ROI ${formatoPct(g.roi, 0).replace("+", "")} · ≈ ${nVent(g.liquidez)} ventas/día · confianza ${g.confianza}`,
+        { tam: 17, color: T.sec }));
+    }, "Ninguna ganga con los criterios actuales.");
+    notaPie(`Descuento ≥ ${c.gangas_desc_min} % frente a sus medianas de 7 y 30 días · beneficio tras comisión.`);
+  }
+  if (pagina === "crafteos") {
+    const maxRoi = Math.max(100, ...inf.crafteos.map((f) => f.roi));
+    tarjetas(inf.crafteos, (f, y) => {
+      P.push(icono(f.icono, M + 14, y + 12, 40), texto(M + 66, y + 28, recortar(f.nombre, 22, 700, 440), { tam: 22, peso: 700, color: T.texto }));
+      P.push(texto(DER - 16, y + 32, `${formatoPct(f.roi, 0).replace("+", "")}`, { tam: 28, peso: 800, color: T.verde, ancla: "end" }));
+      P.push(texto(M + 66, y + 53, `${nombreProfesion(f.profesion)} · coste ${textoMoneda(f.coste)} → venta ${textoMoneda(f.venta)} · comisión ${textoMoneda(f.comision)}`,
+        { tam: 17, color: T.sec }));
+      P.push(texto(M + 66, y + 76, `Beneficio +${textoMoneda(f.neta)}`, { tam: 18, peso: 700, color: T.verde }),
+        texto(DER - 16, y + 76, f.demanda != null ? `demanda ≈ ${nVent(f.demanda)}/día` : "demanda sin datos", { tam: 17, color: T.sec, ancla: "end" }));
+      P.push(barra(M + 300, y + 69, 250, 8, f.roi / maxRoi, T.verde, T));
+    }, "Ningún crafteo cumple los mínimos con los precios actuales.");
+    notaPie(`ROI ≥ ${c.craft_roi_min} % y beneficio ≥ ${textoMoneda(c.neta_min)} · cálculo de fabricación de MercadoWoW.`);
+  }
+  if (pagina === "arbitraje") {
+    const a = inf.arbitraje;
+    let y = 92;
+    if (!a.filas.length) vacio(76, "Ninguna diferencia aprovechable con los criterios actuales.");
+    for (const f of a.filas.slice(0, 5)) {
+      P.push(iconoObj(f.id, M, y, 36), texto(M + 48, y + 18, recortar(nom(f.id), 21, 600, 560), { tam: 21, peso: 600, color: T.texto }),
+        texto(M + 48, y + 42, `${a.facA} ${textoMoneda(f.precioA)} · ${a.facB} ${textoMoneda(f.precioB)} · más barato en ${f.barata}`, { tam: 17, color: T.sec }),
+        texto(DER, y + 30, formatoVeces(f.veces), { tam: 28, peso: 800, color: T.azul, ancla: "end" }));
+      y += 92;
+    }
+    notaPie(`Estimación con ${c.comision_neutral_pct} % de comisión; requiere mover el objeto entre facciones. No es un beneficio garantizado.`);
+  }
+  if (pagina === "categorias") {
+    const wc = (CW - 2 * 12) / 3, hc = 100;
+    inf.categorias.forEach((k, i) => {
+      const x = M + (i % 3) * (wc + 12), y = 76 + Math.floor(i / 3) * (hc + 10);
+      const color = k.tendencia === "sube" ? T.verde : k.tendencia === "baja" ? T.rojo : T.sec;
+      P.push(rect(x, y, wc, hc, { rx: 12, fill: T.tarjeta, stroke: T.borde }), texto(x + 16, y + 28, recortar(k.nombre, 19, 600, wc - 32), { tam: 19, peso: 600, color: T.texto }));
+      if (k.variacion == null) P.push(texto(x + 16, y + 66, "Sin datos", { tam: 24, peso: 700, color: T.sec }));
+      else P.push(texto(x + 16, y + 66, formatoPct(k.variacion), { tam: 30, peso: 800, color }),
+        texto(x + 16, y + 89, `▼ ${k.bajan} · ▲ ${k.suben} de ${k.total}`, { tam: 16, color: T.sec }));
+    });
+    notaPie("Mediana de la variación de precio frente a ayer · ▼ bajan / ▲ suben más de un 2 %.");
+  }
+  if (pagina === "destacados") {
+    const ds = ver("destacados") ? inf.destacados : [];
+    const wd = (CW - 16) / 2, hd = 172;
+    const colores = { verde: T.verde, rojo: T.rojo, oro: T.oro, texto: T.texto };
+    ds.forEach((d, i) => {
+      const x = M + (i % 2) * (wd + 16), y = 76 + Math.floor(i / 2) * (hd + 14);
+      P.push(rect(x, y, wd, hd, { rx: 12, fill: T.tarjeta, stroke: T.borde }));
+      let xc = x + 18;
+      if (d.id != null) { P.push(iconoObj(d.id, x + 18, y + 20, 40)); xc += 52; }
+      P.push(texto(xc, y + 54, recortar(d.cifra, 34, 800, x + wd - 18 - xc), { tam: 34, peso: 800, color: colores[d.color] ?? T.texto }));
+      envolver(d.texto, 20, 400, wd - 36).slice(0, 4).forEach((l, j) => P.push(texto(x + 18, y + 94 + j * 25, l, { tam: 20, color: T.sec })));
+    });
+    if (!ds.length && ver("destacados")) vacio(76, "Sin datos destacados hoy.");
+    let y = 76 + Math.ceil(ds.length / 2) * (hd + 14) + 10;
+    if (ver("arbitraje") && !inf.arbitraje?.disponible) {
+      envolver(`Arbitraje entre facciones: ${(inf.arbitraje?.motivo ?? "Sin datos de la otra facción.").replace(/^./, (x) => x.toLowerCase())}`, 18, 400, CW).slice(0, 2)
+        .forEach((l, j) => P.push(texto(M, y + 18 + j * 22, l, { tam: 18, color: T.sec })));
+    }
+    notaPie(`${inf.kpi.escaneos} escaneos válidos (${inf.kpi.descartados} incompletos descartados). Ventas y oro: estimaciones (un escaneo no distingue venta de cancelación). Iconos: Blizzard Entertainment. No afiliado con Blizzard.`);
+  }
+
+  // ---- pie común: fuente de los precios (obligatoria con AHledger) y web
+  P.push(texto(M, H - 12, fuente, { tam: 15, color: T.sec }));
+  if (dominio) P.push(texto(DER, H - 12, dominio, { tam: 15, peso: 600, color: T.oro, ancla: "end" }));
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`
+    + `<defs>${defs.join("")}</defs>${rect(0, 0, W, H, { fill: T.fondo })}${rect(0, 0, W, 4, { fill: T.oro })}`
+    + `${rect(0.5, 0.5, W - 1, H - 1, { rx: 0, stroke: T.borde })}${P.join("")}</svg>`;
+  return { svg, ancho: W, alto: H };
 }
+
 
 /** URLs de iconos que necesita el informe (el servidor las descarga y las incrusta). */
 export function iconosInforme(inf) {

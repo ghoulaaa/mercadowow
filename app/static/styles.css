@@ -1465,6 +1465,8 @@ a.dc-titulo { color: #00a8fc; }
 .inf-casillas { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 12px; }
 .inf-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .inf-previa .sn-sec-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
-.inf-lienzo { border-radius: 8px; overflow: hidden; line-height: 0; background: #0e0e10; max-width: 1000px; }
+.inf-paginas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 400px)); gap: 14px; }
+.inf-pagina { margin: 0; display: grid; gap: 6px; }
+.inf-lienzo { border-radius: 4px; overflow: hidden; line-height: 0; background: #0e0e10; max-width: 400px; }
 .inf-lienzo svg { display: block; width: 100%; height: auto; }
 .inf-error td { padding-top: 0; }

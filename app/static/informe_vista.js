@@ -3,7 +3,7 @@
 // historial y botones (generar, enviar, probar, descargar PNG). La página nunca envía a Discord ni ve la URL
 // del webhook: guarda la configuración por /api/informes y pide a la Edge Function lo demás.
 
-import { CONFIG_INFORME, SECCIONES, informeSVG } from "./informe.js";
+import { CONFIG_INFORME, SECCIONES, TITULOS_PAGINA, informeSVG, paginasInforme } from "./informe.js";
 import { parsearMoneda } from "./moneda.js";
 
 const ESTADOS = { enviado: "Enviado", parcial: "Enviado a medias", error: "Error", generado: "Vista previa" };
@@ -121,20 +121,28 @@ export function crearVistaInformes(d) {
     if (visto?.datos) {
       const h = estado.historial.find((x) => x.id === visto.id);
       pc.append(el("span", "muted small", h ? `${TIPOS[h.tipo] ?? h.tipo} · ${d.fecha(h.creado)}` : `Informe ${visto.id}`));
-      const a = el("a", "btn btn-piedra btn-small", "Descargar PNG");
-      a.href = `/api/informes?png=${encodeURIComponent(visto.id)}`; a.download = `mercadowow-informe-${visto.id}.png`;
-      pc.append(a);
     }
     prev.append(pc);
     if (!visto?.datos) prev.append(el("p", "muted", "Aún no hay informes. Pulsa «Generar informe ahora» para ver uno con los datos actuales (no se envía)."));
     else {
+      prev.append(el("p", "muted small", "Así llega a Discord: una imagen por página, cada una en su embed (al tamaño que la muestra Discord)."));
+      const rejilla = el("div", "inf-paginas");
       try {
-        const { svg } = informeSVG(visto.datos, { sitio: visto.datos.sitio ?? estado.sitio_url });
-        const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
-        const nodo = document.importNode(doc.documentElement, true);
-        nodo.removeAttribute("width"); nodo.removeAttribute("height");
-        nodo.setAttribute("role", "img"); nodo.setAttribute("aria-label", "Informe diario del mercado");
-        const marco = el("div", "inf-lienzo"); marco.append(nodo); prev.append(marco);
+        if (visto.datos.version !== 2) throw new Error("este informe es de la versión anterior (una sola imagen); genera uno nuevo");
+        for (const pagina of paginasInforme(visto.datos)) {
+          const { svg } = informeSVG(visto.datos, { pagina, sitio: visto.datos.sitio ?? estado.sitio_url });
+          const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+          const nodo = document.importNode(doc.documentElement, true);
+          nodo.removeAttribute("width"); nodo.removeAttribute("height");
+          nodo.setAttribute("role", "img"); nodo.setAttribute("aria-label", TITULOS_PAGINA[pagina] ?? pagina);
+          const fig = el("figure", "inf-pagina");
+          const marco = el("div", "inf-lienzo"); marco.append(nodo);
+          const a = el("a", "small", `Descargar PNG · ${TITULOS_PAGINA[pagina] ?? pagina}`);
+          a.href = `/api/informes?png=${encodeURIComponent(visto.id)}&pagina=${pagina}`; a.download = `mercadowow-informe-${visto.id}-${pagina}.png`;
+          const cap = el("figcaption"); cap.append(a);
+          fig.append(marco, cap); rejilla.append(fig);
+        }
+        prev.append(rejilla);
       } catch (e) { prev.append(el("p", "bad", `No se pudo dibujar la vista previa: ${e.message}`)); }
     }
 
@@ -208,7 +216,7 @@ export function crearVistaInformes(d) {
       if (h.error) est.title = h.error;
       const ver = el("td"); if (h.estado !== "error" || h.id === estado.ultimo?.id) ver.append(boton(visto?.id === h.id ? "Viendo" : "Ver", "btn btn-piedra btn-small", { infVer: String(h.id) }));
       const png = el("td");
-      const a = el("a", "", "PNG"); a.href = `/api/informes?png=${encodeURIComponent(h.id)}`; a.download = `mercadowow-informe-${h.id}.png`;
+      const a = el("a", "", "PNG"); a.href = `/api/informes?png=${encodeURIComponent(h.id)}&pagina=resumen`; a.download = `mercadowow-informe-${h.id}.png`;
       if (h.estado !== "error") png.append(a);
       tr.append(el("td", "", d.fecha(h.creado)), el("td", "", TIPOS[h.tipo] ?? h.tipo), est,
         el("td", "", h.tipo === "vista" ? "—" : String(h.enviados)), ver, png);

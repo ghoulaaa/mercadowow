@@ -530,7 +530,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Informe diario: misma lógica que /api/informes en Vercel (la validación está en SQL).
     @app.get("/api/informes")
     def informes_leer(id: int | None = Query(default=None, gt=0, le=9007199254740991),
-                      png: int | None = Query(default=None, gt=0, le=9007199254740991)):
+                      png: int | None = Query(default=None, gt=0, le=9007199254740991),
+                      pagina: str = Query(default="resumen", pattern="^[a-z]{3,20}$")):
         try:
             with db.connect(settings.database_url) as conn:
                 if id is not None:
@@ -548,7 +549,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         import json as _json
         import urllib.request
         from fastapi import Response
-        pedido = urllib.request.Request(url, data=_json.dumps({"tarea": "informe_png", "token": token, "id": png}).encode(),
+        pedido = urllib.request.Request(url, data=_json.dumps({"tarea": "informe_png", "token": token, "id": png, "pagina": pagina}).encode(),
                                         headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(pedido, timeout=60) as r:
@@ -558,7 +559,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception:
             return JSONResponse(status_code=502, content={"error": "No se pudo dibujar la imagen"})
         return Response(datos, media_type="image/png", headers={**SIN_CACHE,
-                        "Content-Disposition": f'attachment; filename="mercadowow-informe-{png}.png"'})
+                        "Content-Disposition": f'attachment; filename="mercadowow-informe-{png}-{pagina}.png"'})
 
     @app.post("/api/informes")
     def informes_gestionar(c: dict = Body(...)):

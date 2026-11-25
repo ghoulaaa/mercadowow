@@ -1,7 +1,7 @@
 # Informe diario del mercado (MercadoWoW · Market Intelligence)
 
 Cada día, a la hora elegida y en la zona horaria elegida, MercadoWoW calcula un informe de las **últimas 24 horas**
-de la casa de subastas frente a las 24 horas anteriores, lo dibuja como **una imagen PNG** y lo envía a Discord.
+de la casa de subastas frente a las 24 horas anteriores, lo dibuja como **páginas PNG apaisadas** y lo envía a Discord.
 Solo analiza y avisa: nada compra, vende ni actúa en el juego.
 
 ## Dónde se configura
@@ -26,14 +26,21 @@ La vista previa de la página y la imagen de Discord salen del **mismo código**
 2. La Edge Function (`{"tarea": "informe"}`) lee los datos (`informe_base`, SQL), calcula el informe
    (`analizarInforme`), lo guarda en `informes` (los datos, no la imagen) y pide el PNG en otra petición
    (`{"tarea": "informe_png"}`, con el token interno, para que tenga su propio tiempo de CPU).
-3. Lo envía a cada webhook como multipart (`payload_json` + `files[0]`), con la imagen dentro del embed mediante
-   `attachment://mercadowow-report.png`, color dorado, enlace al panel y el resumen del día. Discord muestra la
-   imagen reducida dentro del mensaje; al pulsarla se ve a tamaño completo.
+3. Lo envía a cada webhook en **un solo mensaje** multipart (`payload_json` + `files[0…]`) con una página por embed:
+   la primera (`attachment://mercadowow-report.png`) con el título enlazado, el resumen del día y el período; las
+   demás (`mercadowow-report-2.png`, …) sin enlace, para que Discord no las junte en una galería pequeña; la última
+   con el pie y la hora. Color dorado en todas.
 4. El resultado queda en el historial: enviado, enviado a medias (algún webhook falló) o error (con el motivo, sin
    la URL). Un fallo se reintenta en la siguiente vuelta, como mucho 3 veces al día. Se guardan los 90 últimos.
 
-La imagen mide 1600 de ancho en el dibujo y se exporta a **1200 px** de ancho (el render tarda la mitad y cabe en el
-tiempo de CPU de la Edge Function); el alto depende del contenido.
+**Por qué páginas:** Discord encaja la imagen de cada embed en unos 400 × 300 px; un informe alto (la primera
+versión, de 1600 × 3600) se veía diminuto. Cada página mide 800 × 600 (4:3) en el dibujo, con letra de al menos
+16–20 unidades, y se exporta a 1200 × 900 px. Cada una se dibuja en su propia petición (70–190 ms) y en paralelo; si
+falla una que no sea la primera, se envían las demás y el historial lo anota.
+
+Páginas (las secciones ocultas no salen): Resumen (indicadores y gráfico de 24 h) · Oro y consumibles · Subidas y
+caídas · Gangas del día · Mejores crafteos · Arbitraje (solo con datos de la otra facción) · Categorías · Datos
+interesantes (con la nota del arbitraje si no hay datos y el aviso de estimaciones).
 
 ## Secciones y criterios
 
@@ -45,7 +52,7 @@ menos del 90 % de los objetos habituales o menos del 60 % de las unidades habitu
 | Indicadores | Unidades publicadas (máximo del día), su variación media frente a ayer, oro movido al día y unidades vendidas al día | El proveedor no da el número de subastas: se usan **unidades publicadas**. Ventas y oro son **estimaciones** (ventas/día del proveedor × precio). |
 | Actividad 24 h | Unidades publicadas en cada escaneo válido, con máximo, mínimo y último | Sin escaneo no hay punto: nada se rellena. Menos de 3 escaneos: «Datos insuficientes». |
 | Mayor volumen de oro | Los objetos que más oro mueven al día | Ventas/día ≥ liquidez mínima (y ≥ 0,5). Precio: mediana de 24 h sin pasar de la mediana de 30 días (un anuncio inflado no mueve oro). |
-| Más comercializados | Más unidades vendidas al día | Igual; la variación solo si la comparación es fiable. |
+| Consumibles más vendidos | Consumibles (clase «Consumable» del catálogo) con más unidades vendidas al día y su precio por unidad | Ventas/día ≥ liquidez mínima (y ≥ 0,5); precio como en el volumen de oro. Sustituye a «Más comercializados» (migración 0051). |
 | Mayores subidas / caídas | Mediana de 24 h frente a la de las 24 h anteriores | Comparación **fiable**: escaneos suficientes en ambas ventanas, al menos 3 unidades publicadas, precio anterior ≥ 1 plata, ventas/día ≥ liquidez mínima, al menos un 5 % de cambio y **como mucho 20 veces** (más se trata como anomalía o manipulación). En caídas, «posible compra» si se vende a diario y está por debajo del 80 % de su mediana de 30 días. |
 | Arbitraje entre facciones | Mismo objeto en Horda y Alianza | Solo si se registra la otra facción con el mismo proveedor y escaneos recientes. Hoy solo se registra la Horda: la sección lo dice. Usa el precio típico de cada lado, exige ≥ 1,5 veces y descuenta un 15 % de comisión (casa neutral; valor sin verificar). Nunca se presenta como beneficio garantizado. |
 | Gangas del día | Compra mínima actual frente a su referencia | Referencia = la menor de la mediana de 7 días (MercadoWoW) y la de 30 días (proveedor). Descuento ≥ mínimo, liquidez ≥ mínima, beneficio neto ≥ mínimo tras 5 % de comisión y depósito, y la mediana del día ≥ 60 % de la referencia (si todo el mercado del objeto cayó, no es una ganga puntual). Reventa recomendada: referencia − 5 %. Confianza **alta**: ≥ 2 ventas/día, ≥ 12 escaneos, medianas de 7 y 30 días coherentes (±30 %) y precio del día ≥ 85 % de la referencia; si no, **media**. |

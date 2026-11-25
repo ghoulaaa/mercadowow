@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { ejecutarInforme } from "../functions/actualizar-mercado/informe.ts";
-import { analizarInforme, completarInforme, informeSVG } from "../../app/static/informe.js";
+import { analizarInforme, completarInforme, informeSVG, paginasInforme } from "../../app/static/informe.js";
 import type { Db } from "../functions/actualizar-mercado/nucleo.ts";
 
 const AHL = "ahledger:forever:us:pvp-horde";
@@ -34,9 +34,10 @@ describe("informe diario (SQL + tarea)", () => {
     }
   }
   function discord() {
-    const recibidos: { url: string; cuerpo: any; archivo?: Blob }[] = [];
+    const recibidos: { url: string; cuerpo: any; archivo?: Blob; archivos?: string[] }[] = [];
     const f = (async (url: string, init: any) => {
-      if (init.body instanceof FormData) recibidos.push({ url, cuerpo: JSON.parse(String(init.body.get("payload_json"))), archivo: init.body.get("files[0]") as Blob });
+      if (init.body instanceof FormData) recibidos.push({ url, cuerpo: JSON.parse(String(init.body.get("payload_json"))), archivo: init.body.get("files[0]") as Blob,
+        archivos: [...init.body.keys()].filter((k: string) => k.startsWith("files[")).map((k: string) => (init.body.get(k) as File).name) });
       else recibidos.push({ url, cuerpo: JSON.parse(init.body) });
       return new Response(JSON.stringify({ id: "1" }), { status: 200 });
     }) as unknown as typeof fetch;
@@ -56,7 +57,7 @@ describe("informe diario (SQL + tarea)", () => {
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
                      "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql", "0047_sniper_apariencia.sql",
-                     "0048_sniper_tarjeta.sql", "0049_informe_diario.sql"]) await pg.exec(leer(n));
+                     "0048_sniper_tarjeta.sql", "0049_informe_diario.sql", "0051_informe_paginas.sql"]) await pg.exec(leer(n));
     const cat = [[1, "Peacebloom", "Trade Goods", "Herb"], [2, "Mechanical Squirrel Box", "Miscellaneous", "Pet"],
                  [3, "Arcane Crystal", "Trade Goods", "Metal & Stone"], [4, "Thorium Bar", "Trade Goods", "Metal & Stone"],
                  [5, "Runecloth", "Trade Goods", "Cloth"]]
@@ -108,10 +109,19 @@ describe("informe diario (SQL + tarea)", () => {
     completarInforme(inf, { 2: { n: "Caja de ardilla", i: null, q: "COMMON" } });
     assert.match(inf.resumen, /1 ganga de reventa y 0 crafteos rentables/);
     assert.equal(inf.destacados[0].cifra, "2×");
-    const { svg } = informeSVG(inf, { sitio: "https://mercadowow.vercel.app" });
-    assert.match(svg, /Informe diario del mercado/);
-    assert.match(svg, /Solo se registran precios de la casa de Horda/);
-    assert.match(svg, /Ningún crafteo cumple/);
+    // Páginas apaisadas de 800 × 600 (4:3): una por embed de Discord.
+    assert.deepEqual(paginasInforme(inf), ["resumen", "oro", "cambios", "gangas", "crafteos", "categorias", "destacados"]);
+    const pag = (p: string) => informeSVG(inf, { pagina: p, sitio: "https://mercadowow.vercel.app" });
+    assert.deepEqual([pag("resumen").ancho, pag("resumen").alto], [800, 600]);
+    assert.match(pag("resumen").svg, /Informe diario del mercado/);
+    assert.match(pag("destacados").svg, /solo se registran precios de la casa de Horda/);
+    assert.match(pag("crafteos").svg, /Ningún crafteo cumple/);
+    assert.match(pag("oro").svg, /CONSUMIBLES MÁS VENDIDOS/);
+    assert.match(pag("oro").svg, /Sin estimaciones de ventas de consumibles/);   // el catálogo de prueba no tiene consumibles
+    assert.match(pag("gangas").svg, /Prices from AHledger/);
+    // Sin secciones de gangas ni crafteos, sus páginas desaparecen.
+    assert.deepEqual(paginasInforme({ ...inf, config: { ...inf.config, secciones: { gangas: false, crafteos: false } } }),
+      ["resumen", "oro", "cambios", "categorias", "destacados"]);
   });
 
   test("enviar: guarda el informe, adjunta la imagen y la muestra en el embed; la URL no sale", async () => {
@@ -119,19 +129,26 @@ describe("informe diario (SQL + tarea)", () => {
     const d = discord();
     const pedidas: number[] = [];
     const r = await ejecutarInforme(db, { fetch: d.f, modo: "enviar", ahora: () => AHORA, espera: sinEspera,
-                                          renderizar: async (id) => { pedidas.push(id); return png; } });
+                                          renderizar: async (id, pagina) => { pedidas.push(id); return pagina === "categorias" ? null : png; } });
     assert.equal(r.estado, "ok");
     assert.equal(d.recibidos.length, 1);
     const c = d.recibidos[0].cuerpo;
     assert.equal(c.username, "MercadoWoW | Market Intelligence");
     assert.equal(c.embeds[0].title, "Informe diario del mercado");
+    // Una imagen por página (la que no se pudo dibujar se omite); la primera, mercadowow-report.png.
+    assert.equal(c.embeds.length, 6);
     assert.equal(c.embeds[0].image.url, "attachment://mercadowow-report.png");
+    assert.equal(c.embeds[1].image.url, "attachment://mercadowow-report-2.png");
+    assert.equal(c.embeds[1].url, undefined);                          // sin enlace: Discord no las junta en galería
+    assert.deepEqual(d.recibidos[0].archivos, c.attachments.map((a: any) => a.filename));
     assert.equal(c.attachments[0].filename, "mercadowow-report.png");
-    assert.equal(c.embeds[0].color, 0xE9BC65);
-    assert.match(c.embeds[0].footer.text, /Prices from AHledger/);
+    assert.ok(c.embeds.every((e: any) => e.color === 0xE9BC65));
+    assert.match(c.embeds.at(-1).footer.text, /Prices from AHledger/);
+    assert.equal(c.embeds[0].footer, undefined);
     assert.deepEqual(new Uint8Array(await d.recibidos[0].archivo!.arrayBuffer()), png);
     const est = (await uno("select informe_estado() as r")).r;
     assert.deepEqual([est.historial[0].estado, est.historial[0].tipo, est.historial[0].enviados], ["enviado", "manual", 1]);
+    assert.match(est.historial[0].error, /1 página\(s\) sin imagen/);
     assert.equal(est.ultimo.id, pedidas[0]);
     assert.equal(JSON.stringify(est).includes("BBBBBBBB"), false);
     // Sin imagen no se envía: queda como error.
@@ -168,6 +185,7 @@ describe("informe diario (SQL + tarea)", () => {
     await assert.rejects(configurar({ zona: "Marte/Base" }), /Zona horaria/);
     await assert.rejects(configurar({ hora: 25 }), /no válido/);
     await assert.rejects(configurar({ secciones: { brillo: true } }), /Sección desconocida/);
+    await assert.rejects(configurar({ secciones: { comerciados: false } }), /Sección desconocida/);   // sustituida por «consumibles»
     await assert.rejects(configurar({ nombre: "Discord bot" }), /no permite/);
     await assert.rejects(configurar({ webhooks: [999] }), /Webhook desconocido/);
     await assert.rejects(configurar({ market_key: "no:existe" }), /Mercado desconocido/);

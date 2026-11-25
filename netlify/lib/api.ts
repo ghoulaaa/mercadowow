@@ -753,7 +753,8 @@ export function crearApi(db: Db, o: OpcionesApi) {
 
     /**
      * Informe diario del mercado. GET: configuración, webhooks (sin URL), próximo envío, historial y el último
-     * informe; ?id=N → datos de un informe; ?png=N → la imagen (la dibuja la Edge Function con el token interno).
+     * informe; ?id=N → datos de un informe; ?png=N[&pagina=…] → la imagen de una página (la dibuja la Edge Function
+     * con el token interno).
      * POST {accion}: config (gestionar_informe) y generar | enviar | prueba (informe_solicitar: los envíos los
      * hace la Edge Function, nunca la página).
      */
@@ -771,13 +772,15 @@ export function crearApi(db: Db, o: OpcionesApi) {
             const url = await llamar(db, "select sniper_url_funcion() as r", []);
             const token = await llamar(db, "select sniper_token() as r", []);
             if (typeof url !== "string" || typeof token !== "string") return json(503, { error: "La Edge Function no está configurada" });
+            const pagina = q.get("pagina") ?? "resumen";
+            if (!/^[a-z]{3,20}$/.test(pagina)) return json(400, { error: "Página no válida" });
             const r = await (o.fetch ?? fetch)(url, { method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tarea: "informe_png", token, id }), signal: AbortSignal.timeout(60_000) });
+              body: JSON.stringify({ tarea: "informe_png", token, id, pagina }), signal: AbortSignal.timeout(60_000) });
             if (!r.ok || !(r.headers.get("content-type") ?? "").startsWith("image/png")) {
               return json(r.status === 404 ? 404 : 502, { error: r.status === 404 ? "Ese informe no tiene datos" : "No se pudo dibujar la imagen" });
             }
             return new Response(await r.arrayBuffer(), { status: 200, headers: { "Content-Type": "image/png", "Cache-Control": "no-store",
-              "Content-Disposition": `attachment; filename="mercadowow-informe-${id}.png"` } });
+              "Content-Disposition": `attachment; filename="mercadowow-informe-${id}-${pagina}.png"` } });
           }
           return json(200, await llamar(db, "select informe_estado() as r", []));
         }

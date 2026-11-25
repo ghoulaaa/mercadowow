@@ -83,11 +83,11 @@ export async function dibujarTarjeta(o: any, opciones: any): Promise<Uint8Array>
   return png;
 }
 
-/** Ancho del PNG del informe diario (el dibujo mide 1600 de ancho; a 1200 px el render tarda la mitad). */
+/** Ancho del PNG de cada página del informe diario (el dibujo mide 800 × 600: a 1200 px, 1,5 veces más nítido). */
 export const ANCHO_PNG_INFORME = 1200;
 
-/** PNG del informe diario a partir de sus datos guardados (informes.datos). */
-export async function dibujarInforme(datos: any, sitio = ""): Promise<Uint8Array> {
+/** PNG de una página del informe diario a partir de sus datos guardados (informes.datos). */
+export async function dibujarInforme(datos: any, sitio = "", pagina = "resumen"): Promise<Uint8Array> {
   const fuentes = await preparar();
   const iconos: Record<string, string> = {};
   const respaldo = await icono(ICONO_RESPALDO);
@@ -96,7 +96,7 @@ export async function dibujarInforme(datos: any, sitio = ""): Promise<Uint8Array
     if (d) iconos[u] = d;
   }));
   if (respaldo) iconos[ICONO_RESPALDO] = respaldo;
-  const { svg } = informeSVG(datos, { iconos, sitio });
+  const { svg } = informeSVG(datos, { iconos, sitio, pagina });
   const r = new Resvg(svg, { fitTo: { mode: "width", value: ANCHO_PNG_INFORME },
                              font: { fontBuffers: fuentes, defaultFontFamily: "Inter", loadSystemFonts: false } });
   const png = r.render().asPng();
