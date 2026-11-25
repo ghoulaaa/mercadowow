@@ -527,6 +527,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(status_code=503, content=SIN_CONEXION)
         return JSONResponse(status_code=202, content={"ok": True}) if envio else r
 
+    # Informe diario: misma lógica que /api/informes en Vercel (la validación está en SQL).
+    @app.get("/api/informes")
+    def informes_leer(id: int | None = Query(default=None, gt=0, le=9007199254740991),
+                      png: int | None = Query(default=None, gt=0, le=9007199254740991)):
+        try:
+            with db.connect(settings.database_url) as conn:
+                if id is not None:
+                    return JSONResponse(conn.execute("select informe_datos(%s) as r", (id,)).fetchone()["r"], headers=SIN_CACHE)
+                if png is not None:
+                    url = conn.execute("select sniper_url_funcion() as r").fetchone()["r"]
+                    token = conn.execute("select sniper_token() as r").fetchone()["r"]
+                else:
+                    return JSONResponse(conn.execute("select informe_estado() as r").fetchone()["r"], headers=SIN_CACHE)
+        except Exception as exc:
+            log.warning("Fallo al leer los informes: %s", type(exc).__name__)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        if not url or not token:
+            return JSONResponse(status_code=503, content={"error": "La Edge Function no está configurada"})
+        import json as _json
+        import urllib.request
+        from fastapi import Response
+        pedido = urllib.request.Request(url, data=_json.dumps({"tarea": "informe_png", "token": token, "id": png}).encode(),
+                                        headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(pedido, timeout=60) as r:
+                if not (r.headers.get("content-type") or "").startswith("image/png"):
+                    return JSONResponse(status_code=502, content={"error": "No se pudo dibujar la imagen"})
+                datos = r.read()
+        except Exception:
+            return JSONResponse(status_code=502, content={"error": "No se pudo dibujar la imagen"})
+        return Response(datos, media_type="image/png", headers={**SIN_CACHE,
+                        "Content-Disposition": f'attachment; filename="mercadowow-informe-{png}.png"'})
+
+    @app.post("/api/informes")
+    def informes_gestionar(c: dict = Body(...)):
+        if not isinstance(c.get("accion"), str):
+            return JSONResponse(status_code=400, content={"error": "Falta accion"})
+        envio = c["accion"] in ("generar", "enviar", "prueba")
+        try:
+            with db.connect(settings.database_url) as conn, conn.transaction():
+                sql = "select informe_solicitar(%s::jsonb) as r" if envio else "select gestionar_informe(%s::jsonb) as r"
+                r = conn.execute(sql, (Jsonb(c),)).fetchone()["r"]
+        except Exception as exc:
+            if (resp := _error_validacion(exc)) is not None:
+                return resp
+            log.warning("Fallo al gestionar los informes: %s", type(exc).__name__)
+            return JSONResponse(status_code=503, content=SIN_CONEXION)
+        return JSONResponse(status_code=202, content={"ok": True}) if envio else r
+
     @app.get("/api/alertas")
     def alertas_leer(mercado: str | None = Query(default=None, max_length=100),
                      objeto: int | None = Query(default=None, gt=0, le=2147483647)):

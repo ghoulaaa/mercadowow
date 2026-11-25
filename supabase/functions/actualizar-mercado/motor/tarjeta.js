@@ -21,7 +21,7 @@ export const CALIDADES = {
 const RIESGOS = { bajo: ["Bajo", "verde"], medio: ["Medio", "#FACC15"], alto: ["Alto", "rojo"], desconocido: ["Sin datos", "sec"] };
 
 // ---------- utilidades ----------
-const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const r1 = (v) => Math.round(v * 10) / 10;
 
 /** Ancho aproximado de un texto en Inter (para recortar y ajustar tamaños; el dibujo final lo hace la fuente). */
@@ -40,7 +40,7 @@ export function recortar(t, tam, peso, max) {
   return t.trimEnd() + "…";
 }
 /** Tamaño de letra para que un texto quepa en `max` (sin bajar de `min`). */
-const ajustar = (t, tam, peso, max, min = 14) => Math.max(min, Math.min(tam, Math.floor(tam * max / Math.max(1, anchoTexto(t, tam, peso)))));
+export const ajustar = (t, tam, peso, max, min = 14) => Math.max(min, Math.min(tam, Math.floor(tam * max / Math.max(1, anchoTexto(t, tam, peso)))));
 
 /** Cobre → partes [{n: "4", u: "g"}, …]. Sin decimales; plata y cobre a dos cifras tras una unidad mayor. */
 export function partesMoneda(cobre, ap = APARIENCIA_DEFECTO) {
@@ -55,17 +55,17 @@ export function partesMoneda(cobre, ap = APARIENCIA_DEFECTO) {
   if (cob || !p.length) p.push({ n: p.length ? String(cob).padStart(2, "0") : String(cob), u: letras[2], k: "cobre" });
   return { signo: cobre < 0 ? "−" : "", p };
 }
-const textoMoneda = (cobre, ap) => { const m = partesMoneda(cobre, ap); return m ? m.signo + m.p.map((x) => x.n + x.u).join(" ") : "Sin datos"; };
+export const textoMoneda = (cobre, ap) => { const m = partesMoneda(cobre, ap); return m ? m.signo + m.p.map((x) => x.n + x.u).join(" ") : "Sin datos"; };
 
 const pct = (v) => (v == null || !Number.isFinite(v) ? "Sin datos" : `${v.toLocaleString("es", { maximumFractionDigits: Math.abs(v) < 10 ? 1 : 0 })} %`);
 
 // ---------- piezas SVG ----------
-function texto(x, y, t, { tam = 18, peso = 400, color, ancla = "start", esp = 0, op = 1 } = {}) {
-  return `<text x="${r1(x)}" y="${r1(y)}" font-family="${FUENTE}" font-size="${tam}" font-weight="${peso}" fill="${color}"`
+export function texto(x, y, t, { tam = 18, peso = 400, color, ancla = "start", esp = 0, op = 1, fuente = FUENTE } = {}) {
+  return `<text x="${r1(x)}" y="${r1(y)}" font-family="${fuente}" font-size="${tam}" font-weight="${peso}" fill="${color}"`
     + `${ancla !== "start" ? ` text-anchor="${ancla}"` : ""}${esp ? ` letter-spacing="${esp}"` : ""}${op < 1 ? ` opacity="${op}"` : ""}>${esc(t)}</text>`;
 }
 /** Importe con la cifra en un color y la letra de la moneda en el suyo. `signo`: «+» para ganancias. */
-function moneda(x, y, cobre, { tam, peso = 700, color, ancla = "start", signo = "", ap, T }) {
+export function moneda(x, y, cobre, { tam, peso = 700, color, ancla = "start", signo = "", ap, T }) {
   const m = partesMoneda(cobre, ap);
   if (!m) return texto(x, y, "Sin datos", { tam: Math.round(tam * 0.7), peso: 500, color: T.sec, ancla });
   const col = { oro: T.oro, plata: T.plata, cobre: T.cobre };
@@ -74,13 +74,13 @@ function moneda(x, y, cobre, { tam, peso = 700, color, ancla = "start", signo = 
   return `<text x="${r1(x)}" y="${r1(y)}" font-family="${FUENTE}" font-size="${tam}" font-weight="${peso}"${ancla !== "start" ? ` text-anchor="${ancla}"` : ""}>${pre}${spans}</text>`;
 }
 const anchoMoneda = (cobre, tam, peso, ap) => anchoTexto(textoMoneda(cobre, ap), tam, peso);
-const rect = (x, y, w, h, { rx = 0, fill = "none", stroke = null, sw = 1, op = 1 } = {}) =>
+export const rect = (x, y, w, h, { rx = 0, fill = "none", stroke = null, sw = 1, op = 1 } = {}) =>
   `<rect x="${r1(x)}" y="${r1(y)}" width="${r1(Math.max(0, w))}" height="${r1(Math.max(0, h))}" rx="${rx}" fill="${fill}"`
   + `${stroke ? ` stroke="${stroke}" stroke-width="${sw}"` : ""}${op < 1 ? ` opacity="${op}"` : ""}/>`;
-const linea = (x1, y1, x2, y2, color, sw = 1) => `<line x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${color}" stroke-width="${sw}"/>`;
+export const linea = (x1, y1, x2, y2, color, sw = 1) => `<line x1="${r1(x1)}" y1="${r1(y1)}" x2="${r1(x2)}" y2="${r1(y2)}" stroke="${color}" stroke-width="${sw}"/>`;
 
 /** Barra de progreso: `fr` (0–1) de `ancho`; extremos redondeados. */
-function barra(x, y, w, h, fr, color, T) {
+export function barra(x, y, w, h, fr, color, T) {
   const f = Math.max(0, Math.min(1, fr));
   return rect(x, y, w, h, { rx: h / 2, fill: T.pista }) + (f > 0 ? rect(x, y, Math.max(h, w * f), h, { rx: h / 2, fill: color }) : "");
 }

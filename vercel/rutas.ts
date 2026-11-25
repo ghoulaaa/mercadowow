@@ -9,7 +9,7 @@ export const RUTAS: Record<string, string> = {
   actualizar: "actualizar", ajustes: "ajustes", alertas: "alertas", listas: "listas", catalogo: "catalogo", categorias: "categorias",
   cobertura: "cobertura", "compra-npc": "compraNpc", demo: "demo", estado: "estado", explicacion: "explicacion",
   favorito: "favorito", "historial-fuente": "historialFuente", historial: "historial",
-  importar: "importar", inventario: "inventario", login: "login", logout: "logout", mapa: "mapa",
+  importar: "importar", informes: "informes", inventario: "inventario", login: "login", logout: "logout", mapa: "mapa",
   mercado: "mercado", "nombres-es": "nombresEs", objeto: "objeto", "perfil-subasta": "perfilSubasta", precios: "precios",
   recetas: "recetas", sniper: "sniper", tasas: "tasas", tooltip: "tooltip", ventas: "ventas", version: "version",
 };

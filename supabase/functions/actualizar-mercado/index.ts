@@ -12,7 +12,8 @@
 import postgres from "npm:postgres@3.4.9";
 import { actualizarFichas, actualizarNombresEs, actualizarNombresEsExtra, actualizarRecetas, actualizarRegion, completarCatalogo, ejecutarTodos, type Db } from "./nucleo.ts";
 import { ejecutarSniper } from "./sniper.ts";
-import { dibujarTarjeta } from "./tarjeta_png.ts";
+import { dibujarInforme, dibujarTarjeta } from "./tarjeta_png.ts";
+import { ejecutarInforme } from "./informe.ts";
 
 // SUPABASE_DB_URL la inyecta Supabase automáticamente; nunca sale del servidor.
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false });
@@ -24,7 +25,7 @@ Deno.serve(async (req) => {
   }
   try {
     const cuerpo = await req.json().catch(() => ({})) as { tarea?: string; modo?: string; webhook?: number; spell?: number;
-                                                          token?: string; o?: unknown; opciones?: unknown };
+                                                          token?: string; o?: unknown; opciones?: unknown; id?: unknown };
     // Tarjeta gráfica del sniper: solo con el token interno (la pide el propio sniper, una por petición).
     if (cuerpo?.tarea === "tarjeta") {
       const token = (await db.consulta("select sniper_token() as r", []))[0]?.r;
@@ -33,6 +34,27 @@ Deno.serve(async (req) => {
       }
       const png = await dibujarTarjeta(cuerpo.o, cuerpo.opciones ?? {});
       return new Response(png, { headers: { "Content-Type": "image/png" } });
+    }
+    // PNG del informe diario guardado (lo piden el propio informe y la descarga de la página), con el mismo token.
+    if (cuerpo?.tarea === "informe_png") {
+      const token = (await db.consulta("select sniper_token() as r", []))[0]?.r;
+      if (typeof token !== "string" || typeof cuerpo.token !== "string" || cuerpo.token !== token) {
+        return new Response("No autorizado", { status: 401 });
+      }
+      if (!Number.isSafeInteger(cuerpo.id) || (cuerpo.id as number) <= 0) return new Response("Informe no válido", { status: 400 });
+      const r = (await db.consulta("select informe_datos($1::bigint) as r", [cuerpo.id]))[0]?.r;
+      const datos = typeof r === "string" ? JSON.parse(r) : r;
+      if (!datos) return new Response("Informe sin datos", { status: 404 });
+      const png = await dibujarInforme(datos, datos.sitio ?? "");
+      return new Response(png, { headers: { "Content-Type": "image/png" } });
+    }
+    if (cuerpo?.tarea === "informe") {
+      const modos = ["auto", "generar", "enviar", "prueba"] as const;
+      const r = await ejecutarInforme(db, { fetch,
+        modo: modos.includes(cuerpo.modo as never) ? cuerpo.modo as typeof modos[number] : "auto",
+        webhook: Number.isInteger(cuerpo.webhook) ? cuerpo.webhook : undefined });
+      console.log(JSON.stringify({ informe: r }));
+      return Response.json({ informe: r });
     }
     const modos = ["auto", "analizar", "prueba", "manual"] as const;
     const resultado = cuerpo?.tarea === "sniper"

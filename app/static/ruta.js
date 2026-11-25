@@ -9,6 +9,6 @@ export function leerRuta(hash) {
     return { vista: "objeto", id: Number(arg) };
   }
   // Pestañas de Fabricación: Recetas, Oportunidades y Sniper (avisos a Discord).
-  if (["fabricacion", "oportunidades", "sniper"].includes(vista) && arg === undefined) return { vista, id: null };
+  if (["fabricacion", "oportunidades", "sniper", "informes"].includes(vista) && arg === undefined) return { vista, id: null };
   return { vista: "mercado", id: null };
 }

@@ -1332,6 +1332,7 @@ body.fab-con-panel { overflow: hidden; }
    Colores de clase inspirados en las calidades de objetos de WoW; verde solo para ganancias.
    ===================================================================== */
 #vista-fabricacion:not(.modo-sniper) .solo-sniper { display: none !important; }
+#vista-fabricacion.modo-informes .solo-sniper, #vista-fabricacion:not(.modo-informes) .solo-informes { display: none !important; }
 #vista-fabricacion.modo-sniper .fab-barra, #vista-fabricacion.modo-sniper #fab-chips, #vista-fabricacion.modo-sniper .fab-herr,
 #vista-fabricacion.modo-sniper .solo-tabla, #vista-fabricacion.modo-sniper .solo-oport, #vista-fabricacion.modo-sniper #fab-vacio,
 #vista-fabricacion.modo-sniper #fab-paginador, #vista-fabricacion.modo-sniper #fab-nuevo-orden,
@@ -1450,3 +1451,20 @@ a.dc-titulo { color: #00a8fc; }
   .dc-mini { width: 56px; height: 56px; }
   .dc-campo, .dc-desc { font-size: 13px; }
 }
+/* ---------- Informe diario del mercado (informe_vista.js) ---------- */
+.inf-config { display: grid; gap: var(--esp-3); }
+.inf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--esp-3) var(--esp-4); align-items: start; }
+.inf-campo { display: grid; gap: 4px; min-width: 0; }
+.inf-campo > span { font-weight: 600; font-size: .9rem; }
+.inf-campo input, .inf-campo select { width: 100%; min-width: 0; }
+.inf-casilla { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.inf-casilla span { overflow-wrap: anywhere; }
+.inf-fs { border: 1px solid var(--borde, #2b2b30); border-radius: 8px; padding: 10px 14px 12px; display: grid; gap: 8px; min-width: 0; }
+.inf-fs legend { padding: 0 6px; font-weight: 600; }
+.inf-wh { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.inf-casillas { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 12px; }
+.inf-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.inf-previa .sn-sec-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.inf-lienzo { border-radius: 8px; overflow: hidden; line-height: 0; background: #0e0e10; max-width: 1000px; }
+.inf-lienzo svg { display: block; width: 100%; height: auto; }
+.inf-error td { padding-top: 0; }

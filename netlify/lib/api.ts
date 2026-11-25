@@ -751,6 +751,50 @@ export function crearApi(db: Db, o: OpcionesApi) {
       }
     },
 
+    /**
+     * Informe diario del mercado. GET: configuración, webhooks (sin URL), próximo envío, historial y el último
+     * informe; ?id=N → datos de un informe; ?png=N → la imagen (la dibuja la Edge Function con el token interno).
+     * POST {accion}: config (gestionar_informe) y generar | enviar | prueba (informe_solicitar: los envíos los
+     * hace la Edge Function, nunca la página).
+     */
+    async informes(req: Request): Promise<Response> {
+      if (!configurada) return sinConfigurar();
+      if (!autenticado(req)) return json(401, { error: "no_autenticado" });
+      try {
+        if (req.method === "GET") {
+          const q = new URL(req.url).searchParams;
+          const num = (k: string) => Number(q.get(k));
+          if (q.has("id") || q.has("png")) {
+            const id = q.has("id") ? num("id") : num("png");
+            if (!Number.isSafeInteger(id) || id <= 0) return json(400, { error: "Informe no válido" });
+            if (q.has("id")) return json(200, await llamar(db, "select informe_datos($1::bigint) as r", [id]));
+            const url = await llamar(db, "select sniper_url_funcion() as r", []);
+            const token = await llamar(db, "select sniper_token() as r", []);
+            if (typeof url !== "string" || typeof token !== "string") return json(503, { error: "La Edge Function no está configurada" });
+            const r = await (o.fetch ?? fetch)(url, { method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tarea: "informe_png", token, id }), signal: AbortSignal.timeout(60_000) });
+            if (!r.ok || !(r.headers.get("content-type") ?? "").startsWith("image/png")) {
+              return json(r.status === 404 ? 404 : 502, { error: r.status === 404 ? "Ese informe no tiene datos" : "No se pudo dibujar la imagen" });
+            }
+            return new Response(await r.arrayBuffer(), { status: 200, headers: { "Content-Type": "image/png", "Cache-Control": "no-store",
+              "Content-Disposition": `attachment; filename="mercadowow-informe-${id}.png"` } });
+          }
+          return json(200, await llamar(db, "select informe_estado() as r", []));
+        }
+        if (req.method !== "POST") return json(405, { error: "Método no permitido" });
+        let c: any;
+        try { c = await leerJson(req, 20_000); } catch { return json(400, { error: "Petición mal formada" }); }
+        if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.accion !== "string") return json(400, { error: "Falta accion" });
+        if (["generar", "enviar", "prueba"].includes(c.accion)) {
+          await llamar(db, "select informe_solicitar($1::text::jsonb) as r", [JSON.stringify(c)]);
+          return json(202, { ok: true });
+        }
+        return json(200, await llamar(db, "select gestionar_informe($1::text::jsonb) as r", [JSON.stringify(c)]));
+      } catch (e) {
+        return fallaBd(e);
+      }
+    },
+
     /** Reglas de comisión y depósito (auction_fee_rules): leer y editar. */
     async tasas(req: Request): Promise<Response> {
       if (!configurada) return sinConfigurar();

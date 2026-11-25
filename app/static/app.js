@@ -124,7 +124,7 @@ const abiertas = new Set();   // categorías desplegadas en el árbol
 
 // ---------- vistas ----------
 /** «Fabricación» y «Mejores oportunidades» son la misma sección con dos modos. */
-const enFab = () => ["fabricacion", "oportunidades", "sniper"].includes(leerRuta(location.hash).vista);
+const enFab = () => ["fabricacion", "oportunidades", "sniper", "informes"].includes(leerRuta(location.hash).vista);
 function mostrar(vista) {
   // «Fabricación» es otra sección de la página principal: comparte barra lateral, estado y detalle.
   const fab = vista === "mercado" && enFab();
@@ -2422,8 +2422,8 @@ function aplicarRuta() {
   if (!ultimo) return;
   const r = leerRuta(location.hash);
   if ($("vista-login").hidden) mostrar("mercado");
-  if (r.vista === "fabricacion" || r.vista === "oportunidades" || r.vista === "sniper") {
-    vistaFab.mostrar(r.vista === "oportunidades" ? "oportunidades" : r.vista === "sniper" ? "sniper" : "tabla");
+  if (r.vista === "fabricacion" || r.vista === "oportunidades" || r.vista === "sniper" || r.vista === "informes") {
+    vistaFab.mostrar(r.vista === "oportunidades" ? "oportunidades" : r.vista === "sniper" ? "sniper" : r.vista === "informes" ? "informes" : "tabla");
     return;
   }
   if (r.vista === "objeto") { if (r.id !== objetoActual || $("panel-ficha").hidden) abrirObjeto(r.id); }
