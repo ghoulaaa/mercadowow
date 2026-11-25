@@ -32,6 +32,15 @@ export const REGLA_POR_DEFECTO = Object.freeze({
   comision_pct: 5, deposito_pct: 60, deposito_minimo: 100, redondeo: "floor", verificado: false,
 });
 
+/**
+ * Recetas con tiempo de reutilización (solo se pueden lanzar una vez cada uno o varios días): todas las
+ * transmutaciones de Alquimia, Tela lunar (Sastrería) y Pellejo basto curtido (Peletería). Nunca se usan para
+ * «fabricar» un material de otra receta: con ellas no se pueden sacar las unidades que pide una tanda (p. ej.
+ * 3 Barras de arcanita para una Vara de arcanita), así que ese material se valora a precio de compra.
+ */
+export const RECETAS_CON_ENFRIAMIENTO = Object.freeze(new Set([18560, 19047]));
+export const tieneEnfriamiento = (r) => RECETAS_CON_ENFRIAMIENTO.has(r?.spell) || /^transmute\b/i.test(r?.nombre ?? "");
+
 export const ORIGEN = Object.freeze({
   SUBASTA: "subasta", NPC: "npc", FABRICAR: "fabricar", MANUAL: "manual",
 });
@@ -170,7 +179,8 @@ export function crearResolutor(recetas, precios, opciones = {}) {
     }
 
     let fabricar = null, receta = null, ciclo = false;
-    const candidatas = porResultado.get(id) ?? [];
+    // Un material no se «fabrica» con una receta que tiene tiempo de reutilización (se compra).
+    const candidatas = (porResultado.get(id) ?? []).filter((r) => !tieneEnfriamiento(r));
     const puedeFabricar = (fabricarIntermedios || profundidad === 0) && candidatas.length > 0;
     // `ciclo` marca un resultado que depende de desde dónde se pidió (cadena circular cortada o
     // límite de profundidad alcanzado): no se memoriza.

@@ -112,13 +112,14 @@ describe("oportunidades: una lista por criterio", () => {
 });
 
 describe("precios de los materiales (mismos datos que Mercado)", () => {
-  // Bolsa de tela lunar: 4 Madejas de paño rúnico (subasta), 1 Tela lunar (fabricada), 1 tinte sin ofertas
-  // (valor de mercado) y 1 material sin precio. Precios de un mismo escaneo, en cobre entero.
+  // Bolsa de tela lunar: 4 Madejas de paño rúnico (subasta), 1 Tela lunar (fabricada con una receta de prueba
+  // SIN tiempo de reutilización), 1 tinte sin ofertas (valor de mercado) y 1 material sin precio. Precios de un
+  // mismo escaneo, en cobre entero. (La receta real de Tela lunar, 18560, tiene tiempo de reutilización: ver abajo.)
   const D = {
     escaneo: "2026-11-13T00:22:40Z", tope_pct: 150, comision_pct: 5,
     recetas: [
       { s: 18445, n: "Mooncloth Bag", p: "Tailoring", l: 230, r: 14155, mn: 1, mx: 1, m: [[14048, 4], [14342, 1], [6261, 1], [7777, 1]] },
-      { s: 18560, n: "Mooncloth", p: "Tailoring", l: 230, r: 14342, mn: 1, mx: 1, m: [[14256, 2]] },
+      { s: 99560, n: "Tela de prueba sin enfriamiento", p: "Tailoring", l: 230, r: 14342, mn: 1, mx: 1, m: [[14256, 2]] },
     ],
     objetos: {
       14048: { n: "Bolt of Runecloth", s: 3828, v: 3854 },   // 38p 28c, como la compra mínima del Mercado
@@ -148,6 +149,12 @@ describe("precios de los materiales (mismos datos que Mercado)", () => {
     assert.equal(tela.hijos[0].id, 14256);
     assert.equal(estadoPrecio(tela).texto, "Fabricado");
     assert.deepEqual(compararCompraFabricacion({ comprar: null, fabricar: 10 }), { comprar: null, fabricar: 10, ahorro: null });
+  });
+  test("con la receta real de Tela lunar (tiempo de reutilización) la tela se compra, no se fabrica", () => {
+    const real = { ...D, recetas: D.recetas.map((r) => (r.r === 14342 ? { ...r, s: 18560, n: "Mooncloth" } : r)) };
+    const tela = simularReceta(real, 18445)!.desglose.materiales.find((m: any) => m.id === 14342);
+    assert.deepEqual([tela.origen, tela.precioUnitario], ["subasta", 230000]);
+    assert.equal(calcularFilas(real).find((x: any) => x.spell === 18560).enfriamiento, true);
   });
   test("sin ofertas (valor de mercado) y sin precio: estimado e incompleto", () => {
     const r = simularReceta(D, 18445)!;

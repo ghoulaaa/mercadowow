@@ -868,6 +868,7 @@ export function crearVistaFabricacion(d) {
     kpis.append(`Retorno ${pct(a1.roi) ?? "—"} · Margen ${pct(a1.margenNeto) ?? "—"} · Para no perder, vende a `, moneda(a1.precioEquilibrio), " o más por unidad");
     resumen.append(kpis);
     if (conUnidad) resumen.append(el("p", "small muted", "«Por unidad» divide entre las unidades medias que produce: es aproximado."));
+    if (x.enfriamiento) resumen.append(el("p", "small fab-error", "Tiene tiempo de reutilización: solo se puede fabricar una vez cada uno o varios días."));
     nodos.push(resumen);
 
     // Precio de venta (editable) y fuente.

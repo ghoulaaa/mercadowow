@@ -247,7 +247,9 @@ export function evaluarFila(x, datos, h, cfg, ahora = Date.now()) {
     stockIlimitado: x.a.maxFabricable?.ilimitado === true,
     ventas: i.ventas, regional: i.regional, competencia: i.competencia, demanda: i.demanda,
     conservador: cons, score: s.score, partes: s.partes, desconocido: s.desconocido,
-    riesgo, motivosRiesgo: i.motivosRiesgo, confianza: rev.confianza, bloquea: rev.bloquea, avisos: rev.avisos,
+    riesgo, motivosRiesgo: i.motivosRiesgo, confianza: rev.confianza, bloquea: rev.bloquea,
+    avisos: x.enfriamiento ? [...rev.avisos, "Tiene tiempo de reutilización: solo se puede fabricar una vez cada uno o varios días"] : rev.avisos,
+    enfriamiento: x.enfriamiento === true,
     // Solo se avisa con datos que lo respaldan: nada que bloquee, confianza no baja y ganancia también en el
     // escenario conservador.
     alertable: rev.bloquea.length === 0 && rev.confianza !== "baja" && cons.neta != null && cons.neta > 0,
@@ -464,6 +466,7 @@ export function fabricacionRecomendada(o, { presupuesto = null } = {}) {
   if (o.competencia === "alta") { veces = Math.max(1, Math.floor(veces / 2)); limites.push({ motivo: "competencia alta", veces }); }
   if (o.maxFabricable != null) limites.push({ motivo: "materiales publicados", veces: o.maxFabricable });
   if (presupuesto != null && presupuesto > 0) limites.push({ motivo: "presupuesto", veces: Math.floor(presupuesto / o.coste) });
+  if (o.enfriamiento) limites.push({ motivo: "tiempo de reutilización", veces: 1 });
   const tope = limites.reduce((p, l) => (l.veces < p.veces ? l : p));
   veces = Math.max(0, tope.veces);
   const ingreso = veces * (o.ingresoBruto ?? 0), comision = veces * ((o.comision ?? 0) + (o.deposito ?? 0));
@@ -491,7 +494,7 @@ export function planConPresupuesto(oportunidades, presupuesto) {
   for (const o of oportunidades) {
     if (!(o.coste > 0) || sobra < o.coste) continue;
     const porVentas = o.ventas == null ? 1 : Math.max(1, Math.floor((o.ventas * 2) / o.unidades));
-    const tope = Math.min(porVentas, o.maxFabricable ?? Infinity, Math.floor(sobra / o.coste));
+    const tope = Math.min(porVentas, o.maxFabricable ?? Infinity, Math.floor(sobra / o.coste), o.enfriamiento ? 1 : Infinity);
     if (tope < 1) continue;
     lineas.push({ spell: o.spell, id: o.id, nombre: o.nombre, veces: tope, unidades: tope * o.unidades,
                   coste: tope * o.coste, neta: tope * o.neta, riesgo: o.riesgo });

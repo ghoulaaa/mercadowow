@@ -192,7 +192,7 @@ export function analizarInforme(base, { config = {}, ref7 = {}, crafteos = [], o
     .sort((a, b) => b.score - a.score || b.neta - a.neta).map((o) => ({
       spell: o.spell, id: o.id, nombre: o.nombre, icono: o.icono, calidad: o.calidad, profesion: o.profesion, unidades: o.unidades,
       coste: o.coste, venta: o.precioVenta, recomendado: o.conservador?.precio ?? null, comision: (o.comision ?? 0) + (o.deposito ?? 0),
-      neta: o.neta, roi: o.roi, demanda: o.ventas ?? null, score: o.score, riesgo: o.riesgo,
+      neta: o.neta, roi: o.roi, demanda: o.ventas ?? null, score: o.score, riesgo: o.riesgo, enfriamiento: o.enfriamiento === true,
     }));
 
   // ---- categorías: mediana de la variación de cada objeto con datos en ambas ventanas
@@ -556,8 +556,8 @@ export function informeSVG(inf, { pagina = "resumen", iconos = {}, sitio = "" } 
     tarjetas(inf.crafteos, (f, y) => {
       P.push(icono(f.icono, M + 14, y + 12, 40), texto(M + 66, y + 28, recortar(f.nombre, 22, 700, 440), { tam: 22, peso: 700, color: T.texto }));
       P.push(texto(DER - 16, y + 32, `${formatoPct(f.roi, 0).replace("+", "")}`, { tam: 28, peso: 800, color: T.verde, ancla: "end" }));
-      P.push(texto(M + 66, y + 53, `${nombreProfesion(f.profesion)} · coste ${textoMoneda(f.coste)} → venta ${textoMoneda(f.venta)} · comisión ${textoMoneda(f.comision)}`,
-        { tam: 17, color: T.sec }));
+      P.push(texto(M + 66, y + 53, recortar(`${nombreProfesion(f.profesion)} · coste ${textoMoneda(f.coste)} → venta ${textoMoneda(f.venta)}${f.enfriamiento ? " · 1 cada pocos días" : ` · comisión ${textoMoneda(f.comision)}`}`, 17, 400, CW - 66 - 32),
+        { tam: 17, color: f.enfriamiento ? T.oro : T.sec }));
       P.push(texto(M + 66, y + 76, `Beneficio +${textoMoneda(f.neta)}`, { tam: 18, peso: 700, color: T.verde }),
         texto(DER - 16, y + 76, f.demanda != null ? `demanda ≈ ${nVent(f.demanda)}/día` : "demanda sin datos", { tam: 17, color: T.sec, ancla: "end" }));
       P.push(barra(M + 300, y + 69, 250, 8, f.roi / maxRoi, T.verde, T));

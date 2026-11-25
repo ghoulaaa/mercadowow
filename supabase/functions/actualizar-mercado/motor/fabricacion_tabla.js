@@ -1,7 +1,7 @@
 // Vista «Fabricación» sin DOM: de los datos de /api/recetas?fabricacion=1 a filas calculadas con el
 // motor (fabricacion.js), más filtros, orden y exportación a CSV. Se prueba en Node.
 
-import { REGLA_POR_DEFECTO, analizarReceta, crearResolutor } from "./fabricacion.js";
+import { REGLA_POR_DEFECTO, analizarReceta, crearResolutor, tieneEnfriamiento } from "./fabricacion.js";
 
 const sinTildes = (t) => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const entero = (v) => (Number.isSafeInteger(v) && v > 0 ? v : null);
@@ -89,6 +89,8 @@ export function calcularFilas(datos, opciones = {}) {
       ventasDia: p.ventasDia ?? null,
       ventasRegion: p.ventasRegion ?? null,
       completo: a.completo,
+      // Solo se puede fabricar una vez cada uno o varios días (transmutaciones, Tela lunar, Pellejo basto curtido).
+      enfriamiento: tieneEnfriamiento(r),
       materialesSinOfertas: sinOfertas,
       a,
       /** Ingredientes con el precio usado y de dónde sale (se calcula al abrir la fila). */

@@ -4,7 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   ORIGEN, REGLA_POR_DEFECTO, analizarReceta, analizarTodas, comisionVenta, crearResolutor,
-  depositoSubasta, desglosarMoneda, maxFabricable, precioEquilibrio, rendimiento,
+  depositoSubasta, desglosarMoneda, maxFabricable, precioEquilibrio, rendimiento, tieneEnfriamiento,
 } from "../../app/static/fabricacion.js";
 import { formatearMoneda } from "../../app/static/moneda.js";
 
@@ -200,6 +200,21 @@ describe("dependencias: sin ciclos infinitos ni costes duplicados", () => {
     assert.equal(arbolB.hijos[0].id, 1);
     assert.equal(arbolB.hijos[0].cantidad, 2);
     assert.equal(arbolB.costeTotal, 20);
+  });
+  test("una receta con tiempo de reutilización nunca abarata un material: se compra (Vara de arcanita)", () => {
+    // Vara de arcanita ← 3 Barras de arcanita + 1 Piedra de afilar densa. La barra se transmuta (torio + cristal
+    // arcano = 12,17g) pero solo una vez cada pocos días: para 3 barras hay que comprarlas a 40,40g.
+    const vara = { ...receta(20201, 16206, [[12360, 3], [12644, 1]]), nombre: "Arcanite Rod" };
+    const transmutar = { ...receta(17187, 12360, [[12359, 1], [12363, 1]]), nombre: "Transmute: Arcanite" };
+    const precios = { 12360: { subasta: 404_000 }, 12644: { subasta: 1_500 }, 12359: { subasta: 1_800 }, 12363: { subasta: 119_900 } };
+    const r = analizarReceta(vara, crearResolutor([vara, transmutar], precios));
+    assert.equal(r.costeFabricacion, 3 * 404_000 + 1_500);             // 121,35g, no 36,6g
+    assert.equal(r.materiales.find((m: any) => m.id === 12360).origen, ORIGEN.SUBASTA);
+    // La transmutación sigue analizándose como receta propia (con su aviso en la tabla).
+    assert.equal(analizarReceta(transmutar, crearResolutor([vara, transmutar], precios)).costeFabricacion, 1_800 + 119_900);
+    assert.equal(tieneEnfriamiento(transmutar), true);
+    assert.equal(tieneEnfriamiento({ spell: 18560, nombre: "Mooncloth" }), true);
+    assert.equal(tieneEnfriamiento(vara), false);
   });
   test("cadena larga: se resuelve entera y el orden de las consultas no cambia el resultado", () => {
     // I0 ← I1 ← … ← I11; solo I11 es barato; el resto vale 1000 en subasta.

@@ -82,6 +82,7 @@ const resumen = (o: any) => ({
   roi: o.roi, margen: o.margen, score: o.score, partes: o.partes, riesgo: o.riesgo, confianza: o.confianza, clase: o.clase,
   ventas: o.ventas, regional: o.regional, maxFabricable: o.maxFabricable, stockIlimitado: o.stockIlimitado, conservador: o.conservador, historico: o.historico,
   wowhead: o.wowhead, stockSubasta: o.stockSubasta, deposito: o.deposito, equilibrio: o.equilibrio, competencia: o.competencia,
+  enfriamiento: o.enfriamiento,
   materiales: o.materiales.map((m: any) => ({ id: m.id, nombre: m.nombre, cantidad: m.cantidad, precioUnitario: m.precioUnitario,
     costeTotal: m.costeTotal, origen: m.origen, sinOfertas: m.sinOfertas, icono: m.icono, disponible: m.disponible })),
   avisos: o.avisos, bloquea: o.bloquea, motivoDescarte: o.motivoDescarte ?? null,
