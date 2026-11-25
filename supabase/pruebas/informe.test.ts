@@ -58,7 +58,7 @@ describe("informe diario (SQL + tarea)", () => {
                      "0020_precios_tsm.sql", "0021_materiales.sql", "0022_mapa.sql", "0024_perfil_subasta.sql", "0025_oportunidades.sql",
                      "0026_region.sql", "0028_recetas_tsm.sql", "0029_mapa_casa.sql", "0030_listas_alertas.sql", "0038_planes_a_medida.sql",
                      "0039_cantidades_ahledger.sql", "0042_datos_fabricacion.sql", "0045_sniper.sql", "0047_sniper_apariencia.sql",
-                     "0048_sniper_tarjeta.sql", "0049_informe_diario.sql", "0051_informe_paginas.sql", "0052_informe_pociones.sql"]) await pg.exec(leer(n));
+                     "0048_sniper_tarjeta.sql", "0049_informe_diario.sql", "0051_informe_paginas.sql", "0052_informe_pociones.sql", "0053_turno_discord.sql"]) await pg.exec(leer(n));
     const cat = [[1, "Peacebloom", "Trade Goods", "Herb"], [2, "Mechanical Squirrel Box", "Miscellaneous", "Pet"],
                  [3, "Arcane Crystal", "Trade Goods", "Metal & Stone"], [4, "Thorium Bar", "Trade Goods", "Metal & Stone"],
                  [5, "Runecloth", "Trade Goods", "Cloth"]]
@@ -192,6 +192,30 @@ describe("informe diario (SQL + tarea)", () => {
       await ejecutarInforme(db, { fetch: d.f, ahora: () => t, espera: sinEspera, renderizar: async () => null });
     }
     assert.equal((await uno("select informe_toca($1::timestamptz) as r", [new Date("2026-11-25T16:00:00Z").toISOString()])).r, false);
+  });
+
+  test("sniper e informe nunca envían a la vez: turno compartido", async () => {
+    await configurar({ activo: true, hora: 10, zona: "UTC" });
+    await uno("update sniper_config set activo = true");
+    const t = AHORA.toISOString();
+    // El sniper está enviando: el informe no toca, y uno pedido a mano espera y acaba «ocupado» sin enviar nada.
+    assert.equal((await uno("select sniper_tomar_turno(240, $1::timestamptz) as r", [t])).r, true);
+    assert.equal((await uno("select informe_toca($1::timestamptz) as r", [t])).r, false);
+    assert.equal((await uno("select informe_tomar_turno(300, $1::timestamptz) as r", [t])).r, false);
+    const d = discord();
+    let esperas = 0;
+    const r = await ejecutarInforme(db, { fetch: d.f, modo: "enviar", ahora: () => AHORA, espera: async () => { esperas++; }, renderizar: async () => png });
+    assert.deepEqual([r.estado, d.recibidos.length, esperas], ["ocupado", 0, 9]);
+    // Termina el sniper: ahora sí sale el informe, y mientras se prepara el sniper no puede empezar.
+    await uno("select sniper_soltar_turno()");
+    assert.equal((await uno("select informe_toca($1::timestamptz) as r", [t])).r, true);
+    assert.equal((await uno("select informe_tomar_turno(300, $1::timestamptz) as r", [t])).r, true);
+    assert.equal((await uno("select sniper_tomar_turno(240, $1::timestamptz) as r", [t])).r, false);
+    assert.equal((await uno("select sniper_toca($1::timestamptz) as r", [t])).r, false);
+    await uno("select informe_soltar_turno()");
+    assert.equal((await ejecutarInforme(db, { fetch: d.f, ahora: () => AHORA, espera: sinEspera, renderizar: async () => png })).estado, "ok");
+    assert.equal(d.recibidos.length, 1);
+    assert.equal((await uno("select sniper_tomar_turno(240, $1::timestamptz) as r", [t])).r, true);   // y luego el sniper
   });
 
   test("prueba del webhook y validación de la configuración", async () => {

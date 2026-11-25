@@ -104,9 +104,12 @@ export async function ejecutarInforme(db: Db, op: OpcionesInforme) {
   if (modo === "auto" && !(await uno(db, "select informe_toca($1::timestamptz) as r", [ahora().toISOString()]))) {
     return { estado: "no_toca" };
   }
-  if (!(await uno(db, "select informe_tomar_turno(300, $1::timestamptz) as r", [ahora().toISOString()]))) {
-    return { estado: "ocupado" };
-  }
+  // Turno compartido con el Crafting Sniper: nunca se envían a la vez (el informe llega entero). Lo automático
+  // lo intenta en la siguiente vuelta; lo pedido desde la página espera hasta 45 s a que el sniper termine.
+  const tomar = () => uno(db, "select informe_tomar_turno(300, $1::timestamptz) as r", [ahora().toISOString()]);
+  let turno = await tomar();
+  for (let i = 0; !turno && modo !== "auto" && i < 9; i++) { await espera(5000); turno = await tomar(); }
+  if (!turno) return { estado: "ocupado" };
   const tipo = modo === "auto" ? "auto" : modo === "enviar" ? "manual" : "vista";
   const guardar = (fila: Record<string, unknown>) => uno(db, "select informe_guardar($1::text::jsonb) as r", [JSON.stringify(fila)]);
   const actualizar = (id: number, estado: string, enviados: number, error: string | null) =>

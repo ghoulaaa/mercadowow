@@ -116,10 +116,13 @@ export async function ejecutarSniper(db: Db, op: OpcionesSniper) {
   const ahora = op.ahora ?? (() => new Date());
   const espera = op.espera ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const modo = op.modo ?? "auto";
-  // Un solo análisis a la vez (el turno caduca solo a los 4 min si algo se interrumpe).
-  if (!(await uno(db, "select sniper_tomar_turno(240, $1::timestamptz) as r", [ahora().toISOString()]))) {
-    return { estado: "ocupado" };
-  }
+  // Un solo análisis a la vez y nunca a la vez que el informe diario (turno compartido; caduca solo a los 4 min
+  // si algo se interrumpe). Lo automático lo intenta en la siguiente vuelta; lo pedido desde la página espera
+  // hasta 45 s a que el otro termine.
+  const tomar = () => uno(db, "select sniper_tomar_turno(240, $1::timestamptz) as r", [ahora().toISOString()]);
+  let turno = await tomar();
+  for (let i = 0; !turno && modo !== "auto" && i < 9; i++) { await espera(5000); turno = await tomar(); }
+  if (!turno) return { estado: "ocupado" };
   try {
     const est = await uno(db, "select sniper_estado() as r");
     const cfg = normalizarConfig(est.config);

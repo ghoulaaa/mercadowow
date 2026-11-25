@@ -135,6 +135,11 @@ descripción del embed (texto). La vista previa de la página las muestra al tam
 No incluido (por ahora): historial del coste de los materiales en el gráfico, tipografía o logotipo propios e
 imagen de fondo.
 
+## Turno compartido con el informe diario
+
+El sniper nunca envía mientras se prepara o envía el informe diario, ni al revés (migración 0053): si coinciden,
+sale primero uno y después el otro. Ver `docs/INFORME_DIARIO.md`.
+
 ## Seguridad
 
 - La URL del webhook solo se lee en la Edge Function (servidor) y nunca aparece en la página, en las

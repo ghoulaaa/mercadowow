@@ -42,6 +42,14 @@ Páginas (las secciones ocultas no salen): Resumen (indicadores y gráfico de 24
 caídas · Gangas del día · Mejores crafteos · Arbitraje (solo con datos de la otra facción) · Categorías · Datos
 interesantes (con la nota del arbitraje si no hay datos y el aviso de estimaciones).
 
+## Nunca a la vez que el Crafting Sniper
+
+El informe y el sniper comparten **un solo turno** para enviar a Discord (migración 0053): mientras uno prepara o
+envía sus mensajes, el otro no empieza, así el informe llega entero y en orden, sin avisos intercalados. El
+automático que encuentra el turno ocupado lo intenta en su siguiente vuelta (informe: 15 min; sniper: 5 min); lo
+pedido desde la página espera hasta 45 s a que el otro termine. El turno caduca solo (informe 5 min, sniper 4 min)
+si algo se interrumpe.
+
 ## Secciones y criterios
 
 Precios por **unidad**, en cobre, siempre con oro, plata y cobre. Solo se usan los **escaneos válidos**: una hora con
